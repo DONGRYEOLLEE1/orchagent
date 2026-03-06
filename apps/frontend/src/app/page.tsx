@@ -102,7 +102,7 @@ const ToolCard = ({ tool }: { tool: ToolExecution }) => {
         <h4 className="text-sm font-bold text-slate-200">{tool.name}</h4>
       </div>
 
-      {tool.input && (
+      {!!tool.input && (
         <div className="mt-2 space-y-1">
           <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-tighter">Input</p>
           <pre className="text-[11px] bg-black/30 p-2 rounded-lg text-slate-400 overflow-x-auto font-mono max-h-24">
@@ -111,7 +111,7 @@ const ToolCard = ({ tool }: { tool: ToolExecution }) => {
         </div>
       )}
 
-      {tool.output && (
+      {!!tool.output && (
         <div className="mt-3 space-y-1">
           <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-tighter">Output</p>
           <div className="text-[11px] bg-blue-500/5 border border-blue-500/10 p-2 rounded-lg text-slate-300 overflow-x-auto font-mono max-h-32">
