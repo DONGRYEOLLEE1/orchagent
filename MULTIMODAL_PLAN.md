@@ -21,8 +21,8 @@
 - [x] **[BE]** 상태 메시지 변환: `api/routes/chat.py`에서 전달받은 `images` 배열을 LangChain 규격의 멀티모달 `HumanMessage` (`[{"type": "text", ...}, {"type": "image_url", ...}]`) 형태로 변환
 
 ### Phase 2: Orchestration (라우팅 및 State 호환성 보장)
-- [ ] **[BE]** State 호환성 확인: `agent_core/state.py`의 `BaseAgentState`가 리스트 딕셔너리 형태의 `HumanMessage`를 제대로 처리하는지 검증
-- [ ] **[BE]** Head Supervisor 프롬프트 수정: 이미지 관련 요청이 들어왔을 때 이를 분석할 수 있는 `vision_team`으로 정확히 라우팅하도록 규칙 추가
+- [x] **[BE]** State 호환성 확인: `agent_core/state.py`의 `BaseAgentState`가 리스트 딕셔너리 형태의 `HumanMessage`를 제대로 처리하는지 검증
+- [x] **[BE]** Head Supervisor 프롬프트 수정: 이미지 관련 요청이 들어왔을 때 이를 분석할 수 있는 `vision_team`으로 정확히 라우팅하도록 규칙 추가
 
 ### Phase 3: Vision Team & Tools (시각 지능 에이전트 구현)
 - [ ] **[BE/Prompt]** 프롬프트 추가: `prompt-kit`에 VLM 전문 분석가 역할을 수행하는 `VISION_ANALYST_PROMPT` 작성
@@ -48,7 +48,7 @@
 | Task | Assignee | Status |
 | :--- | :--- | :--- |
 | **Phase 1** | Gemini CLI | ✅ 완료 (Completed) |
-| **Phase 2** | - | ⏳ 대기 중 (Pending) |
+| **Phase 2** | Gemini CLI | ✅ 완료 (Completed) |
 | **Phase 3** | - | ⏳ 대기 중 (Pending) |
 | **Phase 4** | - | ⏳ 대기 중 (Pending) |
 | **Phase 5** | - | ⏳ 대기 중 (Pending) |
