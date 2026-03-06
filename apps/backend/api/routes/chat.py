@@ -10,6 +10,7 @@ from core.database import get_db
 from core.config import settings
 from services.trace_service import TraceService
 from services.logging_service import LoggingService
+from services.file_logger import JsonLogger
 
 router = APIRouter()
 
@@ -17,8 +18,14 @@ router = APIRouter()
 async def chat_stream(request: ChatRequest, db: AsyncSession = Depends(get_db)):
     """Streaming endpoint for chat with persistence and tracing."""
     
-    # Log User Message
+    # We will use a dummy user_id for now as auth is not yet implemented
+    user_id = "anonymous_user"
+    
+    # 1. DB Logging
     await LoggingService.log_message(db, request.thread_id, role="user", content=request.message)
+    
+    # 2. File Logging (Session start/turn)
+    JsonLogger.log_session(session_id=request.thread_id, user_id=user_id, event_type="turn_start", metadata={"message_length": len(request.message)})
     
     async def event_generator():
         inputs = {"messages": [("user", request.message)]}
@@ -68,6 +75,11 @@ async def chat_stream(request: ChatRequest, db: AsyncSession = Depends(get_db)):
                 # Log final AI Response
                 if final_answer:
                     await LoggingService.log_message(db, request.thread_id, role="assistant", content=final_answer)
+                    
+                    # File Logging (Session end)
+                    JsonLogger.log_session(session_id=request.thread_id, user_id=user_id, event_type="turn_end", metadata={"response_length": len(final_answer)})
+                    # Dummy token usage tracking (In production, parse this from LangChain's usage_metadata)
+                    JsonLogger.log_usage(user_id=user_id, model="gpt-4o-mini", prompt_tokens=len(request.message)//4, completion_tokens=len(final_answer)//4)
                     
         except Exception as e:
             yield {

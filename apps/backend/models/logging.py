@@ -1,10 +1,13 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
+import pytz
 from sqlalchemy import Column, String, DateTime, ForeignKey, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
 from core.database import Base
+
+KST = pytz.timezone('Asia/Seoul')
 
 class ChatSession(Base):
     """Tracks a conversation thread."""
@@ -12,8 +15,8 @@ class ChatSession(Base):
     
     id = Column(String, primary_key=True, index=True) # Matches thread_id
     user_id = Column(String, index=True, nullable=True) # For future user auth tracking
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(KST))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(KST), onupdate=lambda: datetime.now(KST))
     
     messages = relationship("ChatMessageLog", back_populates="session", cascade="all, delete-orphan", lazy="selectin")
 
@@ -25,6 +28,6 @@ class ChatMessageLog(Base):
     session_id = Column(String, ForeignKey("chat_sessions.id"), nullable=False, index=True)
     role = Column(String, nullable=False) # 'user' or 'assistant'
     content = Column(Text, nullable=False)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(KST))
     
     session = relationship("ChatSession", back_populates="messages")
