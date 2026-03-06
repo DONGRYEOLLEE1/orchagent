@@ -25,10 +25,10 @@
 - [x] **[BE]** Head Supervisor 프롬프트 수정: 이미지 관련 요청이 들어왔을 때 이를 분석할 수 있는 `vision_team`으로 정확히 라우팅하도록 규칙 추가
 
 ### Phase 3: Vision Team & Tools (시각 지능 에이전트 구현)
-- [ ] **[BE/Prompt]** 프롬프트 추가: `prompt-kit`에 VLM 전문 분석가 역할을 수행하는 `VISION_ANALYST_PROMPT` 작성
-- [ ] **[BE]** 신규 도구 개발: `agent_tools/vision.py`를 생성하여 이미지 크롭, 메타데이터 추출, 필요시 외부 OCR API 호출 도구 등을 구현
-- [ ] **[BE]** Vision Team 서브그래프: `apps/backend/workflow/teams/vision.py` 생성 및 `vision_analyst` 워커 등록
-- [ ] **[BE]** 메인 그래프 통합: `main_graph.py`에 `vision_team` 서브그래프를 연결하고 라우팅 대상에 포함
+- [x] **[BE/Prompt]** 프롬프트 추가: `prompt-kit`에 VLM 전문 분석가 역할을 수행하는 `VISION_ANALYST_PROMPT` 작성
+- [x] **[BE]** 신규 도구 개발: `agent_tools/vision.py`를 생성하여 이미지 메타데이터 추출, 지능형 크롭 및 리사이징 도구 구현 (외부 OCR은 제외하고 GPT-5.4의 네이티브 VLM 능력을 극대화)
+- [x] **[BE]** Vision Team 서브그래프: `apps/backend/workflow/teams/vision.py` 생성 및 `vision_analyst` 워커 등록 (이미지+텍스트 입력을 받아 gpt-5.4 모델에 직접 질의)
+- [x] **[BE]** 메인 그래프 통합: `main_graph.py`에 `vision_team` 서브그래프를 연결하고 라우팅 대상에 포함
 
 ### Phase 4: Storage & Logging (성능 최적화 및 로깅)
 - [ ] **[BE]** 스토리지 관리: Base64로 들어온 이미지를 디스크(예: `apps/backend/data/images/`)에 임시 파일로 저장하고 URL 매핑 로직 구현
@@ -49,7 +49,7 @@
 | :--- | :--- | :--- |
 | **Phase 1** | Gemini CLI | ✅ 완료 (Completed) |
 | **Phase 2** | Gemini CLI | ✅ 완료 (Completed) |
-| **Phase 3** | - | ⏳ 대기 중 (Pending) |
+| **Phase 3** | Gemini CLI | ✅ 완료 (Completed) |
 | **Phase 4** | - | ⏳ 대기 중 (Pending) |
 | **Phase 5** | - | ⏳ 대기 중 (Pending) |
 
