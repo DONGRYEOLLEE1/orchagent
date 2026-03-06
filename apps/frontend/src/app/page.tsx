@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Send, Terminal, Loader2, Bot, User, CheckCircle2, Activity, Image as ImageIcon, X } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import NextImage from 'next/image';
 import { ChatMessage, ToolExecution } from '@/types/agent';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -20,7 +21,7 @@ const MarkdownContent = ({ content }: { content: string }) => {
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
       components={{
-        code({ node, inline, className, children, ...props }: any) {
+        code({ inline, className, children, ...props }: { inline?: boolean; className?: string; children?: React.ReactNode }) {
           const match = /language-(\w+)/.exec(className || '');
           return !inline && match ? (
             <SyntaxHighlighter
@@ -398,8 +399,8 @@ export default function ChatWorkspace() {
               </div>
               <div className={cn(
                 "p-4 rounded-2xl leading-relaxed text-sm shadow-sm",
-                m.role === 'user' 
-                  ? "bg-blue-600/10 border border-blue-500/20 text-slate-100" 
+                m.role === 'user'
+                  ? "bg-blue-600/10 border border-blue-500/20 text-slate-100"
                   : "bg-slate-900/80 border border-slate-800 text-slate-200 backdrop-blur-md"
               )}>
                 {m.role === 'user' ? m.content : <MarkdownContent content={m.content} />}
@@ -429,10 +430,13 @@ export default function ChatWorkspace() {
               <div className="flex flex-wrap gap-2 mb-2 p-2 bg-slate-900/50 border border-slate-800/50 rounded-xl backdrop-blur-md">
                 {selectedImages.map((file, i) => (
                   <div key={i} className="relative w-16 h-16 rounded-lg overflow-hidden border border-slate-700">
-                    <img
+                    <NextImage
                       src={URL.createObjectURL(file)}
                       alt="preview"
+                      width={64}
+                      height={64}
                       className="w-full h-full object-cover"
+                      unoptimized
                     />
                     <button
                       type="button"
@@ -483,7 +487,7 @@ export default function ChatWorkspace() {
       </section>
 
       {/* Right Sidebar: Agent Action Space (Action Space) */}
-      <aside 
+      <aside
         ref={actionSpaceRef}
         className="w-96 border-l border-slate-800/50 bg-slate-950/30 backdrop-blur-2xl flex flex-col p-6 overflow-y-auto z-10 scrollbar-none"
       >
