@@ -25,3 +25,10 @@ dependencies = [
 agent-core = { workspace = true }
 agent-tools = { workspace = true }
 prompt-kit = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+]
