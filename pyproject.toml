@@ -1,0 +1,14 @@
+[project]
+name = "orchagent"
+version = "0.1.0"
+description = "OrchAgent Monorepo Workspace"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.uv.workspace]
+members = [
+    "apps/backend",
+    "packages/agent-core",
+    "packages/agent-tools",
+    "packages/prompt-kit"
+]
