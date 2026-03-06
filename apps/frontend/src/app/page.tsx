@@ -174,44 +174,59 @@ export default function ChatWorkspace() {
   };
 
   return (
-    <main className="flex h-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
-      {/* Left Sidebar: Timeline & Stats */}
-      <aside className="w-80 border-r border-slate-800 flex flex-col gap-4 p-4 shrink-0">
-        <div className="flex items-center gap-3 mb-4">
+    <main className="flex h-screen bg-slate-950 text-slate-100 overflow-hidden font-sans relative">
+      {/* Decorative Background Elements */}
+      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600/10 blur-[120px] rounded-full pointer-events-none" />
+      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-600/10 blur-[120px] rounded-full pointer-events-none" />
+
+      {/* Left Sidebar: Session Info & History */}
+      <aside className="w-20 lg:w-64 border-r border-slate-800/50 flex flex-col gap-4 p-4 shrink-0 bg-slate-950/50 backdrop-blur-xl z-10">
+        <div className="flex items-center gap-3 mb-4 justify-center lg:justify-start">
           <div className="p-2 bg-blue-600 rounded-lg shadow-lg shadow-blue-500/20">
             <Bot className="text-white" />
           </div>
-          <h1 className="text-xl font-bold tracking-tight">OrchAgent</h1>
+          <h1 className="text-xl font-bold tracking-tight hidden lg:block text-slate-200">OrchAgent</h1>
         </div>
 
-        <AgentTimeline history={history} currentNode={currentNode} />
-        <ToolPanel runningTools={runningTools} />
+        <div className="hidden lg:flex flex-col gap-4">
+          <AgentTimeline history={history} currentNode={currentNode} />
 
-        <div className="mt-auto p-4 bg-slate-900/30 border border-slate-800 rounded-lg">
-          <p className="text-xs text-slate-500 mb-1">Session Info</p>
-          <div className="flex justify-between text-sm">
-            <span>Status:</span>
-            <span className={cn(loading ? "text-blue-400" : "text-emerald-400 font-medium")}>
-              {loading ? "Running" : "Idle"}
-            </span>
+          <div className="p-4 bg-slate-900/30 border border-slate-800/50 rounded-xl">
+            <p className="text-xs text-slate-500 mb-1 font-mono uppercase tracking-wider">Session Status</p>
+            <div className="flex justify-between text-sm">
+              <span className="text-slate-400">Engine:</span>
+              <span className={cn(loading ? "text-blue-400 animate-pulse" : "text-emerald-400 font-medium")}>
+                {loading ? "Active" : "Idle"}
+              </span>
+            </div>
           </div>
         </div>
       </aside>
 
-      {/* Main Content: Chat Area */}
-      <section className="flex-1 flex flex-col relative">
+      {/* Center Content: Chat Workspace */}
+      <section className="flex-1 flex flex-col relative z-10 bg-transparent">
+        <header className="h-16 border-b border-slate-800/50 flex items-center px-8 bg-slate-950/20 backdrop-blur-sm">
+          <div className="flex items-center gap-2 text-sm font-medium text-slate-400">
+            <span>Thread</span>
+            <span className="text-slate-600">/</span>
+            <span className="text-blue-400 font-mono text-xs bg-blue-400/10 px-2 py-0.5 rounded border border-blue-400/20">
+              current_session
+            </span>
+          </div>
+        </header>
+
         <div
           ref={scrollRef}
-          className="flex-1 overflow-y-auto p-8 space-y-6"
+          className="flex-1 overflow-y-auto p-8 space-y-6 scrollbar-thin scrollbar-thumb-slate-800"
         >
           {messages.length === 0 && (
-            <div className="h-full flex flex-col items-center justify-center text-center max-w-md mx-auto">
+            <div className="h-full flex flex-col items-center justify-center text-center max-w-md mx-auto opacity-50">
               <div className="w-20 h-20 bg-slate-900 border border-slate-800 rounded-3xl flex items-center justify-center mb-6 shadow-xl">
-                <Bot size={40} className="text-blue-500" />
+                <Bot size={40} className="text-slate-400" />
               </div>
-              <h2 className="text-2xl font-bold mb-2">Welcome to OrchAgent</h2>
-              <p className="text-slate-400">
-                Ask me to research complex topics, write reports, or generate code. I&apos;ll coordinate a team of agents to get it done.
+              <h2 className="text-2xl font-bold mb-2 text-slate-200">System Ready</h2>
+              <p className="text-slate-400 text-sm">
+                Initiate a hierarchical task. The multi-agent team is standing by for coordination.
               </p>
             </div>
           )}
@@ -229,7 +244,9 @@ export default function ChatWorkspace() {
               </div>
               <div className={cn(
                 "p-4 rounded-2xl leading-relaxed text-sm shadow-sm",
-                m.role === 'user' ? "bg-slate-800 text-slate-100" : "bg-slate-900 border border-slate-800 text-slate-200"
+                m.role === 'user'
+                  ? "bg-blue-600/10 border border-blue-500/20 text-slate-100"
+                  : "bg-slate-900/80 border border-slate-800 text-slate-200 backdrop-blur-md"
               )}>
                 {m.content}
               </div>
@@ -241,8 +258,8 @@ export default function ChatWorkspace() {
               <div className="w-8 h-8 rounded-full bg-blue-600/50 flex items-center justify-center shrink-0">
                 <Bot size={16} />
               </div>
-              <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 text-slate-400 text-sm">
-                Thinking and coordinating...
+              <div className="p-4 rounded-2xl bg-slate-900/50 border border-slate-800 text-slate-400 text-sm italic">
+                Coordinating team...
               </div>
             </div>
           )}
@@ -256,7 +273,7 @@ export default function ChatWorkspace() {
           >
             {/* Image Previews */}
             {selectedImages.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-2 p-2 bg-slate-900/50 border border-slate-800 rounded-xl">
+              <div className="flex flex-wrap gap-2 mb-2 p-2 bg-slate-900/50 border border-slate-800/50 rounded-xl backdrop-blur-md">
                 {selectedImages.map((file, i) => (
                   <div key={i} className="relative w-16 h-16 rounded-lg overflow-hidden border border-slate-700">
                     <img
@@ -280,15 +297,15 @@ export default function ChatWorkspace() {
               <input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="How can I help you today?"
-                className="w-full bg-slate-900 border border-slate-800 rounded-2xl py-4 pl-14 pr-14 text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-600/50 transition-all placeholder:text-slate-600"
+                placeholder="Message OrchAgent..."
+                className="w-full bg-slate-900/50 border border-slate-800/50 rounded-2xl py-4 pl-14 pr-14 text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-600/30 transition-all placeholder:text-slate-600 backdrop-blur-md"
                 disabled={loading}
               />
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={loading}
-                className="absolute left-3 top-1/2 -translate-y-1/2 p-2 text-slate-400 hover:text-blue-400 disabled:text-slate-700 transition-colors"
+                className="absolute left-3 top-1/2 -translate-y-1/2 p-2 text-slate-500 hover:text-blue-400 disabled:text-slate-800 transition-colors"
               >
                 <ImageIcon size={20} />
               </button>
@@ -303,17 +320,36 @@ export default function ChatWorkspace() {
               <button
                 type="submit"
                 disabled={loading || (!input.trim() && selectedImages.length === 0)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-600 text-white rounded-xl transition-colors"
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-600 text-white rounded-xl transition-colors shadow-lg shadow-blue-600/20"
               >
                 {loading ? <Loader2 className="animate-spin" size={20} /> : <Send size={20} />}
               </button>
             </div>
           </form>
-          <p className="text-[10px] text-center text-slate-600 mt-4 uppercase tracking-widest font-semibold">
-            OrchAgent • Hierarchical Multi-Agent Platform
-          </p>
         </div>
       </section>
+
+      {/* Right Sidebar: Agent Action Space (Action Space) */}
+      <aside className="w-96 border-l border-slate-800/50 bg-slate-950/30 backdrop-blur-2xl flex flex-col p-6 overflow-y-auto z-10">
+        <div className="flex items-center gap-2 mb-6">
+          <Terminal size={18} className="text-blue-400" />
+          <h2 className="text-sm font-bold uppercase tracking-widest text-slate-300">Action Space</h2>
+        </div>
+
+        <div className="space-y-4">
+          <ToolPanel runningTools={runningTools} />
+
+          <div className="flex flex-col gap-2 p-4 bg-blue-500/5 border border-blue-500/10 rounded-2xl">
+            <div className="flex items-center gap-2 mb-2">
+              <Activity size={14} className="text-blue-400" />
+              <span className="text-xs font-semibold text-blue-300 uppercase">Live Trace</span>
+            </div>
+            <p className="text-[11px] text-slate-500 italic leading-relaxed">
+              Real-time tool execution logs and internal reasoning will be streamed here.
+            </p>
+          </div>
+        </div>
+      </aside>
     </main>
   );
 }
