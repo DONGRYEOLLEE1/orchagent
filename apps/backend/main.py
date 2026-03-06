@@ -6,11 +6,19 @@ from core.config import settings
 from core.database import engine, Base
 from api.routes import chat, health
 
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create DB tables for tracing if they don't exist
+    # 1. Create DB tables for tracing if they don't exist
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    
+    # 2. Setup LangGraph checkpointer tables once at startup
+    # Use standard postgresql:// (psycopg handles async internally)
+    async with AsyncPostgresSaver.from_conn_string(settings.sync_database_uri) as checkpointer:
+        await checkpointer.setup()
+        
     yield
     # Cleanup on shutdown
     await engine.dispose()
