@@ -16,3 +16,13 @@ export interface AgentStatus {
     runningTools: string[];
     history: string[];
 }
+
+export interface ToolExecution {
+    id: string;
+    name: string;
+    status: 'pending' | 'running' | 'success' | 'error';
+    input?: unknown;
+    output?: unknown;
+    startTime: number;
+    endTime?: number;
+}

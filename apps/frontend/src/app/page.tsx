@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Send, Terminal, Loader2, Bot, User, CheckCircle2, Activity, Image as ImageIcon, X } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { ChatMessage } from '@/types/agent';
+import { ChatMessage, ToolExecution } from '@/types/agent';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -26,6 +26,54 @@ const fileToBase64 = (file: File): Promise<string> => {
 };
 
 // --- Components ---
+
+const ToolCard = ({ tool }: { tool: ToolExecution }) => {
+  const isRunning = tool.status === 'running';
+  const duration = tool.endTime ? ((tool.endTime - tool.startTime) / 1000).toFixed(1) : null;
+
+  return (
+    <div className={cn(
+      "backdrop-blur-lg bg-slate-900/40 p-4 rounded-2xl border transition-all duration-500 animate-in fade-in slide-in-from-right-4",
+      isRunning ? "border-blue-500/50 shadow-[0_0_15px_rgba(59,130,246,0.2)]" : "border-slate-800/50"
+    )}>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <div className={cn(
+            "w-2 h-2 rounded-full",
+            isRunning ? "bg-blue-400 animate-pulse" : tool.status === 'success' ? "bg-emerald-400" : "bg-red-400"
+          )} />
+          <span className="text-[10px] font-mono uppercase tracking-widest text-slate-400">Tool Call</span>
+        </div>
+        {duration && <span className="text-[10px] font-mono text-slate-500">{duration}s</span>}
+      </div>
+
+      <div className="flex items-center gap-3 mb-3">
+        <div className="p-2 bg-slate-800/50 rounded-lg text-blue-400">
+          <Terminal size={14} />
+        </div>
+        <h4 className="text-sm font-bold text-slate-200">{tool.name}</h4>
+      </div>
+
+      {tool.input && (
+        <div className="mt-2 space-y-1">
+          <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-tighter">Input</p>
+          <pre className="text-[11px] bg-black/30 p-2 rounded-lg text-slate-400 overflow-x-auto font-mono max-h-24">
+            {typeof tool.input === 'string' ? tool.input : JSON.stringify(tool.input, null, 2)}
+          </pre>
+        </div>
+      )}
+
+      {tool.output && (
+        <div className="mt-3 space-y-1">
+          <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-tighter">Output</p>
+          <div className="text-[11px] bg-blue-500/5 border border-blue-500/10 p-2 rounded-lg text-slate-300 overflow-x-auto font-mono max-h-32">
+            {typeof tool.output === 'string' ? tool.output : JSON.stringify(tool.output, null, 2)}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 const AgentTimeline = ({ history, currentNode }: { history: string[], currentNode: string }) => (
   <div className="flex flex-col gap-2 p-4 bg-slate-900/50 border border-slate-800 rounded-lg overflow-y-auto max-h-[300px]">
@@ -49,19 +97,25 @@ const AgentTimeline = ({ history, currentNode }: { history: string[], currentNod
   </div>
 );
 
-const ToolPanel = ({ runningTools }: { runningTools: string[] }) => (
-  <div className="flex flex-col gap-2 p-4 bg-slate-900/50 border border-slate-800 rounded-lg">
-    <h3 className="text-sm font-semibold text-slate-400 flex items-center gap-2">
-      <Terminal size={16} /> Active Tools
-    </h3>
-    <div className="flex flex-wrap gap-2">
-      {runningTools.length === 0 ? (
-        <span className="text-xs text-slate-500 italic">No active tools</span>
+const ToolPanel = ({ toolExecutions }: { toolExecutions: ToolExecution[] }) => (
+  <div className="flex flex-col gap-4">
+    <div className="flex items-center justify-between">
+      <h3 className="text-sm font-semibold text-slate-400 flex items-center gap-2">
+        <Terminal size={16} /> Tool Activity
+      </h3>
+      <span className="text-[10px] bg-slate-800 px-2 py-0.5 rounded text-slate-500 font-mono">
+        {toolExecutions.length} calls
+      </span>
+    </div>
+    <div className="flex flex-col gap-3">
+      {toolExecutions.length === 0 ? (
+        <div className="p-8 border border-dashed border-slate-800 rounded-2xl flex flex-col items-center justify-center text-center opacity-30">
+          <Terminal size={24} className="mb-2" />
+          <span className="text-xs italic tracking-tighter text-slate-400">Waiting for tool execution...</span>
+        </div>
       ) : (
-        runningTools.map((tool, i) => (
-          <span key={i} className="px-2 py-1 bg-blue-900/30 border border-blue-700/50 text-blue-300 rounded text-xs flex items-center gap-1">
-            <Loader2 size={10} className="animate-spin" /> {tool}
-          </span>
+        [...toolExecutions].reverse().map((tool) => (
+          <ToolCard key={tool.id} tool={tool} />
         ))
       )}
     </div>
@@ -76,7 +130,7 @@ export default function ChatWorkspace() {
   const [loading, setLoading] = useState(false);
   const [currentNode, setCurrentNode] = useState('');
   const [history, setHistory] = useState<string[]>([]);
-  const [runningTools, setRunningTools] = useState<string[]>([]);
+  const [toolExecutions, setToolExecutions] = useState<ToolExecution[]>([]);
   const [selectedImages, setSelectedImages] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -86,7 +140,7 @@ export default function ChatWorkspace() {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, currentNode]);
+  }, [messages, currentNode, toolExecutions]);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -114,7 +168,7 @@ export default function ChatWorkspace() {
     setLoading(true);
     setCurrentNode('');
     setHistory([]);
-    setRunningTools([]);
+    setToolExecutions([]);
 
     try {
       const response = await fetch('http://localhost:8000/api/chat', {
@@ -143,7 +197,7 @@ export default function ChatWorkspace() {
           if (line.startsWith('data: ')) {
             try {
               const payload = JSON.parse(line.slice(6));
-              const { event_type, node } = payload;
+              const { event_type, node, data } = payload;
 
               // Update logic based on event types
               if (event_type === 'on_chain_start' && node === 'OrchAgent') {
@@ -152,11 +206,22 @@ export default function ChatWorkspace() {
                 setCurrentNode(node);
                 setHistory(prev => [...prev, node]);
               } else if (event_type === 'on_tool_start') {
-                setRunningTools(prev => [...prev, node]);
+                const newTool: ToolExecution = {
+                  id: Math.random().toString(36).substr(2, 9),
+                  name: node,
+                  status: 'running',
+                  input: data,
+                  startTime: Date.now()
+                };
+                setToolExecutions(prev => [...prev, newTool]);
               } else if (event_type === 'on_tool_end') {
-                setRunningTools(prev => prev.filter(t => t !== node));
+                setToolExecutions(prev => prev.map(t =>
+                  t.name === node && t.status === 'running'
+                    ? { ...t, status: 'success', output: data, endTime: Date.now() }
+                    : t
+                ));
               } else if (event_type === 'on_chat_model_stream') {
-                // Final answer or partial output handling could go here
+                // Real-time assistant response logic can be added in Phase 4
               } else if (event_type === 'on_chain_end' && node === 'OrchAgent') {
                 setLoading(false);
                 setCurrentNode('Completed');
@@ -337,7 +402,7 @@ export default function ChatWorkspace() {
         </div>
 
         <div className="space-y-4">
-          <ToolPanel runningTools={runningTools} />
+          <ToolPanel toolExecutions={toolExecutions} />
 
           <div className="flex flex-col gap-2 p-4 bg-blue-500/5 border border-blue-500/10 rounded-2xl">
             <div className="flex items-center gap-2 mb-2">
