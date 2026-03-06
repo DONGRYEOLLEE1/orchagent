@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Terminal, Loader2, Bot, User, CheckCircle2, Activity } from 'lucide-react';
+import { Send, Terminal, Loader2, Bot, User, CheckCircle2, Activity, Image as ImageIcon, X } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { ChatMessage } from '@/types/agent';
@@ -9,6 +9,21 @@ import { ChatMessage } from '@/types/agent';
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
+
+// --- Helper Functions ---
+const fileToBase64 = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        // Remove data:image/...;base64, prefix
+        resolve(reader.result.split(',')[1]);
+      }
+    };
+    reader.onerror = error => reject(error);
+  });
+};
 
 // --- Components ---
 
@@ -62,7 +77,9 @@ export default function ChatWorkspace() {
   const [currentNode, setCurrentNode] = useState('');
   const [history, setHistory] = useState<string[]>([]);
   const [runningTools, setRunningTools] = useState<string[]>([]);
-  
+  const [selectedImages, setSelectedImages] = useState<File[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -71,15 +88,29 @@ export default function ChatWorkspace() {
     }
   }, [messages, currentNode]);
 
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      setSelectedImages(prev => [...prev, ...Array.from(e.target.files!)]);
+    }
+  };
+
+  const removeImage = (index: number) => {
+    setSelectedImages(prev => prev.filter((_, i) => i !== index));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || loading) return;
+    if ((!input.trim() && selectedImages.length === 0) || loading) return;
 
     const thread_id = `thread_${Date.now()}`;
     const userMessage: ChatMessage = { role: 'user', content: input, id: Date.now().toString() };
-    
+
+    // Convert images to base64
+    const base64Images = await Promise.all(selectedImages.map(fileToBase64));
+
     setMessages(prev => [...prev, userMessage]);
     setInput('');
+    setSelectedImages([]);
     setLoading(true);
     setCurrentNode('');
     setHistory([]);
@@ -89,7 +120,11 @@ export default function ChatWorkspace() {
       const response = await fetch('http://localhost:8000/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: input, thread_id }),
+        body: JSON.stringify({
+          message: input,
+          thread_id,
+          images: base64Images.length > 0 ? base64Images : undefined
+        }),
       });
 
       if (!response.body) return;
@@ -148,10 +183,10 @@ export default function ChatWorkspace() {
           </div>
           <h1 className="text-xl font-bold tracking-tight">OrchAgent</h1>
         </div>
-        
+
         <AgentTimeline history={history} currentNode={currentNode} />
         <ToolPanel runningTools={runningTools} />
-        
+
         <div className="mt-auto p-4 bg-slate-900/30 border border-slate-800 rounded-lg">
           <p className="text-xs text-slate-500 mb-1">Session Info</p>
           <div className="flex justify-between text-sm">
@@ -165,7 +200,7 @@ export default function ChatWorkspace() {
 
       {/* Main Content: Chat Area */}
       <section className="flex-1 flex flex-col relative">
-        <div 
+        <div
           ref={scrollRef}
           className="flex-1 overflow-y-auto p-8 space-y-6"
         >
@@ -180,7 +215,7 @@ export default function ChatWorkspace() {
               </p>
             </div>
           )}
-          
+
           {messages.map((m) => (
             <div key={m.id} className={cn(
               "flex gap-4 max-w-3xl animate-in fade-in slide-in-from-bottom-2 duration-300",
@@ -200,7 +235,7 @@ export default function ChatWorkspace() {
               </div>
             </div>
           ))}
-          
+
           {loading && (
             <div className="flex gap-4 max-w-3xl animate-pulse">
               <div className="w-8 h-8 rounded-full bg-blue-600/50 flex items-center justify-center shrink-0">
@@ -215,24 +250,64 @@ export default function ChatWorkspace() {
 
         {/* Input Bar */}
         <div className="p-8 pt-0">
-          <form 
+          <form
             onSubmit={handleSubmit}
             className="max-w-3xl mx-auto relative group"
           >
-            <input 
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="How can I help you today?"
-              className="w-full bg-slate-900 border border-slate-800 rounded-2xl py-4 pl-6 pr-14 text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-600/50 transition-all placeholder:text-slate-600"
-              disabled={loading}
-            />
-            <button 
-              type="submit"
-              disabled={loading || !input.trim()}
-              className="absolute right-3 top-1/2 -translate-y-1/2 p-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-600 text-white rounded-xl transition-colors"
-            >
-              {loading ? <Loader2 className="animate-spin" size={20} /> : <Send size={20} />}
-            </button>
+            {/* Image Previews */}
+            {selectedImages.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-2 p-2 bg-slate-900/50 border border-slate-800 rounded-xl">
+                {selectedImages.map((file, i) => (
+                  <div key={i} className="relative w-16 h-16 rounded-lg overflow-hidden border border-slate-700">
+                    <img
+                      src={URL.createObjectURL(file)}
+                      alt="preview"
+                      className="w-full h-full object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeImage(i)}
+                      className="absolute top-0.5 right-0.5 p-0.5 bg-slate-950/80 text-white rounded-full hover:bg-red-500 transition-colors"
+                    >
+                      <X size={10} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="relative">
+              <input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="How can I help you today?"
+                className="w-full bg-slate-900 border border-slate-800 rounded-2xl py-4 pl-14 pr-14 text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-600/50 transition-all placeholder:text-slate-600"
+                disabled={loading}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={loading}
+                className="absolute left-3 top-1/2 -translate-y-1/2 p-2 text-slate-400 hover:text-blue-400 disabled:text-slate-700 transition-colors"
+              >
+                <ImageIcon size={20} />
+              </button>
+              <input
+                type="file"
+                multiple
+                accept="image/*"
+                className="hidden"
+                ref={fileInputRef}
+                onChange={handleImageChange}
+              />
+              <button
+                type="submit"
+                disabled={loading || (!input.trim() && selectedImages.length === 0)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-600 text-white rounded-xl transition-colors"
+              >
+                {loading ? <Loader2 className="animate-spin" size={20} /> : <Send size={20} />}
+              </button>
+            </div>
           </form>
           <p className="text-[10px] text-center text-slate-600 mt-4 uppercase tracking-widest font-semibold">
             OrchAgent • Hierarchical Multi-Agent Platform

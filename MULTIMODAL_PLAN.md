@@ -15,10 +15,10 @@
 ## 📅 상세 작업 일지 (Milestones)
 
 ### Phase 1: Data Ingestion (API & 클라이언트 확장)
-- [ ] **[FE]** UI 업데이트: 채팅 입력창에 이미지 첨부(파일 선택 및 Drag & Drop) 버튼/영역 추가
-- [ ] **[FE]** 데이터 처리: 업로드된 이미지를 `Base64` 문자열로 인코딩하여 전송 로직 구현
-- [ ] **[BE]** 스키마 업데이트: `apps/backend/schemas/chat.py`의 `ChatRequest`에 `images: List[str]` 필드(선택적) 추가
-- [ ] **[BE]** 상태 메시지 변환: `api/routes/chat.py`에서 전달받은 `images` 배열을 LangChain 규격의 멀티모달 `HumanMessage` (`[{"type": "text", ...}, {"type": "image_url", ...}]`) 형태로 변환
+- [x] **[FE]** UI 업데이트: 채팅 입력창에 이미지 첨부(파일 선택 및 Drag & Drop) 버튼/영역 추가
+- [x] **[FE]** 데이터 처리: 업로드된 이미지를 `Base64` 문자열로 인코딩하여 전송 로직 구현
+- [x] **[BE]** 스키마 업데이트: `apps/backend/schemas/chat.py`의 `ChatRequest`에 `images: List[str]` 필드(선택적) 추가
+- [x] **[BE]** 상태 메시지 변환: `api/routes/chat.py`에서 전달받은 `images` 배열을 LangChain 규격의 멀티모달 `HumanMessage` (`[{"type": "text", ...}, {"type": "image_url", ...}]`) 형태로 변환
 
 ### Phase 2: Orchestration (라우팅 및 State 호환성 보장)
 - [ ] **[BE]** State 호환성 확인: `agent_core/state.py`의 `BaseAgentState`가 리스트 딕셔너리 형태의 `HumanMessage`를 제대로 처리하는지 검증
@@ -47,7 +47,7 @@
 
 | Task | Assignee | Status |
 | :--- | :--- | :--- |
-| **Phase 1** | - | ⏳ 대기 중 (Pending) |
+| **Phase 1** | Gemini CLI | ✅ 완료 (Completed) |
 | **Phase 2** | - | ⏳ 대기 중 (Pending) |
 | **Phase 3** | - | ⏳ 대기 중 (Pending) |
 | **Phase 4** | - | ⏳ 대기 중 (Pending) |

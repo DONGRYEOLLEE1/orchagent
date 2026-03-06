@@ -1,8 +1,10 @@
 import json
+from typing import Any
 from fastapi import APIRouter, Depends
 from sse_starlette.sse import EventSourceResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from langchain_core.messages import HumanMessage
 
 from schemas.chat import ChatRequest
 from workflow.main_graph import get_orchagent_graph
@@ -14,80 +16,117 @@ from services.file_logger import JsonLogger
 
 router = APIRouter()
 
+
 @router.post("/chat")
 async def chat_stream(request: ChatRequest, db: AsyncSession = Depends(get_db)):
     """Streaming endpoint for chat with persistence and tracing."""
-    
+
     # We will use a dummy user_id for now as auth is not yet implemented
     user_id = "anonymous_user"
-    
+
     # 1. DB Logging
-    await LoggingService.log_message(db, request.thread_id, role="user", content=request.message)
-    
+    await LoggingService.log_message(
+        db, request.thread_id, role="user", content=request.message
+    )
+
     # 2. File Logging (Session start/turn)
-    JsonLogger.log_session(session_id=request.thread_id, user_id=user_id, event_type="turn_start", metadata={"message_length": len(request.message)})
-    
+    JsonLogger.log_session(
+        session_id=request.thread_id,
+        user_id=user_id,
+        event_type="turn_start",
+        metadata={
+            "message_length": len(request.message),
+            "has_images": bool(request.images),
+        },
+    )
+
     async def event_generator():
-        inputs = {"messages": [("user", request.message)]}
+        # Construct multimodal message if images are present
+        if request.images:
+            content: list[Any] = [{"type": "text", "text": request.message}]
+            for img in request.images:
+                content.append(
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{img}"},
+                    }
+                )
+            inputs = {"messages": [HumanMessage(content=content)]}
+        else:
+            inputs = {"messages": [("user", request.message)]}
+
         config = {"configurable": {"thread_id": request.thread_id}}
         final_answer = ""
-        
+
         try:
-            async with AsyncPostgresSaver.from_conn_string(settings.async_database_uri) as checkpointer:
+            async with AsyncPostgresSaver.from_conn_string(
+                settings.async_database_uri
+            ) as checkpointer:
                 # 1. Setup checkpointer once
                 await checkpointer.setup()
-                
+
                 # 2. Compile graph with checkpointer
                 builder = get_orchagent_graph()
                 graph = builder.compile(checkpointer=checkpointer)
-                
+
                 # 3. Stream events
                 async for event in graph.astream_events(inputs, config, version="v2"):
                     kind = event["event"]
                     name = event.get("name", "unknown")
-                    
+
                     # Capture assistant output string if it's from a message stream
                     if kind == "on_chat_model_stream" and name != "unknown":
                         chunk = event.get("data", {}).get("chunk")
-                        if chunk and hasattr(chunk, "content") and isinstance(chunk.content, str):
+                        if (
+                            chunk
+                            and hasattr(chunk, "content")
+                            and isinstance(chunk.content, str)
+                        ):
                             final_answer += chunk.content
-                    
+
                     payload = {
                         "event_type": kind,
                         "node": name,
-                        "data": str(event.get("data", {}))
+                        "data": str(event.get("data", {})),
                     }
-                    
+
                     # 4. Save raw trace using TraceService
                     await TraceService.create_event(
                         db=db,
                         thread_id=request.thread_id,
                         event_type=kind,
                         node_name=name,
-                        payload=payload
+                        payload=payload,
                     )
-                    
-                    yield {
-                        "event": "message",
-                        "data": json.dumps(payload)
-                    }
-                    
+
+                    yield {"event": "message", "data": json.dumps(payload)}
+
                 # Log final AI Response
                 if final_answer:
-                    await LoggingService.log_message(db, request.thread_id, role="assistant", content=final_answer)
-                    
+                    await LoggingService.log_message(
+                        db, request.thread_id, role="assistant", content=final_answer
+                    )
+
                     # File Logging (Session end)
-                    JsonLogger.log_session(session_id=request.thread_id, user_id=user_id, event_type="turn_end", metadata={"response_length": len(final_answer)})
+                    JsonLogger.log_session(
+                        session_id=request.thread_id,
+                        user_id=user_id,
+                        event_type="turn_end",
+                        metadata={"response_length": len(final_answer)},
+                    )
                     # Dummy token usage tracking (In production, parse this from LangChain's usage_metadata)
-                    JsonLogger.log_usage(user_id=user_id, model="gpt-5.4-2026-03-05", prompt_tokens=len(request.message)//4, completion_tokens=len(final_answer)//4)
-                    
+                    JsonLogger.log_usage(
+                        user_id=user_id,
+                        model="gpt-5.4-2026-03-05",
+                        prompt_tokens=len(request.message) // 4,
+                        completion_tokens=len(final_answer) // 4,
+                    )
+
         except Exception as e:
-            yield {
-                "event": "error",
-                "data": json.dumps({"error": str(e)})
-            }
-            
+            yield {"event": "error", "data": json.dumps({"error": str(e)})}
+
     return EventSourceResponse(event_generator())
+
 
 @router.get("/thread/{thread_id}/trace")
 async def get_thread_trace(thread_id: str, db: AsyncSession = Depends(get_db)):
