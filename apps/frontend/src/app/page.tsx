@@ -76,7 +76,7 @@ export default function ChatWorkspace() {
     if (!input.trim() || loading) return;
 
     const thread_id = `thread_${Date.now()}`;
-    const userMessage = { role: 'user', content: input, id: Date.now().toString() };
+    const userMessage: ChatMessage = { role: 'user', content: input, id: Date.now().toString() };
     
     setMessages(prev => [...prev, userMessage]);
     setInput('');
