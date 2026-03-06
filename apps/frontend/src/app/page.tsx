@@ -5,10 +5,57 @@ import { Send, Terminal, Loader2, Bot, User, CheckCircle2, Activity, Image as Im
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { ChatMessage, ToolExecution } from '@/types/agent';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
+
+// --- Markdown Renderer ---
+const MarkdownContent = ({ content }: { content: string }) => {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        code({ node, inline, className, children, ...props }: any) {
+          const match = /language-(\w+)/.exec(className || '');
+          return !inline && match ? (
+            <SyntaxHighlighter
+              style={atomDark}
+              language={match[1]}
+              PreTag="div"
+              className="rounded-lg !my-4 !bg-black/40 border border-white/5"
+              {...props}
+            >
+              {String(children).replace(/\n$/, '')}
+            </SyntaxHighlighter>
+          ) : (
+            <code className={cn("bg-black/40 px-1.5 py-0.5 rounded text-blue-300 font-mono text-[0.9em]", className)} {...props}>
+              {children}
+            </code>
+          );
+        },
+        table: ({ children }) => (
+          <div className="overflow-x-auto my-4 rounded-lg border border-slate-800">
+            <table className="w-full text-left text-xs border-collapse bg-slate-900/50">
+              {children}
+            </table>
+          </div>
+        ),
+        th: ({ children }) => <th className="p-2 border-b border-slate-800 bg-slate-800/50 font-bold">{children}</th>,
+        td: ({ children }) => <td className="p-2 border-b border-slate-800">{children}</td>,
+        p: ({ children }) => <p className="mb-4 last:mb-0">{children}</p>,
+        ul: ({ children }) => <ul className="list-disc pl-6 mb-4 space-y-1">{children}</ul>,
+        ol: ({ children }) => <ol className="list-decimal pl-6 mb-4 space-y-1">{children}</ol>,
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  );
+};
 
 // --- Helper Functions ---
 const fileToBase64 = (file: File): Promise<string> => {
@@ -155,12 +202,19 @@ export default function ChatWorkspace() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const actionSpaceRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, currentNode, toolExecutions, reasoning]);
+  }, [messages, currentNode, reasoning]);
+
+  useEffect(() => {
+    if (actionSpaceRef.current) {
+      actionSpaceRef.current.scrollTop = actionSpaceRef.current.scrollHeight;
+    }
+  }, [toolExecutions, reasoning]);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -344,13 +398,12 @@ export default function ChatWorkspace() {
               </div>
               <div className={cn(
                 "p-4 rounded-2xl leading-relaxed text-sm shadow-sm",
-                m.role === 'user'
-                  ? "bg-blue-600/10 border border-blue-500/20 text-slate-100"
+                m.role === 'user' 
+                  ? "bg-blue-600/10 border border-blue-500/20 text-slate-100" 
                   : "bg-slate-900/80 border border-slate-800 text-slate-200 backdrop-blur-md"
               )}>
-                {m.content}
-              </div>
-            </div>
+                {m.role === 'user' ? m.content : <MarkdownContent content={m.content} />}
+              </div>            </div>
           ))}
 
           {loading && (
@@ -430,7 +483,10 @@ export default function ChatWorkspace() {
       </section>
 
       {/* Right Sidebar: Agent Action Space (Action Space) */}
-      <aside className="w-96 border-l border-slate-800/50 bg-slate-950/30 backdrop-blur-2xl flex flex-col p-6 overflow-y-auto z-10">
+      <aside 
+        ref={actionSpaceRef}
+        className="w-96 border-l border-slate-800/50 bg-slate-950/30 backdrop-blur-2xl flex flex-col p-6 overflow-y-auto z-10 scrollbar-none"
+      >
         <div className="flex items-center gap-2 mb-6">
           <Terminal size={18} className="text-blue-400" />
           <h2 className="text-sm font-bold uppercase tracking-widest text-slate-300">Action Space</h2>

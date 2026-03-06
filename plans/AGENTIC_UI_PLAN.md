@@ -67,7 +67,7 @@
 | **Phase 1: Layout** | Gemini CLI | ✅ 완료 |
 | **Phase 2: ToolCard** | Gemini CLI | ✅ 완료 |
 | **Phase 3: Timeline** | Gemini CLI | ✅ 완료 |
-| **Phase 4: Streaming** | - | ⏳ 대기 중 |
+| **Phase 4: Streaming** | Gemini CLI | ✅ 완료 |
 | **Phase 5: Validation** | - | ⏳ 대기 중 |
 
 *Last Updated: 2026-03-06*
