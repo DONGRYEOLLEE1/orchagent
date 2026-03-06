@@ -21,6 +21,8 @@ services:
       context: ../../
       dockerfile: infra/docker/backend.Dockerfile
     container_name: orchagent-backend
+    env_file:
+      - ../../apps/backend/.env
     ports:
       - "8000:8000"
     environment:
@@ -28,8 +30,8 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: orchagent
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      TAVILY_API_KEY: ${TAVILY_API_KEY}
+      PYTHONUNBUFFERED: "1"
+    command: ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "debug"]
     depends_on:
       db:
         condition: service_healthy
