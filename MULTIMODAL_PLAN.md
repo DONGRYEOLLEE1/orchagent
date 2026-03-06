@@ -34,6 +34,13 @@
 - [ ] **[BE]** 스토리지 관리: Base64로 들어온 이미지를 디스크(예: `apps/backend/data/images/`)에 임시 파일로 저장하고 URL 매핑 로직 구현
 - [ ] **[BE]** 로깅 최적화: `models/logging.py` 및 `JsonLogger`가 메가바이트 단위의 Base64 텍스트를 그대로 저장하지 않고, 파싱하여 "이미지 포함 (URL: ...)" 형태의 메타데이터만 남기도록 방어 코드 추가
 
+### Phase 5: Testing (멀티모달 검증)
+- [ ] **[BE/Test]** `test_schemas.py` 업데이트: `ChatRequest` 스키마가 `images` 리스트를 포함한 요청을 정상적으로 검증하는지 테스트
+- [ ] **[BE/Test]** `test_supervisor.py` 업데이트: 이미지 데이터가 포함된 `HumanMessage`가 들어왔을 때 라우터가 `vision_team`으로 정확하게 `Command`를 분기하는지 라우팅 테스트
+- [ ] **[BE/Test]** `test_workflow_graph.py` 업데이트: 새롭게 추가된 `vision_team` 서브그래프를 포함하여 전체 `orchagent_graph`가 순환 참조 없이 안전하게 컴파일되는지 검증
+- [ ] **[BE/Test]** `test_agent_tools.py` 업데이트: Vision 분석 보조 도구(예: 로컬 이미지 메타데이터 추출)가 정상적으로 동작하는지 임시 파일(Dummy image)을 활용하여 테스트
+- [ ] **[BE/Test]** `test_trace_service.py` 업데이트: 매우 긴 Base64 문자열이 로깅 서비스에 전달될 때, DB가 오버플로우되거나 뻗지 않고 파싱(또는 링크 매핑)을 통해 안전하게 저장되는지 검증
+
 ---
 
 ## ✅ 현재 진행 상황 (Status)
@@ -44,5 +51,6 @@
 | **Phase 2** | - | ⏳ 대기 중 (Pending) |
 | **Phase 3** | - | ⏳ 대기 중 (Pending) |
 | **Phase 4** | - | ⏳ 대기 중 (Pending) |
+| **Phase 5** | - | ⏳ 대기 중 (Pending) |
 
 *Last Updated: 2026-03-06*
