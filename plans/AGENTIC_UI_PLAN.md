@@ -34,6 +34,12 @@
 - [ ] **[FE]** Markdown 렌더링 고도화: AI 답변이 스트리밍될 때 코드 하이라이팅 및 표(Table) 서식의 깨짐 방지.
 - [ ] **[FE]** 오토 스크롤 및 포커스: 새로운 도구가 호출될 때 해당 카드로 부드럽게 스크롤 이동.
 
+### Phase 5: Testing & Validation (사고 과정 검증)
+- [ ] **[BE/Test]** Reasoning Summary 검증 테스트:
+    - OpenAI API 호출 시 `reasoning_summary_text`가 응답에 포함되는지 확인하는 통합 테스트 코드 추가.
+    - **테스트용 고정 질의(Preset Query)**: "9.11과 9.9 중 어느 숫자가 더 큰지 논리적으로 설명해줘"와 같은 추론 유도형 질문을 미리 셋팅하여 테스트 효율화.
+- [ ] **[FE/Test]** UI 스트리밍 유닛 테스트: 가짜 SSE 데이터를 주입하여 `AgentThought` 박스가 실시간으로 텍스트를 누적하는지 검증.
+
 ---
 
 ## 🛠️ 기술 스택 및 스타일 가이드 (CSS)
@@ -62,5 +68,6 @@
 | **Phase 2: ToolCard** | - | ⏳ 대기 중 |
 | **Phase 3: Timeline** | - | ⏳ 대기 중 |
 | **Phase 4: Streaming** | - | ⏳ 대기 중 |
+| **Phase 5: Validation** | - | ⏳ 대기 중 |
 
 *Last Updated: 2026-03-06*
