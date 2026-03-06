@@ -1,4 +1,5 @@
 import json
+import sys
 from typing import Any
 from fastapi import APIRouter, Depends
 from sse_starlette.sse import EventSourceResponse
@@ -17,10 +18,10 @@ from services.storage_service import StorageService
 
 router = APIRouter()
 
-
 @router.post("/chat")
 async def chat_stream(request: ChatRequest, db: AsyncSession = Depends(get_db)):
     """Streaming endpoint for chat with persistence and tracing."""
+    print(f"[Chat] Endpoint called! thread_id={request.thread_id}", file=sys.stderr, flush=True)
 
     # We will use a dummy user_id for now as auth is not yet implemented
     user_id = "anonymous_user"
@@ -67,10 +68,10 @@ async def chat_stream(request: ChatRequest, db: AsyncSession = Depends(get_db)):
 
         try:
             async with AsyncPostgresSaver.from_conn_string(
-                settings.async_database_uri
+                settings.sync_database_uri
             ) as checkpointer:
-                # 1. Setup checkpointer once
-                await checkpointer.setup()
+                # 1. Setup checkpointer once (Handled by lifespan in main.py now)
+                # await checkpointer.setup()
 
                 # 2. Compile graph with checkpointer
                 builder = get_orchagent_graph()
@@ -86,7 +87,6 @@ async def chat_stream(request: ChatRequest, db: AsyncSession = Depends(get_db)):
                         chunk = event.get("data", {}).get("chunk")
 
                         # 1. Capture reasoning summary if available
-                        # Checking common paths for reasoning text in LangChain chunks
                         reasoning_chunk = getattr(chunk, "additional_kwargs", {}).get(
                             "reasoning_summary_text"
                         ) or getattr(chunk, "additional_kwargs", {}).get(
@@ -111,6 +111,33 @@ async def chat_stream(request: ChatRequest, db: AsyncSession = Depends(get_db)):
                             and isinstance(chunk.content, str)
                         ):
                             final_answer += chunk.content
+
+                    # Capture direct response from Supervisor (Non-streaming)
+                    if kind == "on_chain_end" and name == "head_supervisor":
+                        from langgraph.types import Command
+                        import asyncio
+                        output = event.get("data", {}).get("output")
+                        if isinstance(output, Command) and "messages" in output.update:
+                            msg = output.update["messages"][0]
+                            if hasattr(msg, "content") and msg.content:
+                                # Split the content to simulate streaming
+                                content_str = str(msg.content)
+                                # Smaller chunk size and random-like delay for natural feel
+                                chunk_size = 2 # 2 characters at a time
+                                for i in range(0, len(content_str), chunk_size):
+                                    chunk = content_str[i:i+chunk_size]
+                                    yield {
+                                        "event": "message",
+                                        "data": json.dumps(
+                                            {
+                                                "event_type": "text",
+                                                "node": name,
+                                                "content": chunk,
+                                            }
+                                        ),
+                                    }
+                                    await asyncio.sleep(0.04) # Slower for more natural feel (approx 25-50 tokens/sec)
+                                final_answer += content_str
 
                     payload = {
                         "event_type": kind,
@@ -142,7 +169,7 @@ async def chat_stream(request: ChatRequest, db: AsyncSession = Depends(get_db)):
                         event_type="turn_end",
                         metadata={"response_length": len(final_answer)},
                     )
-                    # Dummy token usage tracking (In production, parse this from LangChain's usage_metadata)
+                    # Dummy token usage tracking
                     JsonLogger.log_usage(
                         user_id=user_id,
                         model="gpt-5.4-2026-03-05",
@@ -154,7 +181,6 @@ async def chat_stream(request: ChatRequest, db: AsyncSession = Depends(get_db)):
             yield {"event": "error", "data": json.dumps({"error": str(e)})}
 
     return EventSourceResponse(event_generator())
-
 
 @router.get("/thread/{thread_id}/trace")
 async def get_thread_trace(thread_id: str, db: AsyncSession = Depends(get_db)):

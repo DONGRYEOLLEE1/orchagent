@@ -265,7 +265,11 @@ export default function ChatWorkspace() {
 
       while (true) {
         const { value, done } = await reader.read();
-        if (done) break;
+        if (done) {
+          setLoading(false);
+          setCurrentNode('');
+          break;
+        }
 
         const chunk = decoder.decode(value);
         const lines = chunk.split('\n');
@@ -298,6 +302,18 @@ export default function ChatWorkspace() {
                 ));
               } else if (event_type === 'reasoning') {
                 setReasoning(prev => prev + (content || ''));
+              } else if (event_type === 'text') {
+                const textChunk = content || '';
+                if (textChunk) {
+                  setMessages(prev => {
+                    const lastMsg = prev[prev.length - 1];
+                    if (lastMsg && lastMsg.role === 'assistant' && lastMsg.id === assistantMsgId) {
+                      return [...prev.slice(0, -1), { ...lastMsg, content: lastMsg.content + textChunk }];
+                    } else {
+                      return [...prev, { role: 'assistant', content: textChunk, id: assistantMsgId }];
+                    }
+                  });
+                }
               } else if (event_type === 'on_chat_model_stream') {
                 // Parse chunk data string to object to get content
                 const dataObj = typeof data === 'string' ? JSON.parse(data.replace(/'/g, '"')) : data;
