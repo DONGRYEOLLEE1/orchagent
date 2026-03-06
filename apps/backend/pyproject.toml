@@ -1,0 +1,27 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "agent-core",
+    "agent-tools",
+    "alembic>=1.18.4",
+    "asyncpg>=0.31.0",
+    "fastapi>=0.135.1",
+    "langgraph-checkpoint-postgres>=3.0.4",
+    "prompt-kit",
+    "psycopg[binary]>=3.3.3",
+    "pydantic>=2.12.5",
+    "pydantic-settings>=2.13.1",
+    "python-dotenv>=1.2.2",
+    "sqlalchemy>=2.0.48",
+    "sse-starlette>=3.3.2",
+    "uvicorn>=0.41.0",
+]
+
+[tool.uv.sources]
+agent-core = { workspace = true }
+agent-tools = { workspace = true }
+prompt-kit = { workspace = true }
