@@ -13,6 +13,7 @@ from core.config import settings
 from services.trace_service import TraceService
 from services.logging_service import LoggingService
 from services.file_logger import JsonLogger
+from services.storage_service import StorageService
 
 router = APIRouter()
 
@@ -23,6 +24,11 @@ async def chat_stream(request: ChatRequest, db: AsyncSession = Depends(get_db)):
 
     # We will use a dummy user_id for now as auth is not yet implemented
     user_id = "anonymous_user"
+
+    # Save images to disk and get paths for logging
+    image_paths = []
+    if request.images:
+        image_paths = [StorageService.save_base64_image(img) for img in request.images]
 
     # 1. DB Logging
     await LoggingService.log_message(
@@ -37,6 +43,7 @@ async def chat_stream(request: ChatRequest, db: AsyncSession = Depends(get_db)):
         metadata={
             "message_length": len(request.message),
             "has_images": bool(request.images),
+            "image_paths": image_paths,
         },
     )
 

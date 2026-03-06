@@ -31,8 +31,8 @@
 - [x] **[BE]** 메인 그래프 통합: `main_graph.py`에 `vision_team` 서브그래프를 연결하고 라우팅 대상에 포함
 
 ### Phase 4: Storage & Logging (성능 최적화 및 로깅)
-- [ ] **[BE]** 스토리지 관리: Base64로 들어온 이미지를 디스크(예: `apps/backend/data/images/`)에 임시 파일로 저장하고 URL 매핑 로직 구현
-- [ ] **[BE]** 로깅 최적화: `models/logging.py` 및 `JsonLogger`가 메가바이트 단위의 Base64 텍스트를 그대로 저장하지 않고, 파싱하여 "이미지 포함 (URL: ...)" 형태의 메타데이터만 남기도록 방어 코드 추가
+- [x] **[BE]** 스토리지 관리: Base64로 들어온 이미지를 디스크(예: `apps/backend/data/images/`)에 임시 파일로 저장하고 URL 매핑 로직 구현
+- [x] **[BE]** 로깅 최적화: `models/logging.py` 및 `JsonLogger`가 메가바이트 단위의 Base64 텍스트를 그대로 저장하지 않고, 파싱하여 "이미지 포함 (URL: ...)" 형태의 메타데이터만 남기도록 방어 코드 추가
 
 ### Phase 5: Testing (멀티모달 검증)
 - [ ] **[BE/Test]** `test_schemas.py` 업데이트: `ChatRequest` 스키마가 `images` 리스트를 포함한 요청을 정상적으로 검증하는지 테스트
@@ -50,7 +50,7 @@
 | **Phase 1** | Gemini CLI | ✅ 완료 (Completed) |
 | **Phase 2** | Gemini CLI | ✅ 완료 (Completed) |
 | **Phase 3** | Gemini CLI | ✅ 완료 (Completed) |
-| **Phase 4** | - | ⏳ 대기 중 (Pending) |
+| **Phase 4** | Gemini CLI | ✅ 완료 (Completed) |
 | **Phase 5** | - | ⏳ 대기 중 (Pending) |
 
 *Last Updated: 2026-03-06*
