@@ -81,9 +81,30 @@ async def chat_stream(request: ChatRequest, db: AsyncSession = Depends(get_db)):
                     kind = event["event"]
                     name = event.get("name", "unknown")
 
-                    # Capture assistant output string if it's from a message stream
+                    # Capture assistant output and reasoning summaries
                     if kind == "on_chat_model_stream" and name != "unknown":
                         chunk = event.get("data", {}).get("chunk")
+
+                        # 1. Capture reasoning summary if available
+                        # Checking common paths for reasoning text in LangChain chunks
+                        reasoning_chunk = getattr(chunk, "additional_kwargs", {}).get(
+                            "reasoning_summary_text"
+                        ) or getattr(chunk, "additional_kwargs", {}).get(
+                            "reasoning_content"
+                        )
+                        if reasoning_chunk:
+                            yield {
+                                "event": "message",
+                                "data": json.dumps(
+                                    {
+                                        "event_type": "reasoning",
+                                        "node": name,
+                                        "content": reasoning_chunk,
+                                    }
+                                ),
+                            }
+
+                        # 2. Capture final answer content
                         if (
                             chunk
                             and hasattr(chunk, "content")

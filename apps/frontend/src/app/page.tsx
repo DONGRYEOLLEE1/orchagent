@@ -97,6 +97,25 @@ const AgentTimeline = ({ history, currentNode }: { history: string[], currentNod
   </div>
 );
 
+const AgentThought = ({ content, isThinking }: { content: string, isThinking: boolean }) => {
+  if (!content && !isThinking) return null;
+
+  return (
+    <div className="backdrop-blur-xl bg-blue-500/5 border border-blue-500/10 rounded-2xl p-4 mb-4 animate-in fade-in slide-in-from-top-2">
+      <div className="flex items-center gap-2 mb-2">
+        <Activity size={14} className="text-blue-400" />
+        <span className="text-[10px] font-bold uppercase tracking-widest text-blue-400">
+          {isThinking ? "Internal Reasoning" : "Thought Summary"}
+        </span>
+      </div>
+      <div className="text-xs text-slate-300 leading-relaxed font-mono whitespace-pre-wrap">
+        {content}
+        {isThinking && <span className="inline-block w-1.5 h-3 ml-1 bg-blue-400 animate-pulse" />}
+      </div>
+    </div>
+  );
+};
+
 const ToolPanel = ({ toolExecutions }: { toolExecutions: ToolExecution[] }) => (
   <div className="flex flex-col gap-4">
     <div className="flex items-center justify-between">
@@ -131,6 +150,7 @@ export default function ChatWorkspace() {
   const [currentNode, setCurrentNode] = useState('');
   const [history, setHistory] = useState<string[]>([]);
   const [toolExecutions, setToolExecutions] = useState<ToolExecution[]>([]);
+  const [reasoning, setReasoning] = useState('');
   const [selectedImages, setSelectedImages] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -140,7 +160,7 @@ export default function ChatWorkspace() {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, currentNode, toolExecutions]);
+  }, [messages, currentNode, toolExecutions, reasoning]);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -169,6 +189,7 @@ export default function ChatWorkspace() {
     setCurrentNode('');
     setHistory([]);
     setToolExecutions([]);
+    setReasoning('');
 
     try {
       const response = await fetch('http://localhost:8000/api/chat', {
@@ -185,6 +206,7 @@ export default function ChatWorkspace() {
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
+      const assistantMsgId = Date.now().toString() + "_ai";
 
       while (true) {
         const { value, done } = await reader.read();
@@ -197,9 +219,8 @@ export default function ChatWorkspace() {
           if (line.startsWith('data: ')) {
             try {
               const payload = JSON.parse(line.slice(6));
-              const { event_type, node, data } = payload;
+              const { event_type, node, data, content } = payload;
 
-              // Update logic based on event types
               if (event_type === 'on_chain_start' && node === 'OrchAgent') {
                 setCurrentNode('Head Supervisor');
               } else if (event_type === 'on_node_start') {
@@ -220,8 +241,23 @@ export default function ChatWorkspace() {
                     ? { ...t, status: 'success', output: data, endTime: Date.now() }
                     : t
                 ));
+              } else if (event_type === 'reasoning') {
+                setReasoning(prev => prev + (content || ''));
               } else if (event_type === 'on_chat_model_stream') {
-                // Real-time assistant response logic can be added in Phase 4
+                // Parse chunk data string to object to get content
+                const dataObj = typeof data === 'string' ? JSON.parse(data.replace(/'/g, '"')) : data;
+                const textChunk = dataObj?.chunk?.content || '';
+
+                if (textChunk) {
+                  setMessages(prev => {
+                    const lastMsg = prev[prev.length - 1];
+                    if (lastMsg && lastMsg.role === 'assistant' && lastMsg.id === assistantMsgId) {
+                      return [...prev.slice(0, -1), { ...lastMsg, content: lastMsg.content + textChunk }];
+                    } else {
+                      return [...prev, { role: 'assistant', content: textChunk, id: assistantMsgId }];
+                    }
+                  });
+                }
               } else if (event_type === 'on_chain_end' && node === 'OrchAgent') {
                 setLoading(false);
                 setCurrentNode('Completed');
@@ -237,7 +273,6 @@ export default function ChatWorkspace() {
       setLoading(false);
     }
   };
-
   return (
     <main className="flex h-screen bg-slate-950 text-slate-100 overflow-hidden font-sans relative">
       {/* Decorative Background Elements */}
@@ -401,7 +436,9 @@ export default function ChatWorkspace() {
           <h2 className="text-sm font-bold uppercase tracking-widest text-slate-300">Action Space</h2>
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-6">
+          <AgentThought content={reasoning} isThinking={loading && !history.includes('Completed')} />
+
           <ToolPanel toolExecutions={toolExecutions} />
 
           <div className="flex flex-col gap-2 p-4 bg-blue-500/5 border border-blue-500/10 rounded-2xl">
@@ -414,7 +451,6 @@ export default function ChatWorkspace() {
             </p>
           </div>
         </div>
-      </aside>
-    </main>
+      </aside>    </main>
   );
 }

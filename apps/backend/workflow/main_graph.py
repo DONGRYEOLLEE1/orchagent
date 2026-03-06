@@ -12,7 +12,10 @@ from workflow.teams.vision import get_vision_graph
 
 
 def get_orchagent_graph(llm_model: str = "gpt-5.4-2026-03-05"):
-    llm = ChatOpenAI(model_name=llm_model)
+    # Enable reasoning summary for compatible models (o1, o3, o4-mini, gpt-5.4 etc.)
+    llm = ChatOpenAI(
+        model_name=llm_model, model_kwargs={"reasoning": {"summary": "auto"}}
+    )
 
     # 1. Subgraphs
     research_graph = get_research_graph(llm)
