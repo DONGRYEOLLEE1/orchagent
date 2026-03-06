@@ -1,7 +1,7 @@
 export interface TraceEvent {
     event_type: string;
     node: string;
-    data: any;
+    data: unknown;
     timestamp: string;
 }
 

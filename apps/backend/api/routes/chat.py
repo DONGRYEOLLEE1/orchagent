@@ -9,6 +9,7 @@ from workflow.main_graph import get_orchagent_graph
 from core.database import get_db
 from core.config import settings
 from services.trace_service import TraceService
+from services.logging_service import LoggingService
 
 router = APIRouter()
 
@@ -16,9 +17,13 @@ router = APIRouter()
 async def chat_stream(request: ChatRequest, db: AsyncSession = Depends(get_db)):
     """Streaming endpoint for chat with persistence and tracing."""
     
+    # Log User Message
+    await LoggingService.log_message(db, request.thread_id, role="user", content=request.message)
+    
     async def event_generator():
         inputs = {"messages": [("user", request.message)]}
         config = {"configurable": {"thread_id": request.thread_id}}
+        final_answer = ""
         
         try:
             async with AsyncPostgresSaver.from_conn_string(settings.async_database_uri) as checkpointer:
@@ -34,13 +39,19 @@ async def chat_stream(request: ChatRequest, db: AsyncSession = Depends(get_db)):
                     kind = event["event"]
                     name = event.get("name", "unknown")
                     
+                    # Capture assistant output string if it's from a message stream
+                    if kind == "on_chat_model_stream" and name != "unknown":
+                        chunk = event.get("data", {}).get("chunk")
+                        if chunk and hasattr(chunk, "content") and isinstance(chunk.content, str):
+                            final_answer += chunk.content
+                    
                     payload = {
                         "event_type": kind,
                         "node": name,
                         "data": str(event.get("data", {}))
                     }
                     
-                    # 4. Save trace using TraceService
+                    # 4. Save raw trace using TraceService
                     await TraceService.create_event(
                         db=db,
                         thread_id=request.thread_id,
@@ -53,6 +64,10 @@ async def chat_stream(request: ChatRequest, db: AsyncSession = Depends(get_db)):
                         "event": "message",
                         "data": json.dumps(payload)
                     }
+                    
+                # Log final AI Response
+                if final_answer:
+                    await LoggingService.log_message(db, request.thread_id, role="assistant", content=final_answer)
                     
         except Exception as e:
             yield {

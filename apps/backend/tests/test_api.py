@@ -37,6 +37,12 @@ def test_chat_stream_success(monkeypatch):
     async def mock_create_event(*args, **kwargs):
         pass
     monkeypatch.setattr(TraceService, "create_event", mock_create_event)
+    
+    # Mock LoggingService to prevent DB read/write
+    async def mock_log_message(*args, **kwargs):
+        pass
+    from services.logging_service import LoggingService
+    monkeypatch.setattr(LoggingService, "log_message", mock_log_message)
 
     # 4. Execute streaming request
     with client.stream("POST", "/api/chat", json={"message": "hello", "thread_id": "test_123"}) as response:

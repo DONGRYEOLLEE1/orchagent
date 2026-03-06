@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Terminal, Loader2, Bot, User, CheckCircle2, ChevronRight, Activity } from 'lucide-react';
+import { Send, Terminal, Loader2, Bot, User, CheckCircle2, Activity } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { ChatMessage } from '@/types/agent';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -56,7 +57,7 @@ const ToolPanel = ({ runningTools }: { runningTools: string[] }) => (
 
 export default function ChatWorkspace() {
   const [input, setInput] = useState('');
-  const [messages, setMessages] = useState<any[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [currentNode, setCurrentNode] = useState('');
   const [history, setHistory] = useState<string[]>([]);
@@ -107,7 +108,7 @@ export default function ChatWorkspace() {
           if (line.startsWith('data: ')) {
             try {
               const payload = JSON.parse(line.slice(6));
-              const { event_type, node, data } = payload;
+              const { event_type, node } = payload;
 
               // Update logic based on event types
               if (event_type === 'on_chain_start' && node === 'OrchAgent') {
@@ -175,7 +176,7 @@ export default function ChatWorkspace() {
               </div>
               <h2 className="text-2xl font-bold mb-2">Welcome to OrchAgent</h2>
               <p className="text-slate-400">
-                Ask me to research complex topics, write reports, or generate code. I'll coordinate a team of agents to get it done.
+                Ask me to research complex topics, write reports, or generate code. I&apos;ll coordinate a team of agents to get it done.
               </p>
             </div>
           )}

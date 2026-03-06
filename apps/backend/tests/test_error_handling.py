@@ -24,6 +24,12 @@ def test_chat_stream_error_fallback(monkeypatch):
             
     monkeypatch.setattr("api.routes.chat.get_orchagent_graph", lambda: type("B", (), {"compile": lambda self, checkpointer: CrashGraph()})())
     
+    # Mock LoggingService to prevent real DB connection
+    async def mock_log_message(*args, **kwargs):
+        pass
+    from services.logging_service import LoggingService
+    monkeypatch.setattr(LoggingService, "log_message", mock_log_message)
+
     # 3. Execute request and expect error event payload
     with client.stream("POST", "/api/chat", json={"message": "fail me", "thread_id": "999"}) as response:
         events = list(response.iter_lines())
