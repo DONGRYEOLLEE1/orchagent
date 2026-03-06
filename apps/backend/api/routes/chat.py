@@ -79,7 +79,7 @@ async def chat_stream(request: ChatRequest, db: AsyncSession = Depends(get_db)):
                     # File Logging (Session end)
                     JsonLogger.log_session(session_id=request.thread_id, user_id=user_id, event_type="turn_end", metadata={"response_length": len(final_answer)})
                     # Dummy token usage tracking (In production, parse this from LangChain's usage_metadata)
-                    JsonLogger.log_usage(user_id=user_id, model="gpt-4o-mini", prompt_tokens=len(request.message)//4, completion_tokens=len(final_answer)//4)
+                    JsonLogger.log_usage(user_id=user_id, model="gpt-5.4-2026-03-05", prompt_tokens=len(request.message)//4, completion_tokens=len(final_answer)//4)
                     
         except Exception as e:
             yield {

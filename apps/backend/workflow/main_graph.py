@@ -9,7 +9,7 @@ from agent_core.supervisor import make_supervisor_node
 from workflow.teams.research import get_research_graph
 from workflow.teams.writing import get_writing_graph
 
-def get_orchagent_graph(llm_model: str = "gpt-4o-mini"):
+def get_orchagent_graph(llm_model: str = "gpt-5.4-2026-03-05"):
     llm = ChatOpenAI(model=llm_model)
     
     # 1. Subgraphs

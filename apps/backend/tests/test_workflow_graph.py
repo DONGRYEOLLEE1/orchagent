@@ -8,7 +8,7 @@ def test_graph_compilation_success():
     
     Graph compilation parses the schema without making actual LLM API calls.
     """
-    builder = get_orchagent_graph(llm_model="gpt-4o-mini")
+    builder = get_orchagent_graph(llm_model="gpt-5.4-2026-03-05")
     graph = builder.compile()
     
     # Verify core nodes exist
