@@ -22,67 +22,26 @@ def get_orchagent_graph(llm_model: str = "gpt-5.4-2026-03-05"):
     writing_graph = get_writing_graph(llm)
     vision_graph = get_vision_graph(llm)
 
-    # 2. Team Wrapper Nodes
-    def call_research_team(
-        state: BaseAgentState,
-    ) -> Command[Literal["head_supervisor"]]:
-        # Subgraph invocation
-        result = research_graph.invoke({"messages": state["messages"]})
-        return Command(
-            update={
-                "messages": [
-                    HumanMessage(
-                        content=result["messages"][-1].content, name="research_team"
-                    )
-                ]
-            },
-            goto="head_supervisor",
-        )
-
-    def call_paper_writing_team(
-        state: BaseAgentState,
-    ) -> Command[Literal["head_supervisor"]]:
-        # Subgraph invocation
-        result = writing_graph.invoke({"messages": state["messages"]})
-        return Command(
-            update={
-                "messages": [
-                    HumanMessage(
-                        content=result["messages"][-1].content, name="writing_team"
-                    )
-                ]
-            },
-            goto="head_supervisor",
-        )
-
-    def call_vision_team(state: BaseAgentState) -> Command[Literal["head_supervisor"]]:
-        # Subgraph invocation
-        result = vision_graph.invoke({"messages": state["messages"]})
-        return Command(
-            update={
-                "messages": [
-                    HumanMessage(
-                        content=result["messages"][-1].content, name="vision_team"
-                    )
-                ]
-            },
-            goto="head_supervisor",
-        )
-
-    # 3. Head Supervisor
+    # 2. Head Supervisor
     head_supervisor_node = make_supervisor_node(
         llm, ["research_team", "writing_team", "vision_team"]
     )
 
-    # 4. Build Super Graph
+    # 3. Build Super Graph
     builder = StateGraph(BaseAgentState)
     builder.add_node("head_supervisor", head_supervisor_node)
-    builder.add_node("research_team", call_research_team)
-    builder.add_node("writing_team", call_paper_writing_team)
-    builder.add_node("vision_team", call_vision_team)
+    
+    # Add native subgraphs directly as nodes
+    builder.add_node("research_team", research_graph)
+    builder.add_node("writing_team", writing_graph)
+    builder.add_node("vision_team", vision_graph)
 
+    # 4. Set Edges
     builder.add_edge(START, "head_supervisor")
-
-    return builder
+    
+    # Route back to head supervisor after subgraphs complete (Native subgraph routing)
+    builder.add_edge("research_team", "head_supervisor")
+    builder.add_edge("writing_team", "head_supervisor")
+    builder.add_edge("vision_team", "head_supervisor")
 
     return builder

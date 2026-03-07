@@ -9,11 +9,11 @@
 
 ## 3. 구현 단계 (Implementation Steps)
 
-*   **[ ] 단계 1: `main_graph.py` 래퍼 함수 제거 및 직접 연결**
+*   **[x] 단계 1: `main_graph.py` 래퍼 함수 제거 및 직접 연결**
     *   기존의 `call_research_team`, `call_paper_writing_team` 등의 래퍼 함수를 제거합니다.
     *   컴파일된 서브그래프(`research_graph` 등)를 `main_graph`의 노드로 직접 추가합니다. (예: `builder.add_node("research_team", research_graph)`)
 
-*   **[ ] 단계 2: 서브그래프 종료 후 라우팅(Edge) 설정**
+*   **[x] 단계 2: 서브그래프 종료 후 라우팅(Edge) 설정**
     *   네이티브 서브그래프로 추가될 경우, 서브그래프의 실행이 끝나면(`END` 도달 시) 상위 그래프의 다음 노드로 이동해야 합니다.
     *   `main_graph`에서 서브그래프 노드 실행 완료 후 다시 `head_supervisor`로 돌아가도록 명시적인 엣지(Edge)를 설정합니다. (예: `builder.add_edge("research_team", "head_supervisor")`)
 
