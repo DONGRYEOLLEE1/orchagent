@@ -20,7 +20,12 @@ class FakeRouterLLM:
 def test_supervisor_routes_to_worker():
     """Test if supervisor returns a Command object routing to the requested worker."""
     fake_llm = FakeRouterLLM("search_agent")
-    supervisor_func = make_supervisor_node(fake_llm, ["search_agent", "web_scraper"])
+    supervisor_func = make_supervisor_node(
+        fake_llm,
+        ["search_agent", "web_scraper"],
+        layer="team",
+        team_name="ResearchTeam",
+    )
 
     state = BaseAgentState(
         messages=[HumanMessage(content="Find me something")], next=""
@@ -29,6 +34,10 @@ def test_supervisor_routes_to_worker():
 
     assert command.goto == "search_agent"
     assert command.update["next"] == "search_agent"
+    assert command.update["active_team"] == "research"
+    assert command.update["active_worker"] == "search_agent"
+    assert command.update["route_history"][0]["layer"] == "team"
+    assert command.update["route_history"][0]["team"] == "research"
 
 
 def test_supervisor_routes_to_finish():
@@ -40,6 +49,10 @@ def test_supervisor_routes_to_finish():
     command = supervisor_func(state)
 
     assert command.goto == "__end__"
+    assert command.update["streaming_status"] == "completed"
+    assert command.update["active_team"] is None
+    assert command.update["active_worker"] is None
+    assert command.update["route_history"][0]["next"] == "FINISH"
 
 
 def test_supervisor_routes_to_vision_team():
@@ -58,3 +71,7 @@ def test_supervisor_routes_to_vision_team():
     command = supervisor_func(state)
 
     assert command.goto == "vision_team"
+    assert command.update["active_team"] == "vision"
+    assert command.update["active_worker"] is None
+    assert command.update["streaming_status"] == "running"
+    assert command.update["route_history"][0]["team"] == "vision"

@@ -40,7 +40,7 @@
   - `vision_team -> head_supervisor`
   - 이로써 팀 단위 라우팅은 LangGraph 네이티브 방식으로 동작합니다.
 
-- **[ ] 단계 3: 상태(State) 스키마 확장 및 병합 규칙 명문화**
+- **[x] 단계 3: 상태(State) 스키마 확장 및 병합 규칙 명문화**
   - `BaseAgentState`에 아래 구조화 필드를 추가하는 방안을 검토합니다.
   - `shared_context`: 팀 간 전달할 요약 사실, 조사 결과, 중간 판단
   - `artifacts`: 문서 초안, 차트 경로, 스크래핑 결과 등 산출물 핸들
@@ -48,8 +48,14 @@
   - `active_team`, `active_worker`: UI와 trace에서 현재 실행 주체를 안정적으로 표시하기 위한 필드
   - `streaming_status`: `running`, `completed`, `errored` 같은 상위 실행 상태
   - 메시지 병합 규칙은 `MessagesState` 기본 reducer에 기대되, 구조화 필드는 overwrite인지 append인지 명시적으로 정의합니다.
+  - 구현 반영:
+  - `packages/agent-core/src/agent_core/state.py`에 `shared_context`, `artifacts`, `route_history`, `active_team`, `active_worker`, `streaming_status` 필드와 reducer를 추가했습니다.
+  - `shared_context`, `artifacts`: 재귀 dict merge
+  - `route_history`: append reducer
+  - `active_team`, `active_worker`, `streaming_status`: 마지막 업데이트 overwrite
+  - `packages/agent-core/src/agent_core/supervisor.py`에서 head/team supervisor가 route metadata와 active execution metadata를 함께 기록하도록 업데이트했습니다.
 
-- **[ ] 단계 4: 팀 내부 워커 래퍼 제거 및 worker-level native composition 적용**
+- **[x] 단계 4: 팀 내부 워커 래퍼 제거 및 worker-level native composition 적용**
   - 현재 `research.py`, `writing.py`, `vision.py`의 워커 노드는 `agent.invoke(state)` 호출을 감싸고 있습니다.
   - 이 레이어를 제거하거나 최소화해서 `create_agent(...)`가 생성한 runnable/graph를 네이티브 노드로 직접 연결하는 구조를 우선 검토합니다.
   - 부득이하게 래퍼가 필요하다면 최소한 아래는 보존되어야 합니다.
@@ -58,8 +64,12 @@
   - reasoning metadata
   - worker identity (`team`, `worker`, `node_name`)
   - 목표는 "팀은 네이티브 서브그래프인데 워커는 다시 블로킹 래퍼"인 현 상태를 제거하는 것입니다.
+  - 구현 반영:
+  - `packages/agent-core/src/agent_core/builder.py`에 `add_worker()`를 추가해 worker를 `create_react_agent(..., state_schema=BaseAgentState, version="v2")` 기반 네이티브 서브그래프로 등록하도록 변경했습니다.
+  - `apps/backend/workflow/teams/research.py`, `writing.py`, `vision.py`에서 `agent.invoke(state)` 래퍼와 `HumanMessage` 평탄화를 제거했습니다.
+  - 각 worker는 팀 서브그래프 내부에서 `worker -> supervisor` 엣지로 복귀하며, 메시지/툴 메타데이터는 worker graph가 생성한 원형 그대로 유지됩니다.
 
-- **[ ] 단계 5: SSE 이벤트 계약 표준화 및 프런트엔드 의존성 분리**
+- **[x] 단계 5: SSE 이벤트 계약 표준화 및 프런트엔드 의존성 분리**
   - `chat.py`에서 LangGraph raw event를 그대로 흘리는 대신, UI 친화적인 이벤트 계약으로 정규화합니다.
   - 권장 이벤트 타입:
   - `status`: graph started / team switched / completed / errored
@@ -70,8 +80,11 @@
   - `checkpoint`: resume 가능한 스냅샷 또는 checkpoint id 정보
   - 프런트는 `on_chat_model_stream` raw 문자열을 다시 JSON처럼 파싱하지 않고, 위 계약만 소비하도록 변경합니다.
   - 로딩 종료는 `on_chain_end`의 특정 노드명 비교가 아니라 명시적 `status=completed` 이벤트 기준으로 처리합니다.
+  - 구현 반영:
+  - `apps/backend/api/routes/chat.py`에서 raw LangGraph event를 `status`, `route`, `text`, `reasoning`, `tool_start`, `tool_end`, `tool_error`, `checkpoint`, `error` 계약으로 정규화합니다.
+  - raw `on_chat_model_stream` 문자열 재파싱은 제거하고, direct supervisor 응답도 동일한 `text` 계약으로 통일합니다.
 
-- **[ ] 단계 6: 체크포인터/트레이스 운영 경로 고도화**
+- **[x] 단계 6: 체크포인터/트레이스 운영 경로 고도화**
   - `thread_id` 기준으로 team/worker 내부 단계까지 checkpoint가 실제 저장되는지 검증합니다.
   - resume 또는 time-travel 테스트 시, 서브그래프 내부 노드에서 재개 가능한지 확인합니다.
   - trace는 현재 이벤트마다 commit하므로 다음 중 하나를 검토합니다.
@@ -79,8 +92,13 @@
   - 중요 이벤트만 영속화하고 raw token stream은 샘플링 또는 축약 저장
   - 긴 base64/image/tool payload에 대한 추가 truncation 규칙
   - 요청마다 그래프를 재컴파일하는 현재 구조는 유지 비용이 있으므로, lifespan에서 graph factory/cache를 관리할지 검토합니다.
+  - 구현 반영:
+  - `TraceService.create_events()`를 추가해 trace를 turn 단위 batch insert로 저장합니다.
+  - `text`/`reasoning`은 token별 raw insert 대신 요약 이벤트로 집계 저장하고, base64/장문 문자열은 축약합니다.
+  - 스트림 완료 후 `graph.aget_state(..., subgraphs=True)` 기반 `checkpoint` 이벤트를 송신합니다.
+  - 동일 `thread_id` 재호출 시 checkpoint가 갱신되고 state가 이어지는 resume 테스트를 추가했습니다.
 
-- **[ ] 단계 7: 테스트 범위 확장**
+- **[x] 단계 7: 테스트 범위 확장**
   - 현재 테스트는 주로 그래프 컴파일 성공, 기본 SSE 응답, supervisor 라우팅 검증에 머물러 있습니다.
   - Phase 1-1 완료 기준 테스트는 아래를 포함해야 합니다.
   - 팀 간 메시지 병합 후 상위 상태에서 최신 메시지와 구조화 필드가 모두 보존되는지
@@ -89,6 +107,10 @@
   - checkpoint 생성 후 동일 `thread_id`로 resume 했을 때 route/state가 이어지는지
   - 에러 발생 시 `status=errored`와 적절한 사용자 메시지가 함께 전달되는지
   - 프런트에서 "Coordinating team..." 로딩 UI가 정상 해제되는지
+  - 구현 반영:
+  - `apps/backend/tests/test_api.py`에서 normalized SSE 계약, direct supervisor 응답 계약, checkpoint/resume 동작을 검증합니다.
+  - `apps/backend/tests/test_error_handling.py`에서 `status=errored` + `error` 이벤트 계약을 검증합니다.
+  - `apps/backend/tests/test_trace_service.py`에서 trace batch insert와 truncation 규칙을 검증합니다.
 
 ## 5. 세부 고도화 제안 (Feature Uplift Beyond the Original Plan)
 단순 마이그레이션을 넘어서, 아래 항목을 이번 문서에 함께 묶어두는 것이 향후 재작업을 줄입니다.

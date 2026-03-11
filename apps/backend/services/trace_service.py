@@ -3,9 +3,12 @@ from models.trace import TraceEvent
 
 
 class TraceService:
+    TRACE_STRING_LIMIT = 2000
+    TRACE_BASE64_LIMIT = 500
+
     @staticmethod
     def _optimize_payload(payload: dict) -> dict:
-        """Truncates large base64 strings in payload to save DB space."""
+        """Truncates large base64 and verbose string payloads to save DB space."""
         import json
 
         if not payload:
@@ -20,9 +23,11 @@ class TraceService:
                     if (
                         isinstance(v, str)
                         and v.startswith("data:image/")
-                        and len(v) > 500
+                        and len(v) > TraceService.TRACE_BASE64_LIMIT
                     ):
                         data[k] = v[:100] + "... [BASE64 TRUNCATED]"
+                    elif isinstance(v, str) and len(v) > TraceService.TRACE_STRING_LIMIT:
+                        data[k] = v[:500] + "... [TRUNCATED]"
                     else:
                         truncate_recursive(v)
             elif isinstance(data, list):
@@ -30,9 +35,14 @@ class TraceService:
                     if (
                         isinstance(data[i], str)
                         and data[i].startswith("data:image/")
-                        and len(data[i]) > 500
+                        and len(data[i]) > TraceService.TRACE_BASE64_LIMIT
                     ):
                         data[i] = data[i][:100] + "... [BASE64 TRUNCATED]"
+                    elif (
+                        isinstance(data[i], str)
+                        and len(data[i]) > TraceService.TRACE_STRING_LIMIT
+                    ):
+                        data[i] = data[i][:500] + "... [TRUNCATED]"
                     else:
                         truncate_recursive(data[i])
 
@@ -40,18 +50,36 @@ class TraceService:
         return optimized
 
     @staticmethod
-    async def create_event(
-        db: AsyncSession, thread_id: str, event_type: str, node_name: str, payload: dict
-    ):
-        optimized_payload = TraceService._optimize_payload(payload)
-        event = TraceEvent(
+    def build_event(
+        thread_id: str, event_type: str, node_name: str | None, payload: dict
+    ) -> TraceEvent:
+        return TraceEvent(
             thread_id=thread_id,
             event_type=event_type,
             node_name=node_name,
-            payload=optimized_payload,
+            payload=TraceService._optimize_payload(payload),
         )
-        db.add(event)
+
+    @staticmethod
+    async def create_events(db: AsyncSession, events: list[TraceEvent]) -> list[TraceEvent]:
+        if not events:
+            return []
+
+        db.add_all(events)
         await db.commit()
+        return events
+
+    @staticmethod
+    async def create_event(
+        db: AsyncSession, thread_id: str, event_type: str, node_name: str, payload: dict
+    ):
+        event = TraceService.build_event(
+            thread_id=thread_id,
+            event_type=event_type,
+            node_name=node_name,
+            payload=payload,
+        )
+        await TraceService.create_events(db, [event])
         return event
 
     @staticmethod

@@ -24,7 +24,9 @@ def get_orchagent_graph(llm_model: str = "gpt-5.4-2026-03-05"):
 
     # 2. Head Supervisor
     head_supervisor_node = make_supervisor_node(
-        llm, ["research_team", "writing_team", "vision_team"]
+        llm,
+        ["research_team", "writing_team", "vision_team"],
+        layer="head",
     )
 
     # 3. Build Super Graph

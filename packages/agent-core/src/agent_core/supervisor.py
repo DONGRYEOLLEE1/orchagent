@@ -4,9 +4,21 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langgraph.types import Command
 from langgraph.graph import END
 
-from agent_core.state import BaseAgentState
+from agent_core.state import (
+    BaseAgentState,
+    build_route_entry,
+    normalize_team_name,
+)
 
-def make_supervisor_node(llm: BaseChatModel, members: List[str], system_prompt_template: str = None) -> Callable:
+
+def make_supervisor_node(
+    llm: BaseChatModel,
+    members: List[str],
+    system_prompt_template: str = None,
+    *,
+    layer: Literal["head", "team"] = "head",
+    team_name: str | None = None,
+) -> Callable:
     """
     Creates a supervisor node that manages workflow routing between multiple agents.
     Acts as an intelligent router using Command.
@@ -42,17 +54,59 @@ def make_supervisor_node(llm: BaseChatModel, members: List[str], system_prompt_t
         
         messages = [{"role": "system", "content": system_prompt_plus}] + state['messages']
         response = llm.with_structured_output(Router).invoke(messages)
-        goto = response['next']
+        next_node = response['next']
+        goto = next_node
         content = response.get('content', "")
-        
+
         print(f"[Supervisor] Routing decision: {goto}", flush=True)
         if content:
             print(f"[Supervisor] Response content: {content[:50]}...", flush=True)
-        
+
         if goto == "FINISH":
             goto = END
-            
+
         update_data = {"next": goto}
+        normalized_team = normalize_team_name(team_name)
+
+        if layer == "head":
+            next_team = normalize_team_name(next_node) if next_node != "FINISH" else None
+            status: Literal["running", "completed"] = (
+                "completed" if next_node == "FINISH" else "running"
+            )
+            update_data.update(
+                {
+                    "active_team": next_team,
+                    "active_worker": None,
+                    "streaming_status": status,
+                    "route_history": [
+                        build_route_entry(
+                            layer="head",
+                            node="head_supervisor",
+                            next_node=next_node,
+                            team=next_team,
+                            status=status,
+                        )
+                    ],
+                }
+            )
+        else:
+            next_worker = None if next_node == "FINISH" else next_node
+            update_data.update(
+                {
+                    "active_team": None if next_node == "FINISH" else normalized_team,
+                    "active_worker": next_worker,
+                    "route_history": [
+                        build_route_entry(
+                            layer="team",
+                            node="supervisor",
+                            next_node=next_node,
+                            team=normalized_team,
+                            worker=next_worker,
+                        )
+                    ],
+                }
+            )
+
         if content:
             # Add the supervisor's response to the message history
             from langchain_core.messages import AIMessage

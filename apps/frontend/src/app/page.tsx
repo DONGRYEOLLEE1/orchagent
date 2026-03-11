@@ -5,11 +5,12 @@ import { Send, Terminal, Loader2, Bot, User, CheckCircle2, Activity, Image as Im
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import NextImage from 'next/image';
-import { ChatMessage, ToolExecution } from '@/types/agent';
+import { ChatMessage, StreamEvent, ToolExecution } from '@/types/agent';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { appendAssistantText, parseSseBlock, pushUniqueHistory, splitSseBlocks } from '@/lib/chat-stream';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -123,7 +124,7 @@ const ToolCard = ({ tool }: { tool: ToolExecution }) => {
   );
 };
 
-const AgentTimeline = ({ history, currentNode }: { history: string[], currentNode: string }) => (
+const AgentTimeline = ({ history, currentNode, loading }: { history: string[], currentNode: string, loading: boolean }) => (
   <div className="flex flex-col gap-2 p-4 bg-slate-900/50 border border-slate-800 rounded-lg overflow-y-auto max-h-[300px]">
     <h3 className="text-sm font-semibold text-slate-400 flex items-center gap-2">
       <Activity size={16} /> Agent Timeline
@@ -135,10 +136,16 @@ const AgentTimeline = ({ history, currentNode }: { history: string[], currentNod
           <span>{node}</span>
         </div>
       ))}
-      {currentNode && (
+      {currentNode && loading && (
         <div className="flex items-center gap-3 text-sm font-medium text-blue-400 animate-pulse">
           <Loader2 size={14} className="animate-spin" />
           <span>{currentNode} (Running...)</span>
+        </div>
+      )}
+      {currentNode && !loading && (
+        <div className="flex items-center gap-3 text-sm text-slate-300">
+          <CheckCircle2 size={14} className="text-emerald-500" />
+          <span>{currentNode}</span>
         </div>
       )}
     </div>
@@ -200,6 +207,9 @@ export default function ChatWorkspace() {
   const [toolExecutions, setToolExecutions] = useState<ToolExecution[]>([]);
   const [reasoning, setReasoning] = useState('');
   const [selectedImages, setSelectedImages] = useState<File[]>([]);
+  const [currentThreadId, setCurrentThreadId] = useState('');
+  const [checkpointId, setCheckpointId] = useState('');
+  const [streamError, setStreamError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -227,12 +237,97 @@ export default function ChatWorkspace() {
     setSelectedImages(prev => prev.filter((_, i) => i !== index));
   };
 
+  const handleStreamEvent = (payload: StreamEvent, assistantMsgId: string) => {
+    if (payload.event_type === 'status') {
+      setLoading(payload.status === 'running');
+
+      if (payload.status === 'completed') {
+        setCurrentNode('Completed');
+      } else if (payload.status === 'errored') {
+        setCurrentNode('Errored');
+        if (payload.message) {
+          setStreamError(payload.message);
+        }
+      } else if (payload.display_name) {
+        setCurrentNode(payload.display_name);
+      }
+      return;
+    }
+
+    if (payload.event_type === 'route') {
+      const nextDisplay = payload.display_name || payload.target || '';
+      if (nextDisplay && payload.target !== 'FINISH') {
+        setCurrentNode(nextDisplay);
+        setHistory(prev => pushUniqueHistory(prev, nextDisplay));
+      }
+      return;
+    }
+
+    if (payload.event_type === 'tool_start') {
+      const newTool: ToolExecution = {
+        id: payload.run_id || Math.random().toString(36).slice(2, 11),
+        runId: payload.run_id,
+        name: payload.display_name || payload.tool_name || payload.node || 'Tool',
+        status: 'running',
+        input: payload.input,
+        startTime: Date.now(),
+      };
+      setToolExecutions(prev => [...prev, newTool]);
+      return;
+    }
+
+    if (payload.event_type === 'tool_end') {
+      const targetName = payload.display_name || payload.tool_name || payload.node || 'Tool';
+      setToolExecutions(prev => prev.map(tool =>
+        ((payload.run_id && tool.runId === payload.run_id) || (!payload.run_id && tool.name === targetName))
+          && tool.status === 'running'
+          ? { ...tool, status: 'success', output: payload.output, endTime: Date.now() }
+          : tool
+      ));
+      return;
+    }
+
+    if (payload.event_type === 'tool_error') {
+      const targetName = payload.display_name || payload.tool_name || payload.node || 'Tool';
+      setToolExecutions(prev => prev.map(tool =>
+        ((payload.run_id && tool.runId === payload.run_id) || (!payload.run_id && tool.name === targetName))
+          && tool.status === 'running'
+          ? { ...tool, status: 'error', output: payload.error, endTime: Date.now() }
+          : tool
+      ));
+      return;
+    }
+
+    if (payload.event_type === 'reasoning') {
+      setReasoning(prev => prev + payload.content);
+      return;
+    }
+
+    if (payload.event_type === 'text') {
+      setMessages(prev => appendAssistantText(prev, assistantMsgId, payload.content));
+      return;
+    }
+
+    if (payload.event_type === 'checkpoint') {
+      setCheckpointId(payload.checkpoint_id || '');
+      return;
+    }
+
+    if (payload.event_type === 'error') {
+      setLoading(false);
+      setCurrentNode('Errored');
+      setStreamError(payload.message);
+      setMessages(prev => appendAssistantText(prev, `${assistantMsgId}_error`, `Error: ${payload.message}`));
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if ((!input.trim() && selectedImages.length === 0) || loading) return;
 
+    const submittedInput = input;
     const thread_id = `thread_${Date.now()}`;
-    const userMessage: ChatMessage = { role: 'user', content: input, id: Date.now().toString() };
+    const userMessage: ChatMessage = { role: 'user', content: submittedInput, id: Date.now().toString() };
 
     // Convert images to base64
     const base64Images = await Promise.all(selectedImages.map(fileToBase64));
@@ -245,103 +340,69 @@ export default function ChatWorkspace() {
     setHistory([]);
     setToolExecutions([]);
     setReasoning('');
+    setCurrentThreadId(thread_id);
+    setCheckpointId('');
+    setStreamError('');
 
     try {
       const response = await fetch('http://localhost:8000/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: input,
+          message: submittedInput,
           thread_id,
           images: base64Images.length > 0 ? base64Images : undefined
         }),
       });
 
-      if (!response.body) return;
+      if (!response.ok) {
+        throw new Error(`Request failed with status ${response.status}`);
+      }
+
+      if (!response.body) {
+        throw new Error('No response body received.');
+      }
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       const assistantMsgId = Date.now().toString() + "_ai";
+      let buffer = '';
 
       while (true) {
         const { value, done } = await reader.read();
-        if (done) {
-          setLoading(false);
-          setCurrentNode('');
-          break;
+        buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+
+        const { blocks, remainder } = splitSseBlocks(buffer);
+        buffer = remainder;
+
+        for (const block of blocks) {
+          const payload = parseSseBlock(block) as StreamEvent | null;
+          if (payload) {
+            handleStreamEvent(payload, assistantMsgId);
+          }
         }
 
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const payload = JSON.parse(line.slice(6));
-              const { event_type, node, data, content } = payload;
-
-              if (event_type === 'on_chain_start' && node === 'OrchAgent') {
-                setCurrentNode('Head Supervisor');
-              } else if (event_type === 'on_node_start') {
-                setCurrentNode(node);
-                setHistory(prev => [...prev, node]);
-              } else if (event_type === 'on_tool_start') {
-                const newTool: ToolExecution = {
-                  id: Math.random().toString(36).substr(2, 9),
-                  name: node,
-                  status: 'running',
-                  input: data,
-                  startTime: Date.now()
-                };
-                setToolExecutions(prev => [...prev, newTool]);
-              } else if (event_type === 'on_tool_end') {
-                setToolExecutions(prev => prev.map(t =>
-                  t.name === node && t.status === 'running'
-                    ? { ...t, status: 'success', output: data, endTime: Date.now() }
-                    : t
-                ));
-              } else if (event_type === 'reasoning') {
-                setReasoning(prev => prev + (content || ''));
-              } else if (event_type === 'text') {
-                const textChunk = content || '';
-                if (textChunk) {
-                  setMessages(prev => {
-                    const lastMsg = prev[prev.length - 1];
-                    if (lastMsg && lastMsg.role === 'assistant' && lastMsg.id === assistantMsgId) {
-                      return [...prev.slice(0, -1), { ...lastMsg, content: lastMsg.content + textChunk }];
-                    } else {
-                      return [...prev, { role: 'assistant', content: textChunk, id: assistantMsgId }];
-                    }
-                  });
-                }
-              } else if (event_type === 'on_chat_model_stream') {
-                // Parse chunk data string to object to get content
-                const dataObj = typeof data === 'string' ? JSON.parse(data.replace(/'/g, '"')) : data;
-                const textChunk = dataObj?.chunk?.content || '';
-
-                if (textChunk) {
-                  setMessages(prev => {
-                    const lastMsg = prev[prev.length - 1];
-                    if (lastMsg && lastMsg.role === 'assistant' && lastMsg.id === assistantMsgId) {
-                      return [...prev.slice(0, -1), { ...lastMsg, content: lastMsg.content + textChunk }];
-                    } else {
-                      return [...prev, { role: 'assistant', content: textChunk, id: assistantMsgId }];
-                    }
-                  });
-                }
-              } else if (event_type === 'on_chain_end' && node === 'OrchAgent') {
-                setLoading(false);
-                setCurrentNode('Completed');
-              }
-            } catch (e) {
-              console.error("Failed to parse event", e);
+        if (done) {
+          if (buffer.trim()) {
+            const finalPayload = parseSseBlock(buffer) as StreamEvent | null;
+            if (finalPayload) {
+              handleStreamEvent(finalPayload, assistantMsgId);
             }
           }
+          setLoading(false);
+          break;
         }
       }
     } catch (err) {
       console.error(err);
       setLoading(false);
+      setCurrentNode('Errored');
+      setStreamError(err instanceof Error ? err.message : 'Unknown error');
+      setMessages(prev => appendAssistantText(
+        prev,
+        `${thread_id}_request_error`,
+        `Error: ${err instanceof Error ? err.message : 'Unknown error'}`
+      ));
     }
   };
   return (
@@ -360,7 +421,7 @@ export default function ChatWorkspace() {
         </div>
 
         <div className="hidden lg:flex flex-col gap-4">
-          <AgentTimeline history={history} currentNode={currentNode} />
+          <AgentTimeline history={history} currentNode={currentNode} loading={loading} />
 
           <div className="p-4 bg-slate-900/30 border border-slate-800/50 rounded-xl">
             <p className="text-xs text-slate-500 mb-1 font-mono uppercase tracking-wider">Session Status</p>
@@ -368,6 +429,12 @@ export default function ChatWorkspace() {
               <span className="text-slate-400">Engine:</span>
               <span className={cn(loading ? "text-blue-400 animate-pulse" : "text-emerald-400 font-medium")}>
                 {loading ? "Active" : "Idle"}
+              </span>
+            </div>
+            <div className="flex justify-between text-sm mt-2">
+              <span className="text-slate-400">Checkpoint:</span>
+              <span className="text-slate-500 font-mono text-xs truncate max-w-[110px]">
+                {checkpointId || '-'}
               </span>
             </div>
           </div>
@@ -381,7 +448,7 @@ export default function ChatWorkspace() {
             <span>Thread</span>
             <span className="text-slate-600">/</span>
             <span className="text-blue-400 font-mono text-xs bg-blue-400/10 px-2 py-0.5 rounded border border-blue-400/20">
-              current_session
+              {currentThreadId || 'current_session'}
             </span>
           </div>
         </header>
@@ -430,6 +497,17 @@ export default function ChatWorkspace() {
               </div>
               <div className="p-4 rounded-2xl bg-slate-900/50 border border-slate-800 text-slate-400 text-sm italic">
                 Coordinating team...
+              </div>
+            </div>
+          )}
+
+          {!!streamError && !loading && (
+            <div className="flex gap-4 max-w-3xl">
+              <div className="w-8 h-8 rounded-full bg-red-500/20 text-red-300 flex items-center justify-center shrink-0">
+                <Bot size={16} />
+              </div>
+              <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-200 text-sm">
+                {streamError}
               </div>
             </div>
           )}
@@ -513,7 +591,7 @@ export default function ChatWorkspace() {
         </div>
 
         <div className="space-y-6">
-          <AgentThought content={reasoning} isThinking={loading && !history.includes('Completed')} />
+          <AgentThought content={reasoning} isThinking={loading} />
 
           <ToolPanel toolExecutions={toolExecutions} />
 
