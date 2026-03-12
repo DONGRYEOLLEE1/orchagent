@@ -36,6 +36,7 @@ def make_supervisor_node(
     async def supervisor_node(state: BaseAgentState) -> Command:
         # Create Router class dynamically because of dynamic Literal options
         class Router(TypedDict):
+            reasoning: str  # Detailed plan before routing
             next: str
             content: str  # Added to allow supervisor to respond directly
 
@@ -43,22 +44,31 @@ def make_supervisor_node(
         system_prompt_plus = (
             f"{system_prompt}\n\n"
             "CRITICAL GUIDELINES:\n"
-            "1. For any questions about current events, news, or topics that require the latest information (e.g., wars, politics, stock market), "
+            "1. You must write a detailed step-by-step plan in the 'reasoning' field before making any routing decision.\n"
+            "2. For any questions about current events, news, or topics that require the latest information (e.g., wars, politics, stock market), "
             "you MUST delegate to the 'research_team'. Do not attempt to answer from your own internal knowledge.\n"
-            "2. If you can answer simple greetings or general common sense directly, "
+            "3. If you can answer simple greetings or general common sense directly, "
             "provide your answer in the 'content' field and set 'next' to 'FINISH'.\n"
-            "3. Always prioritize using specialized workers over answering yourself for complex tasks."
+            "4. Always prioritize using specialized workers over answering yourself for complex tasks.\n"
+            "5. If you receive a [Validation Failed] message from a validator, read the feedback and route the task BACK to the appropriate worker for self-correction."
         )
 
         messages = [{"role": "system", "content": system_prompt_plus}] + state[
             "messages"
         ]
-        response = await llm.with_structured_output(Router).ainvoke(messages)
-        next_node = response["next"]  # type: ignore
+        from typing import cast
+
+        response = cast(
+            dict, await llm.with_structured_output(Router).ainvoke(messages)
+        )
+        reasoning = response.get("reasoning", "")
+        next_node = response["next"]
         goto = next_node
-        content = response.get("content", "")  # type: ignore
+        content = response.get("content", "")
 
         print(f"[Supervisor] Routing decision: {goto}", flush=True)
+        if reasoning:
+            print(f"[Supervisor] Reasoning: {reasoning}", flush=True)
         if content:
             print(f"[Supervisor] Response content: {content[:50]}...", flush=True)
 

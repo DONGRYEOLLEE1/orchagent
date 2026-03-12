@@ -13,4 +13,6 @@ class VisionTeamBuilder(TeamBuilder):
 
 
 def get_vision_graph(llm):
-    return VisionTeamBuilder(llm, "VisionTeam", ["vision_analyst"]).build()
+    return VisionTeamBuilder(llm, "VisionTeam", ["vision_analyst"]).build(
+        with_validator=True
+    )

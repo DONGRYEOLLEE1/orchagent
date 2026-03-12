@@ -18,4 +18,6 @@ class ResearchTeamBuilder(TeamBuilder):
 
 
 def get_research_graph(llm):
-    return ResearchTeamBuilder(llm, "ResearchTeam", ["search", "web_scraper"]).build()
+    return ResearchTeamBuilder(llm, "ResearchTeam", ["search", "web_scraper"]).build(
+        with_validator=True
+    )
