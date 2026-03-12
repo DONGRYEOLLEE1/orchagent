@@ -9,8 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langchain_core.messages import HumanMessage
 from langgraph.types import Command
+from langgraph.errors import GraphInterrupt
 
-from schemas.chat import ChatRequest
+from schemas.chat import ChatRequest, ResumeRequest
 from workflow.main_graph import get_orchagent_graph
 from core.database import get_db
 from core.config import settings
@@ -178,7 +179,11 @@ async def _build_checkpoint_payload(graph: Any, config: dict[str, Any], thread_i
 @router.post("/chat")
 async def chat_stream(request: ChatRequest, db: AsyncSession = Depends(get_db)):
     """Streaming endpoint for chat with persistence and tracing."""
-    print(f"[Chat] Endpoint called! thread_id={request.thread_id}", file=sys.stderr, flush=True)
+    print(
+        f"[Chat] Endpoint called! thread_id={request.thread_id}",
+        file=sys.stderr,
+        flush=True,
+    )
 
     # We will use a dummy user_id for now as auth is not yet implemented
     user_id = "anonymous_user"
@@ -271,7 +276,9 @@ async def chat_stream(request: ChatRequest, db: AsyncSession = Depends(get_db)):
                                 persist=False,
                             )
 
-                        text_chunk = _extract_text_content(getattr(chunk, "content", ""))
+                        text_chunk = _extract_text_content(
+                            getattr(chunk, "content", "")
+                        )
                         if text_chunk:
                             final_answer_chunks.append(text_chunk)
                             yield emit(
@@ -409,6 +416,16 @@ async def chat_stream(request: ChatRequest, db: AsyncSession = Depends(get_db)):
                         completion_tokens=len(final_answer) // 4,
                     )
 
+        except GraphInterrupt as gi:
+            print(f"[Chat] Graph interrupted: {gi}", file=sys.stderr, flush=True)
+            yield emit(
+                _status_payload(
+                    status="interrupted",
+                    thread_id=request.thread_id,
+                    node="OrchAgent",
+                    message="Requires user action.",
+                )
+            )
         except Exception as e:
             yield emit(
                 _status_payload(
@@ -463,6 +480,296 @@ async def chat_stream(request: ChatRequest, db: AsyncSession = Depends(get_db)):
                     )
 
     return EventSourceResponse(event_generator())
+
+
+@router.post("/chat/resume")
+async def chat_resume_stream(
+    request: ResumeRequest, db: AsyncSession = Depends(get_db)
+):
+    """Streaming endpoint to resume an interrupted graph."""
+    print(
+        f"[Chat] Resume Endpoint called! thread_id={request.thread_id}, action={request.action}",
+        file=sys.stderr,
+        flush=True,
+    )
+
+    user_id = "anonymous_user"
+
+    # 1. DB Logging
+    resume_message = f"[User Action]: {request.action}"
+    if request.feedback:
+        resume_message += f"\nFeedback: {request.feedback}"
+
+    await LoggingService.log_message(
+        db, request.thread_id, role="user", content=resume_message
+    )
+
+    JsonLogger.log_session(
+        session_id=request.thread_id,
+        user_id=user_id,
+        event_type="resume_start",
+        metadata={
+            "action": request.action,
+            "has_feedback": bool(request.feedback),
+        },
+    )
+
+    async def event_generator():
+        # Command input with resume
+        command = Command(
+            resume={"action": request.action, "feedback": request.feedback}
+        )
+        config = {"configurable": {"thread_id": request.thread_id}}
+
+        final_answer_chunks: list[str] = []
+        reasoning_chunks: list[str] = []
+        trace_events = []
+        graph = None
+        completed_payload_emitted = False
+
+        def emit(payload: dict[str, Any], *, persist: bool = True):
+            if persist:
+                trace_events.append(_trace_event(request.thread_id, payload))
+            return {"event": "message", "data": json.dumps(payload)}
+
+        try:
+            yield emit(
+                _status_payload(
+                    status="running",
+                    thread_id=request.thread_id,
+                    node="head_supervisor",
+                    message="Resuming graph execution...",
+                )
+            )
+
+            async with AsyncPostgresSaver.from_conn_string(
+                settings.sync_database_uri
+            ) as checkpointer:
+                builder = get_orchagent_graph()
+                graph = builder.compile(checkpointer=checkpointer)
+
+                async for event in graph.astream_events(command, config, version="v2"):
+                    kind = event["event"]
+                    name = event.get("name", "unknown")
+                    data = event.get("data", {})
+                    run_id = event.get("run_id")
+
+                    if kind == "on_chat_model_stream" and name != "unknown":
+                        chunk = data.get("chunk")
+                        reasoning_chunk = _extract_reasoning_chunk(chunk)
+                        if reasoning_chunk:
+                            reasoning_chunks.append(reasoning_chunk)
+                            yield emit(
+                                {
+                                    "event_type": "reasoning",
+                                    "node": name,
+                                    "display_name": _display_name(name),
+                                    "content": reasoning_chunk,
+                                    "run_id": run_id,
+                                    "timestamp": _utc_timestamp(),
+                                },
+                                persist=False,
+                            )
+
+                        text_chunk = _extract_text_content(
+                            getattr(chunk, "content", "")
+                        )
+                        if text_chunk:
+                            final_answer_chunks.append(text_chunk)
+                            yield emit(
+                                {
+                                    "event_type": "text",
+                                    "node": name,
+                                    "display_name": _display_name(name),
+                                    "content": text_chunk,
+                                    "run_id": run_id,
+                                    "timestamp": _utc_timestamp(),
+                                },
+                                persist=False,
+                            )
+                        continue
+
+                    if kind == "on_tool_start":
+                        yield emit(
+                            {
+                                "event_type": "tool_start",
+                                "node": name,
+                                "tool_name": name,
+                                "display_name": _display_name(name),
+                                "input": _serialize_value(data.get("input")),
+                                "run_id": run_id,
+                                "timestamp": _utc_timestamp(),
+                            }
+                        )
+                        continue
+
+                    if kind == "on_tool_end":
+                        yield emit(
+                            {
+                                "event_type": "tool_end",
+                                "node": name,
+                                "tool_name": name,
+                                "display_name": _display_name(name),
+                                "output": _serialize_value(data.get("output")),
+                                "run_id": run_id,
+                                "timestamp": _utc_timestamp(),
+                            }
+                        )
+                        continue
+
+                    if kind == "on_tool_error":
+                        yield emit(
+                            {
+                                "event_type": "tool_error",
+                                "node": name,
+                                "tool_name": name,
+                                "display_name": _display_name(name),
+                                "error": _serialize_value(data.get("error")),
+                                "run_id": run_id,
+                                "timestamp": _utc_timestamp(),
+                            }
+                        )
+                        continue
+
+                    if kind == "on_chain_end":
+                        output = data.get("output")
+                        if isinstance(output, Command):
+                            update = output.update or {}
+                            route_history = update.get("route_history") or []
+                            if route_history:
+                                yield emit(_route_payload(name, route_history[-1]))
+
+                            if name == "head_supervisor":
+                                status = update.get("streaming_status")
+                                if status:
+                                    completed_payload_emitted = status == "completed"
+                                    yield emit(
+                                        _status_payload(
+                                            status=status,
+                                            thread_id=request.thread_id,
+                                            node=name,
+                                            active_team=update.get("active_team"),
+                                            active_worker=update.get("active_worker"),
+                                            message=(
+                                                "Completed"
+                                                if status == "completed"
+                                                else "Delegating to next team..."
+                                            ),
+                                        )
+                                    )
+
+                                direct_messages = update.get("messages") or []
+                                if direct_messages:
+                                    content_str = _extract_text_content(
+                                        getattr(direct_messages[-1], "content", "")
+                                    )
+                                    if content_str and not final_answer_chunks:
+                                        for text_chunk in _chunk_text(content_str):
+                                            final_answer_chunks.append(text_chunk)
+                                            yield emit(
+                                                {
+                                                    "event_type": "text",
+                                                    "node": name,
+                                                    "display_name": _display_name(name),
+                                                    "content": text_chunk,
+                                                    "timestamp": _utc_timestamp(),
+                                                },
+                                                persist=False,
+                                            )
+
+                checkpoint_payload = await _build_checkpoint_payload(
+                    graph, config, request.thread_id
+                )
+                yield emit(checkpoint_payload)
+
+                if not completed_payload_emitted:
+                    yield emit(
+                        _status_payload(
+                            status="completed",
+                            thread_id=request.thread_id,
+                            node="OrchAgent",
+                            message="Completed",
+                        )
+                    )
+
+                final_answer = "".join(final_answer_chunks)
+                if final_answer:
+                    await LoggingService.log_message(
+                        db, request.thread_id, role="assistant", content=final_answer
+                    )
+
+                    JsonLogger.log_session(
+                        session_id=request.thread_id,
+                        user_id=user_id,
+                        event_type="turn_end",
+                        metadata={"response_length": len(final_answer)},
+                    )
+
+        except GraphInterrupt as gi:
+            print(f"[Chat] Graph interrupted again: {gi}", file=sys.stderr, flush=True)
+            yield emit(
+                _status_payload(
+                    status="interrupted",
+                    thread_id=request.thread_id,
+                    node="OrchAgent",
+                    message="Requires user action.",
+                )
+            )
+        except Exception as e:
+            yield emit(
+                _status_payload(
+                    status="errored",
+                    thread_id=request.thread_id,
+                    node="OrchAgent",
+                    message="Execution failed.",
+                )
+            )
+            yield emit(
+                {
+                    "event_type": "error",
+                    "node": "OrchAgent",
+                    "message": str(e),
+                    "timestamp": _utc_timestamp(),
+                }
+            )
+        finally:
+            if reasoning_chunks:
+                trace_events.append(
+                    _trace_event(
+                        request.thread_id,
+                        {
+                            "event_type": "reasoning_summary",
+                            "node": "assistant",
+                            "content": "".join(reasoning_chunks),
+                            "timestamp": _utc_timestamp(),
+                        },
+                    )
+                )
+            if final_answer_chunks:
+                trace_events.append(
+                    _trace_event(
+                        request.thread_id,
+                        {
+                            "event_type": "text_summary",
+                            "node": "assistant",
+                            "content": "".join(final_answer_chunks),
+                            "timestamp": _utc_timestamp(),
+                        },
+                    )
+                )
+
+            if trace_events:
+                try:
+                    await TraceService.create_events(db, trace_events)
+                except Exception as trace_error:
+                    print(
+                        f"[Chat] Failed to persist trace batch: {trace_error}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+
+    return EventSourceResponse(event_generator())
+
 
 @router.get("/thread/{thread_id}/trace")
 async def get_thread_trace(thread_id: str, db: AsyncSession = Depends(get_db)):
