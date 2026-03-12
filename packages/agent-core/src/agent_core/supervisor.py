@@ -1,4 +1,4 @@
-from typing import Literal, List, Callable, Any
+from typing import Literal, List, Callable
 from typing_extensions import TypedDict
 from langchain_core.language_models.chat_models import BaseChatModel
 from langgraph.types import Command
@@ -14,7 +14,7 @@ from agent_core.state import (
 def make_supervisor_node(
     llm: BaseChatModel,
     members: List[str],
-    system_prompt_template: str = None,
+    system_prompt_template: str | None = None,
     *,
     layer: Literal["head", "team"] = "head",
     team_name: str | None = None,
@@ -23,8 +23,6 @@ def make_supervisor_node(
     Creates a supervisor node that manages workflow routing between multiple agents.
     Acts as an intelligent router using Command.
     """
-    options = ["FINISH"] + members
-    
     if not system_prompt_template:
         system_prompt = (
             f"You're a supervisor tasked with managing a conversation between the following workers: {members}. "
@@ -34,13 +32,13 @@ def make_supervisor_node(
         )
     else:
         system_prompt = system_prompt_template.format(members=members)
-        
-    def supervisor_node(state: BaseAgentState) -> Command:
+
+    async def supervisor_node(state: BaseAgentState) -> Command:
         # Create Router class dynamically because of dynamic Literal options
         class Router(TypedDict):
-            next: Literal[tuple(options)]
-            content: str # Added to allow supervisor to respond directly
-        
+            next: str
+            content: str  # Added to allow supervisor to respond directly
+
         print(f"[Supervisor] Processing next turn... Members: {members}", flush=True)
         system_prompt_plus = (
             f"{system_prompt}\n\n"
@@ -51,12 +49,14 @@ def make_supervisor_node(
             "provide your answer in the 'content' field and set 'next' to 'FINISH'.\n"
             "3. Always prioritize using specialized workers over answering yourself for complex tasks."
         )
-        
-        messages = [{"role": "system", "content": system_prompt_plus}] + state['messages']
-        response = llm.with_structured_output(Router).invoke(messages)
-        next_node = response['next']
+
+        messages = [{"role": "system", "content": system_prompt_plus}] + state[
+            "messages"
+        ]
+        response = await llm.with_structured_output(Router).ainvoke(messages)
+        next_node = response["next"]  # type: ignore
         goto = next_node
-        content = response.get('content', "")
+        content = response.get("content", "")  # type: ignore
 
         print(f"[Supervisor] Routing decision: {goto}", flush=True)
         if content:
@@ -69,7 +69,9 @@ def make_supervisor_node(
         normalized_team = normalize_team_name(team_name)
 
         if layer == "head":
-            next_team = normalize_team_name(next_node) if next_node != "FINISH" else None
+            next_team = (
+                normalize_team_name(next_node) if next_node != "FINISH" else None
+            )
             status: Literal["running", "completed"] = (
                 "completed" if next_node == "FINISH" else "running"
             )
@@ -110,11 +112,9 @@ def make_supervisor_node(
         if content:
             # Add the supervisor's response to the message history
             from langchain_core.messages import AIMessage
+
             update_data["messages"] = [AIMessage(content=content, name="supervisor")]
-            
-        return Command(
-            update=update_data,
-            goto=goto
-        )
-        
+
+        return Command(update=update_data, goto=goto)
+
     return supervisor_node
