@@ -11,6 +11,7 @@ import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { appendAssistantText, parseSseBlock, pushUniqueHistory, splitSseBlocks } from '@/lib/chat-stream';
+import { HITLPanel } from '@/components/HITLPanel';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -210,6 +211,7 @@ export default function ChatWorkspace() {
   const [currentThreadId, setCurrentThreadId] = useState('');
   const [checkpointId, setCheckpointId] = useState('');
   const [streamError, setStreamError] = useState('');
+  const [isInterrupted, setIsInterrupted] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -243,13 +245,20 @@ export default function ChatWorkspace() {
 
       if (payload.status === 'completed') {
         setCurrentNode('Completed');
+        setIsInterrupted(false);
       } else if (payload.status === 'errored') {
         setCurrentNode('Errored');
+        setIsInterrupted(false);
         if (payload.message) {
           setStreamError(payload.message);
         }
+      } else if (payload.status === 'interrupted') {
+        setCurrentNode('Requires User Action');
+        setIsInterrupted(true);
+        setLoading(false); // Stop standard loading spinner while waiting for user
       } else if (payload.display_name) {
         setCurrentNode(payload.display_name);
+        setIsInterrupted(false);
       }
       return;
     }
@@ -343,6 +352,7 @@ export default function ChatWorkspace() {
     setCurrentThreadId(thread_id);
     setCheckpointId('');
     setStreamError('');
+    setIsInterrupted(false);
 
     try {
       const response = await fetch('http://localhost:8000/api/chat', {
@@ -405,6 +415,77 @@ export default function ChatWorkspace() {
       ));
     }
   };
+
+  const handleResume = async (action: string, feedback: string) => {
+    if (!currentThreadId) return;
+
+    setIsInterrupted(false);
+    setLoading(true);
+    setCurrentNode('Resuming...');
+    setStreamError('');
+
+    try {
+      const response = await fetch('http://localhost:8000/api/chat/resume', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          thread_id: currentThreadId,
+          action,
+          feedback: feedback || undefined,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Resume failed with status ${response.status}`);
+      }
+
+      if (!response.body) {
+        throw new Error('No response body received.');
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      const assistantMsgId = Date.now().toString() + "_ai_resume";
+      let buffer = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+
+        const { blocks, remainder } = splitSseBlocks(buffer);
+        buffer = remainder;
+
+        for (const block of blocks) {
+          const payload = parseSseBlock(block) as StreamEvent | null;
+          if (payload) {
+            handleStreamEvent(payload, assistantMsgId);
+          }
+        }
+
+        if (done) {
+          if (buffer.trim()) {
+            const finalPayload = parseSseBlock(buffer) as StreamEvent | null;
+            if (finalPayload) {
+              handleStreamEvent(finalPayload, assistantMsgId);
+            }
+          }
+          setLoading(false);
+          break;
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      setLoading(false);
+      setCurrentNode('Errored');
+      setStreamError(err instanceof Error ? err.message : 'Unknown error');
+      setMessages(prev => appendAssistantText(
+        prev,
+        `${currentThreadId}_resume_error`,
+        `Error: ${err instanceof Error ? err.message : 'Unknown error'}`
+      ));
+    }
+  };
+
   return (
     <main className="flex h-screen bg-slate-950 text-slate-100 overflow-hidden font-sans relative">
       {/* Decorative Background Elements */}
@@ -496,7 +577,18 @@ export default function ChatWorkspace() {
                 <Bot size={16} />
               </div>
               <div className="p-4 rounded-2xl bg-slate-900/50 border border-slate-800 text-slate-400 text-sm italic">
-                Coordinating team...
+                {currentNode || 'Coordinating team...'}
+              </div>
+            </div>
+          )}
+
+          {isInterrupted && (
+            <div className="flex gap-4 max-w-3xl">
+              <div className="w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+                <Bot size={16} />
+              </div>
+              <div className="w-full">
+                <HITLPanel onAction={handleResume} loading={loading} />
               </div>
             </div>
           )}

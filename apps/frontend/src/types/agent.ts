@@ -28,7 +28,7 @@ export interface ToolExecution {
     endTime?: number;
 }
 
-export type StreamStatus = 'running' | 'completed' | 'errored';
+export type StreamStatus = 'running' | 'completed' | 'errored' | 'interrupted';
 
 export interface StreamStatusEvent {
     event_type: 'status';
