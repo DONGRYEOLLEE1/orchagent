@@ -39,6 +39,7 @@ def make_supervisor_node(
             reasoning: str  # Detailed plan before routing
             next: str
             content: str  # Added to allow supervisor to respond directly
+            requires_approval: bool
 
         print(f"[Supervisor] Processing next turn... Members: {members}", flush=True)
         system_prompt_plus = (
@@ -50,7 +51,8 @@ def make_supervisor_node(
             "3. If you can answer simple greetings or general common sense directly, "
             "provide your answer in the 'content' field and set 'next' to 'FINISH'.\n"
             "4. Always prioritize using specialized workers over answering yourself for complex tasks.\n"
-            "5. If you receive a [Validation Failed] message from a validator, read the feedback and route the task BACK to the appropriate worker for self-correction."
+            "5. If you receive a [Validation Failed] message from a validator, read the feedback and route the task BACK to the appropriate worker for self-correction.\n"
+            "6. If the requested task involves executing code, writing to the filesystem, or any potentially dangerous operation, set 'requires_approval' to true."
         )
 
         messages = [{"role": "system", "content": system_prompt_plus}] + state[
@@ -65,12 +67,58 @@ def make_supervisor_node(
         next_node = response["next"]
         goto = next_node
         content = response.get("content", "")
+        requires_approval = response.get("requires_approval", False)
 
         print(f"[Supervisor] Routing decision: {goto}", flush=True)
         if reasoning:
             print(f"[Supervisor] Reasoning: {reasoning}", flush=True)
         if content:
             print(f"[Supervisor] Response content: {content[:50]}...", flush=True)
+
+        if requires_approval and layer == "head":
+            print(
+                f"[Supervisor] Interrupting for user approval. Reasoning: {reasoning}",
+                flush=True,
+            )
+            from langgraph.types import interrupt
+
+            user_feedback = interrupt({"reasoning": reasoning, "goto": goto})
+
+            if user_feedback and isinstance(user_feedback, dict):
+                action = user_feedback.get("action")
+                feedback_text = user_feedback.get("feedback")
+
+                from langchain_core.messages import AIMessage, HumanMessage
+
+                if action == "reject":
+                    reject_msg = (
+                        f"User rejected the plan. Feedback: {feedback_text}"
+                        if feedback_text
+                        else "User rejected the plan."
+                    )
+                    update_data = {
+                        "messages": [
+                            AIMessage(
+                                content=f"Proposed Plan: {reasoning}", name="supervisor"
+                            ),
+                            HumanMessage(content=reject_msg),
+                        ]
+                    }
+                    return Command(update=update_data, goto="head_supervisor")
+                elif action == "feedback":
+                    feedback_msg = (
+                        f"User provided feedback on the plan: {feedback_text}"
+                    )
+                    update_data = {
+                        "messages": [
+                            AIMessage(
+                                content=f"Proposed Plan: {reasoning}", name="supervisor"
+                            ),
+                            HumanMessage(content=feedback_msg),
+                        ]
+                    }
+                    return Command(update=update_data, goto="head_supervisor")
+                # if "approve", fall through to normal routing
 
         if goto == "FINISH":
             goto = END
