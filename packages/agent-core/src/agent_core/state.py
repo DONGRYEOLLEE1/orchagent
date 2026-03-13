@@ -80,4 +80,5 @@ class BaseAgentState(MessagesState):
     route_history: Annotated[list[RouteEntry], append_route_history]
     active_team: str | None
     active_worker: str | None
+    active_tools: list[str] | None  # Optional list of tools allowed for current turn
     streaming_status: StreamingStatus
