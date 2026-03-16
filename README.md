@@ -3,29 +3,40 @@
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/release/python-3120/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-05998b.svg)](https://fastapi.tiangolo.com/)
 [![LangGraph](https://img.shields.io/badge/LangGraph-latest-black.svg)](https://github.com/langchain-ai/langgraph)
-[![Next.js](https://img.shields.io/badge/Next.js-15+-black.svg)](https://nextjs.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-16+-black.svg)](https://nextjs.org/)
 [![Package Manager: uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
 
-> **OrchAgent** is an enterprise-grade multimodal agent platform that decomposes complex tasks into a hierarchical multi-agent team structure (`Head Supervisor -> Team Supervisor -> Worker`) and visualizes their reasoning processes in real-time.
+> **OrchAgent** is a hierarchical multi-agent workspace built around `LangGraph`, `FastAPI`, and `Next.js`. It routes requests through a `Head Supervisor -> Team Supervisor -> Worker` structure and exposes reasoning summaries, tool activity, routing, and checkpoints in real time.
 
 ---
 
-## ✨ Key Features
+## ✨ What It Does
 
-- **🧩 Hierarchical Orchestration**: Automated task decomposition and execution using a Multi-Supervisor architecture powered by `LangGraph` Native Subgraphs.
+- **🧩 Hierarchical Orchestration**: A head supervisor delegates to specialized `research`, `writing`, and `vision` team subgraphs, and each team routes work to its own workers.
 - **🛡️ HITL & Validation**:
-    - **Interactive Interruption**: Head Supervisors can suspend execution for dangerous operations, prompting users via the UI for approval, rejection, or feedback.
-    - **Self-Correction Loop**: Built-in Critic/Validator nodes evaluate worker outputs and reroute tasks automatically if hallucination or omission is detected.
-- **🖼️ Multimodal Pipeline (VLM)**: Integrated Vision Team capable of deep image analysis and manipulation alongside text processing (Powered by GPT-4o / GPT-5.4).
-- **🛠️ Dynamic Tool Provisioning**: Context-aware injection of tools into worker agents at runtime based on the state (`active_tools`).
-- **💎 Agentic UI (Glassmorphism)**:
-    - Real-time SSE streaming of the agent's **Internal Reasoning Summary**.
-    - Transparent visualization of tool calls, inputs, and outputs via the Live Trace panel.
-    - Seamlessly integrated HITL Action UI for user interventions.
-- **⏱️ Business Telemetry**:
-    - All telemetry and logging strictly adhere to **KST (Korean Standard Time)**.
-    - Segregated `.jsonl` logging for Users, Usage, and Sessions, independent of the SQL Trace DB.
-- **✅ Reliability & Quality**: Ensuring code integrity via `pre-commit` (Ruff, ty, ESLint) and comprehensive test coverage (20+ unit/integration tests).
+    - **Interactive Interruption**: Head-level routing can pause for human approval, rejection, or feedback before resuming the same thread.
+    - **Self-Correction Loop**: Team validators review worker outputs and send failures back through the supervisor with correction feedback.
+- **🖼️ Multimodal Input Path**: Text requests can include images, which are routed to the vision team and processed with model-native vision plus image metadata and resize tools.
+- **🛠️ Tool-Aware Workers**: Research, writing, and vision workers run with task-specific tools, and the worker layer is structured to support state-driven tool filtering.
+- **💎 Agentic UI**:
+    - Real-time SSE streaming for `status`, `route`, `reasoning`, `tool`, `text`, and `checkpoint` events.
+    - A workspace UI that shows internal progress instead of only the final answer.
+    - Resume controls for human-in-the-loop actions.
+- **⏱️ Trace & Session Logging**:
+    - SQL-backed trace events for execution replay and inspection.
+    - Separate `.jsonl` session and usage logs for lightweight telemetry.
+- **✅ Reliability Work**:
+    - Backend tests covering workflow compilation, SSE contracts, validator edge cases, resume behavior, disconnect handling, and trace persistence.
+    - Frontend build verification and SSE parser tests for stream handling.
+
+---
+
+## 🎯 Current Scope
+
+This repository is best described as an **advanced prototype focused on orchestration, observability, and recovery**.
+
+- Strong today: hierarchical routing, normalized SSE streaming, checkpoint/resume, validator loops, traceability, and a dedicated agent workspace UI.
+- Still being hardened: authentication, stricter tool sandboxing, production policy controls, and some frontend/runtime configuration cleanup.
 
 ---
 
@@ -73,11 +84,11 @@ graph TD
 
 | Path | Description |
 | :--- | :--- |
-| **`apps/backend`** | FastAPI server hosting the LangGraph workflow engine, Resume API, and Trace/Logging services |
-| **`apps/frontend`** | Next.js 16 based Glassmorphism agent dashboard featuring HITL components and real-time SSE parsing |
-| **`packages/agent-core`** | Core state definitions, Supervisor builders, Dynamic Tool bindings, and Validator nodes |
-| **`packages/agent-tools`** | Shared collection of asynchronous tools (Search, Scraping, Python REPL, Pillow Vision) |
-| **`packages/prompt-kit`** | Centralized system prompt management for distinct agent personas |
+| **`apps/backend`** | FastAPI server for LangGraph execution, SSE streaming, resume endpoints, trace persistence, and session logging |
+| **`apps/frontend`** | Next.js 16 agent workspace UI with chat, tool activity, reasoning, timeline, and HITL controls |
+| **`packages/agent-core`** | Shared orchestration primitives: state schema, supervisor logic, team builder, and validator nodes |
+| **`packages/agent-tools`** | Shared worker tools for web research, document I/O, Python execution, and image utilities |
+| **`packages/prompt-kit`** | Prompt templates for worker personas and team behavior |
 | **`docs/`** | Architectural recommendations and research reports |
 | **`plans/`** | Project roadmap and detailed feature implementation plans |
 
@@ -112,6 +123,13 @@ uv run uvicorn main:app --reload --port 8000
 cd apps/frontend
 npm install
 npm run dev
+```
+
+### 5. Frontend Verification
+```bash
+cd apps/frontend
+node --test src/lib/chat-stream.test.mjs
+npm run build
 ```
 
 ---
