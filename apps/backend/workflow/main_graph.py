@@ -1,11 +1,9 @@
-from typing import Literal
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage
 from langgraph.graph import StateGraph, START
-from langgraph.types import Command
 
 from agent_core.state import BaseAgentState
 from agent_core.supervisor import make_supervisor_node
+from agent_core.nodes.planner import make_planner_node
 from workflow.teams.research import get_research_graph
 from workflow.teams.writing import get_writing_graph
 from workflow.teams.vision import get_vision_graph
@@ -22,7 +20,8 @@ def get_orchagent_graph(llm_model: str = "gpt-5.4-2026-03-05"):
     writing_graph = get_writing_graph(llm)
     vision_graph = get_vision_graph(llm)
 
-    # 2. Head Supervisor
+    # 2. Nodes
+    planner_node = make_planner_node(llm)
     head_supervisor_node = make_supervisor_node(
         llm,
         ["research_team", "writing_team", "vision_team"],
@@ -30,17 +29,19 @@ def get_orchagent_graph(llm_model: str = "gpt-5.4-2026-03-05"):
     )
 
     # 3. Build Super Graph
-    builder = StateGraph(BaseAgentState)
+    builder = StateGraph(BaseAgentState)  # type: ignore
+    builder.add_node("planner", planner_node)
     builder.add_node("head_supervisor", head_supervisor_node)
-    
+
     # Add native subgraphs directly as nodes
     builder.add_node("research_team", research_graph)
     builder.add_node("writing_team", writing_graph)
     builder.add_node("vision_team", vision_graph)
 
     # 4. Set Edges
-    builder.add_edge(START, "head_supervisor")
-    
+    builder.add_edge(START, "planner")
+    # Planner dynamically routes to head_supervisor via Command
+
     # Route back to head supervisor after subgraphs complete (Native subgraph routing)
     builder.add_edge("research_team", "head_supervisor")
     builder.add_edge("writing_team", "head_supervisor")

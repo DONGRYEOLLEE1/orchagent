@@ -42,10 +42,23 @@ def make_supervisor_node(
             requires_approval: bool
 
         print(f"[Supervisor] Processing next turn... Members: {members}", flush=True)
+
+        # Incorporate task_plan into system prompt if it exists
+        task_plan = state.get("task_plan", "")
+        plan_instruction = (
+            (
+                f"\n\nCURRENT TASK PLAN:\n{task_plan}\n"
+                "Review the plan above and the conversation history. Decide which worker is best suited for the NEXT step of the plan. "
+                "If the plan is complete or you can finish it yourself, respond with FINISH."
+            )
+            if task_plan and task_plan != "NO_PLAN"
+            else ""
+        )
+
         system_prompt_plus = (
-            f"{system_prompt}\n\n"
+            f"{system_prompt}{plan_instruction}\n\n"
             "CRITICAL GUIDELINES:\n"
-            "1. You must write a detailed step-by-step plan in the 'reasoning' field before making any routing decision.\n"
+            "1. You must write a detailed step-by-step plan in the 'reasoning' field before making any routing decision. If a CURRENT TASK PLAN is provided, refer to it and state which step you are executing.\n"
             "2. For any questions about current events, news, or topics that require the latest information (e.g., wars, politics, stock market), "
             "you MUST delegate to the 'research_team'. Do not attempt to answer from your own internal knowledge.\n"
             "3. If you can answer simple greetings or general common sense directly, "

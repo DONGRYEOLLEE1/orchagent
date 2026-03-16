@@ -75,6 +75,7 @@ def build_route_entry(
 class BaseAgentState(MessagesState):
     next: str
     remaining_steps: int
+    task_plan: str | None
     shared_context: Annotated[dict[str, Any], merge_state_maps]
     artifacts: Annotated[dict[str, Any], merge_state_maps]
     route_history: Annotated[list[RouteEntry], append_route_history]
