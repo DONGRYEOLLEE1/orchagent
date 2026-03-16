@@ -7,36 +7,39 @@ from langchain_core.messages import AIMessage
 from agent_core.state import BaseAgentState
 
 
-def make_validator_node(
+def make_reviewer_node(
     llm: BaseChatModel,
     team_name: str,
 ) -> Callable:
     """
-    Creates a validator node that checks if the latest worker output fulfills the user request.
-    If valid, it routes to 'supervisor'. If invalid, it provides feedback and routes back to the 'supervisor'
-    (or directly to a worker if we maintain worker history, but here we let the supervisor re-route based on feedback).
+    Creates a reviewer/critic node that rigorously checks if the latest worker output fulfills the user request.
+    If valid, it routes to 'supervisor'. If invalid, it provides detailed critique and routes back to the 'supervisor'.
     """
 
-    class ValidationResult(BaseModel):
+    class ReviewResult(BaseModel):
         is_valid: bool = Field(
-            description="True if the output fully answers the request, False otherwise."
+            description="True if the output is perfect and fully resolves the request, False otherwise."
         )
-        reasoning: str = Field(
-            description="Explanation of why it is valid or what is missing."
+        critique: str = Field(
+            description="Detailed critical evaluation of the output, identifying missing points, logical errors, or hallucinations."
         )
         feedback: str = Field(
-            description="If invalid, specific instructions on what the worker needs to fix or add."
+            description="Specific instructions for the worker to improve the output."
         )
 
-    async def validator_node(state: BaseAgentState) -> Command:
-        print(f"[Validator - {team_name}] Checking output...", flush=True)
+    async def reviewer_node(state: BaseAgentState) -> Command:
+        print(f"[Reviewer - {team_name}] Critiquing output...", flush=True)
 
         system_prompt = (
-            f"You are a Quality Assurance Validator for the {team_name}.\n"
-            "Your job is to review the conversation history and determine if the latest response from the workers "
-            "fully resolves the user's implicit or explicit request.\n"
-            "If the response is incomplete, inaccurate, or missing required details, mark it as invalid and provide specific feedback.\n"
-            "Do not act as a worker yourself; only evaluate the work done so far."
+            f"You are the Expert Reviewer and Quality Critic for the {team_name}.\n"
+            "Your mission is to rigorously evaluate the work produced by the agents.\n"
+            "Evaluate based on the following criteria:\n"
+            "1. Completeness: Does it answer all aspects of the user's request?\n"
+            "2. Accuracy: Are there any factual errors, logical inconsistencies, or hallucinations?\n"
+            "3. Quality: Is the tone, structure, and depth appropriate?\n\n"
+            "Be extremely critical. If the response is incomplete or has minor flaws, mark it as invalid (is_valid=False).\n"
+            "Provide a detailed 'critique' and specific 'feedback' for the worker to follow.\n"
+            "Only approve (is_valid=True) if the response is excellent and fully resolves the request."
         )
 
         messages = [{"role": "system", "content": system_prompt}] + state.get(
@@ -48,45 +51,49 @@ def make_validator_node(
         remaining_steps = state.get("remaining_steps", 100)
         if remaining_steps <= 1:
             print(
-                f"[Validator - {team_name}] Recursion limit reached. Halting loop.",
+                f"[Reviewer - {team_name}] Recursion limit reached. Halting loop.",
                 flush=True,
             )
             fallback_message = AIMessage(
-                content="[Validation Warning] Maximum correction steps reached. Output might be incomplete.",
-                name=f"{team_name}_validator",
+                content="[Review Warning] Maximum correction steps reached. Output might be incomplete.",
+                name=f"{team_name}_reviewer",
             )
             return Command(goto="supervisor", update={"messages": [fallback_message]})
 
         try:
             result = cast(
-                ValidationResult,
-                await llm.with_structured_output(ValidationResult).ainvoke(messages),
+                ReviewResult,
+                await llm.with_structured_output(ReviewResult).ainvoke(messages),
             )
         except Exception as e:
             # Edge Case 2: Validator의 환각 (Validator Hallucination)
             print(
-                f"[Validator - {team_name}] Error parsing validation result: {e}",
+                f"[Reviewer - {team_name}] Error parsing review result: {e}",
                 flush=True,
             )
             fallback_message = AIMessage(
-                content="[Validation Error] System encountered an error during validation. Proceeding safely.",
-                name=f"{team_name}_validator",
+                content="[Review Error] System encountered an error during review. Proceeding safely.",
+                name=f"{team_name}_reviewer",
             )
             return Command(goto="supervisor", update={"messages": [fallback_message]})
 
         print(
-            f"[Validator - {team_name}] Valid: {result.is_valid}, Reasoning: {result.reasoning}",
+            f"[Reviewer - {team_name}] Valid: {result.is_valid}, Critique: {result.critique[:100]}...",
             flush=True,
         )
 
         if result.is_valid:
             return Command(goto="supervisor")
         else:
-            # Add the feedback to the state so the supervisor knows it failed
+            # Add the critique and feedback to the state so the supervisor knows it failed
             feedback_message = AIMessage(
-                content=f"[Validation Failed] {result.feedback}\nPlease correct the output based on this feedback.",
-                name=f"{team_name}_validator",
+                content=f"[Review Failed]\n**Critique:** {result.critique}\n**Feedback:** {result.feedback}\n\nPlease correct the output based on this feedback.",
+                name=f"{team_name}_reviewer",
             )
             return Command(goto="supervisor", update={"messages": [feedback_message]})
 
-    return validator_node
+    return reviewer_node
+
+
+# Maintain alias for backward compatibility during transition
+make_validator_node = make_reviewer_node

@@ -7,7 +7,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 
 from agent_core.state import BaseAgentState
 from agent_core.supervisor import make_supervisor_node
-from agent_core.validator import make_validator_node
+from agent_core.validator import make_reviewer_node
 
 
 class TeamBuilder(ABC):
@@ -71,8 +71,8 @@ class TeamBuilder(ABC):
         self.builder.add_node("supervisor", supervisor_node)
 
         if with_validator:
-            validator_node = make_validator_node(self.llm, self.team_name)
-            self.builder.add_node("validator", validator_node)
+            reviewer_node = make_reviewer_node(self.llm, self.team_name)
+            self.builder.add_node("reviewer", reviewer_node)
 
         # 2. Register Workers (Implemented by subclasses)
         self.register_nodes()
@@ -80,8 +80,8 @@ class TeamBuilder(ABC):
         # 3. Set entry point
         self.builder.add_edge(START, "supervisor")
 
-        # 4. Worker subgraphs return to the validator or team supervisor after completion
-        return_node = "validator" if with_validator else "supervisor"
+        # 4. Worker subgraphs return to the reviewer or team supervisor after completion
+        return_node = "reviewer" if with_validator else "supervisor"
         for member in self.members:
             self.builder.add_edge(member, return_node)
 

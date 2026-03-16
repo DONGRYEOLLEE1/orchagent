@@ -28,11 +28,11 @@
 ### Phase 4.2: Reviewer/Critic Agent 고도화
 기존의 단순 규칙 기반(혹은 단일 Prompt 기반) Validator를 심층 비평이 가능한 구조로 발전시킵니다.
 
-*   **[ ] Reviewer 모델 정의**
-    *   [ ] `packages/agent-core/src/agent_core/validator.py`를 리팩토링 혹은 분리하여, 단순 성공/실패 여부 판단이 아닌 구체적인 누락 사항, 할루시네이션, 논리 오류를 비평하는 `Reviewer` 시스템 프롬프트 적용.
-*   **[ ] 피드백 사이클 강화**
-    *   [ ] Reviewer의 상세한 피드백이 해당 워커나 팀 수퍼바이저에게 명확히 전달되도록 메시지 구조 강화.
-    *   [ ] 너무 많은 피드백 루프에 빠지지 않도록 횟수 제한(이미 구현된 Edge Case 1)과 연계.
+*   **[x] Reviewer 모델 정의**
+    *   [x] `packages/agent-core/src/agent_core/validator.py`를 리팩토링 혹은 분리하여, 단순 성공/실패 여부 판단이 아닌 구체적인 누락 사항, 할루시네이션, 논리 오류를 비평하는 `Reviewer` 시스템 프롬프트 적용.
+*   **[x] 피드백 사이클 강화**
+    *   [x] Reviewer의 상세한 피드백이 해당 워커나 팀 수퍼바이저에게 명확히 전달되도록 메시지 구조 강화.
+    *   [x] 너무 많은 피드백 루프에 빠지지 않도록 횟수 제한(이미 구현된 Edge Case 1)과 연계.
 
 ### Phase 4.3: Guardrail Node 도입 (Security & Compliance)
 Worker Agent 형태가 아닌 빠르고 결정론적인 Node/Middleware 형태로 구축하여 시스템의 입출력을 보호합니다.
