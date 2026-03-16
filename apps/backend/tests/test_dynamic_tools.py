@@ -28,13 +28,13 @@ class DummyTeamBuilder(TeamBuilder):
 def test_dynamic_tools_binding(monkeypatch):
     captured_model = []
 
-    def fake_create_react_agent(*, model, tools, prompt, state_schema, version, name):
+    def fake_create_agent(
+        *, model, tools=None, system_prompt=None, state_schema=None, name=None, **kwargs
+    ):
         captured_model.append(model)
         return lambda state: {}
 
-    monkeypatch.setattr(
-        "agent_core.builder.create_react_agent", fake_create_react_agent
-    )
+    monkeypatch.setattr("agent_core.builder.create_agent", fake_create_agent)
 
     llm = DummyChatModel()
     DummyTeamBuilder(llm, "DummyTeam", ["worker_a"]).build()  # type: ignore

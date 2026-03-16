@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import List, Any
 
 from langgraph.graph import StateGraph, START
-from langgraph.prebuilt import create_react_agent
+from langchain.agents import create_agent
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from agent_core.state import BaseAgentState
@@ -50,12 +50,11 @@ class TeamBuilder(ABC):
                 return self.llm.bind_tools(tools_to_bind)
             return self.llm
 
-        worker_graph = create_react_agent(
-            model=dynamic_model,
+        worker_graph = create_agent(
+            model=dynamic_model,  # type: ignore
             tools=tools,
-            prompt=prompt,
-            state_schema=BaseAgentState,
-            version="v2",
+            system_prompt=prompt,
+            state_schema=BaseAgentState,  # type: ignore
             name=node_name,
         )
         self.builder.add_node(node_name, worker_graph)
