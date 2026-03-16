@@ -16,14 +16,14 @@
 ### Phase 4.1: Planner Agent 도입 (Architecture Upgrade)
 사용자의 복잡한 요구사항을 실행 가능한 하위 태스크(DAG 구조)로 분해하는 플래닝 단계를 추가합니다.
 
-*   **[ ] 상태(State) 스키마 변경**
-    *   [ ] `packages/agent-core/src/agent_core/state.py`에 `task_plan` (또는 `plan`) 필드 추가 (List 또는 Dict 형태로 태스크 상태 추적).
-*   **[ ] Planner 노드 구현**
-    *   [ ] 사용자의 입력 직후 실행되는 `Planner` 노드 생성.
-    *   [ ] 복잡도를 판단하여 단순 질의는 바로 `Head Supervisor`로 넘기고, 복잡한 요청은 Markdown 기반의 실행 계획을 생성하여 `task_plan` 상태에 저장.
-*   **[ ] Head Supervisor 로직 고도화**
-    *   [ ] `Head Supervisor`가 매 턴마다 `task_plan`을 참조하여 다음 스텝을 어느 팀에 할당할지 결정하도록 프롬프트/로직 수정.
-    *   [ ] 태스크 완료 시 `task_plan`의 상태를 업데이트(Check)하는 메커니즘 구현.
+*   **[x] 상태(State) 스키마 변경**
+    *   [x] `packages/agent-core/src/agent_core/state.py`에 `task_plan` (또는 `plan`) 필드 추가 (List 또는 Dict 형태로 태스크 상태 추적).
+*   **[x] Planner 노드 구현**
+    *   [x] 사용자의 입력 직후 실행되는 `Planner` 노드 생성.
+    *   [x] 복잡도를 판단하여 단순 질의는 바로 `Head Supervisor`로 넘기고, 복잡한 요청은 Markdown 기반의 실행 계획을 생성하여 `task_plan` 상태에 저장.
+*   **[x] Head Supervisor 로직 고도화**
+    *   [x] `Head Supervisor`가 매 턴마다 `task_plan`을 참조하여 다음 스텝을 어느 팀에 할당할지 결정하도록 프롬프트/로직 수정.
+    *   [x] 태스크 완료 시 `task_plan`의 상태를 업데이트(Check)하는 메커니즘 구현.
 
 ### Phase 4.2: Reviewer/Critic Agent 고도화
 기존의 단순 규칙 기반(혹은 단일 Prompt 기반) Validator를 심층 비평이 가능한 구조로 발전시킵니다.
