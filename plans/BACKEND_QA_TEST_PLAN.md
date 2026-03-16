@@ -40,10 +40,10 @@
 **대상 파일:** `test_dynamic_tools.py`
 `active_tools`를 기반으로 도구를 할당하는 기본 기능은 확보되었습니다.
 
-*   **[ ] Edge Case 6: 존재하지 않는 도구 이름 주입**
+*   **[x] Edge Case 6: 존재하지 않는 도구 이름 주입**
     *   **시나리오:** `state["active_tools"]` 리스트에 현재 워커에 아예 등록되지 않은(매핑되지 않은) 엉뚱한 도구 이름(예: `["delete_database", "hack_system"]`)이 포함된 상태로 할당 시도.
     *   **검증 목표:** `dynamic_model` 래퍼가 등록된 `tools` 풀 내에서만 안전하게 필터링하여 빈 도구 리스트 또는 유효한 도구만 바인딩하고 크래시가 나지 않는지 확인.
-*   **[ ] Edge Case 7: 도구 리스트가 완전히 비워진 경우의 ReAct Agent**
+*   **[x] Edge Case 7: 도구 리스트가 완전히 비워진 경우의 ReAct Agent**
     *   **시나리오:** 필터링 결과 `tools_to_bind`가 비어버린 경우.
     *   **검증 목표:** `create_react_agent`가 도구 바인딩 없이 순수 LLM(`return self.llm`)으로 동작할 때, 내부 루프가 에러 없이 정상적으로 종료 노드(`__end__`)에 도달하는지 확인.
 

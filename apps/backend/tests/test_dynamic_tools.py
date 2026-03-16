@@ -60,3 +60,22 @@ def test_dynamic_tools_binding(monkeypatch):
         )
         == "tool_a"
     )
+
+    # Edge Case 6: 존재하지 않는 도구 이름 주입 (Invalid tool names)
+    state3 = cast(
+        BaseAgentState,
+        {
+            "messages": [],
+            "next": "",
+            "active_tools": ["delete_database", "hack_system"],
+        },
+    )
+    model3 = dynamic_model(state3, None)
+    # Should safely filter to empty list and return unbound llm (0 tools)
+    assert len(getattr(model3, "bound_tools", [])) == 0
+
+    # Edge Case 7: 도구 리스트가 완전히 비워진 경우의 ReAct Agent
+    state4 = cast(BaseAgentState, {"messages": [], "next": "", "active_tools": []})
+    model4 = dynamic_model(state4, None)
+    # Should return self.llm directly (no bound_tools or empty bound_tools)
+    assert len(getattr(model4, "bound_tools", [])) == 0
