@@ -33,6 +33,9 @@ def test_health_check():
 def test_chat_stream_emits_normalized_events(monkeypatch):
     """Graph/raw LangGraph events should be normalized to the frontend SSE contract."""
 
+    class MockTuple:
+        tasks = ["dummy_task"]
+
     class MockSaver:
         async def setup(self):
             pass
@@ -42,6 +45,16 @@ def test_chat_stream_emits_normalized_events(monkeypatch):
 
         async def __aexit__(self, *args):
             pass
+
+        async def aget_tuple(self, config):
+            thread_id = config.get("configurable", {}).get("thread_id")
+            if thread_id == "invalid_id":
+                return None
+            if thread_id == "not_interrupted_id":
+                mt = MockTuple()
+                mt.tasks = []
+                return mt
+            return MockTuple()
 
     monkeypatch.setattr(AsyncPostgresSaver, "from_conn_string", lambda x: MockSaver())
 
@@ -180,6 +193,9 @@ def test_chat_stream_emits_normalized_events(monkeypatch):
 
 
 def test_chat_stream_direct_supervisor_response_uses_same_text_contract(monkeypatch):
+    class MockTuple:
+        tasks = ["dummy_task"]
+
     class MockSaver:
         async def setup(self):
             pass
@@ -189,6 +205,16 @@ def test_chat_stream_direct_supervisor_response_uses_same_text_contract(monkeypa
 
         async def __aexit__(self, *args):
             pass
+
+        async def aget_tuple(self, config):
+            thread_id = config.get("configurable", {}).get("thread_id")
+            if thread_id == "invalid_id":
+                return None
+            if thread_id == "not_interrupted_id":
+                mt = MockTuple()
+                mt.tasks = []
+                return mt
+            return MockTuple()
 
     monkeypatch.setattr(AsyncPostgresSaver, "from_conn_string", lambda x: MockSaver())
 
@@ -268,6 +294,9 @@ def test_chat_stream_direct_supervisor_response_uses_same_text_contract(monkeypa
 
 
 def test_chat_stream_resume_same_thread_id_restores_checkpoint_state(monkeypatch):
+    class MockTuple:
+        tasks = ["dummy_task"]
+
     class MockSaver:
         async def setup(self):
             pass
@@ -277,6 +306,16 @@ def test_chat_stream_resume_same_thread_id_restores_checkpoint_state(monkeypatch
 
         async def __aexit__(self, *args):
             pass
+
+        async def aget_tuple(self, config):
+            thread_id = config.get("configurable", {}).get("thread_id")
+            if thread_id == "invalid_id":
+                return None
+            if thread_id == "not_interrupted_id":
+                mt = MockTuple()
+                mt.tasks = []
+                return mt
+            return MockTuple()
 
     monkeypatch.setattr(AsyncPostgresSaver, "from_conn_string", lambda x: MockSaver())
 
@@ -378,6 +417,9 @@ def test_chat_stream_interrupt_and_resume(monkeypatch):
                 payloads.append(json.loads(line[6:]))
         return payloads
 
+    class MockTuple:
+        tasks = ["dummy_task"]
+
     class MockSaver:
         async def setup(self):
             pass
@@ -387,6 +429,16 @@ def test_chat_stream_interrupt_and_resume(monkeypatch):
 
         async def __aexit__(self, *args):
             pass
+
+        async def aget_tuple(self, config):
+            thread_id = config.get("configurable", {}).get("thread_id")
+            if thread_id == "invalid_id":
+                return None
+            if thread_id == "not_interrupted_id":
+                mt = MockTuple()
+                mt.tasks = []
+                return mt
+            return MockTuple()
 
     monkeypatch.setattr(AsyncPostgresSaver, "from_conn_string", lambda x: MockSaver())
 

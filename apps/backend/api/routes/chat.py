@@ -3,7 +3,7 @@ import sys
 from datetime import datetime, UTC
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sse_starlette.sse import EventSourceResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
@@ -494,6 +494,28 @@ async def chat_resume_stream(
     )
 
     user_id = "anonymous_user"
+
+    # Edge Case 3 & 4: Validate Thread ID and Interrupt State
+    async with AsyncPostgresSaver.from_conn_string(
+        settings.sync_database_uri
+    ) as checkpointer:
+        from langchain_core.runnables import RunnableConfig
+        from typing import cast
+
+        check_config = cast(
+            RunnableConfig, {"configurable": {"thread_id": request.thread_id}}
+        )
+        saved_state = await checkpointer.aget_tuple(check_config)
+        if not saved_state:
+            raise HTTPException(status_code=404, detail="Thread not found")
+
+        has_tasks = getattr(
+            saved_state, "tasks", getattr(saved_state, "pending_sends", [])
+        )
+        if not has_tasks:
+            raise HTTPException(
+                status_code=400, detail="Graph is not in an interrupted state"
+            )
 
     # 1. DB Logging
     resume_message = f"[User Action]: {request.action}"

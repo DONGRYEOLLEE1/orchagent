@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional
 
 
@@ -11,4 +11,4 @@ class ChatRequest(BaseModel):
 class ResumeRequest(BaseModel):
     thread_id: str
     action: str  # e.g., 'approve', 'reject', 'feedback'
-    feedback: Optional[str] = None
+    feedback: Optional[str] = Field(None, max_length=2000)

@@ -26,13 +26,13 @@
 **대상 파일:** `test_api.py`
 현재는 `approve` 와 `feedback`을 통한 정상 재개만 테스트하고 있습니다.
 
-*   **[ ] Edge Case 3: 유효하지 않은 Thread ID로 Resume 시도**
+*   **[x] Edge Case 3: 유효하지 않은 Thread ID로 Resume 시도**
     *   **시나리오:** 클라이언트가 존재하지 않거나 이미 완료된 `thread_id`로 `/api/chat/resume`을 호출.
     *   **검증 목표:** API가 404 Not Found 또는 400 Bad Request를 반환하고, 빈 스트림이나 엉뚱한 노드 실행을 방지하는지 확인.
-*   **[ ] Edge Case 4: 인터럽트 상태가 아닌데 Resume 호출**
+*   **[x] Edge Case 4: 인터럽트 상태가 아닌데 Resume 호출**
     *   **시나리오:** 그래프가 `interrupt` 상태에 빠지지 않고 단순히 `running` 중이거나 `idle` 상태일 때 `Command(resume=...)`가 주입되는 상황.
     *   **검증 목표:** LangGraph 엔진 수준에서 발생하는 에러를 우아하게 잡아내어 프론트엔드에 `errored` 스트림 이벤트를 명확히 전달하는지 확인.
-*   **[ ] Edge Case 5: 악의적인 피드백 페이로드**
+*   **[x] Edge Case 5: 악의적인 피드백 페이로드**
     *   **시나리오:** `feedback` 필드에 시스템 프롬프트 인젝션 공격 문자열이나 비정상적으로 긴(수십 MB) 문자열이 주입된 상황.
     *   **검증 목표:** `ResumeRequest` 스키마 또는 내부 처리 과정에서 적절한 길이 제한 및 새니타이징(Sanitizing) 처리가 동작하는지(또는 안전하게 Truncate 되는지) 확인.
 
