@@ -9,6 +9,7 @@ from agent_core.state import (
     build_route_entry,
     normalize_team_name,
 )
+from prompt_kit.prompts import SYSTEM_SUPERVISOR_PROMPT, TEAM_SUPERVISOR_PROMPT
 
 
 def make_supervisor_node(
@@ -24,12 +25,12 @@ def make_supervisor_node(
     Acts as an intelligent router using Command.
     """
     if not system_prompt_template:
-        system_prompt = (
-            f"You're a supervisor tasked with managing a conversation between the following workers: {members}. "
-            "Given the following user request, respond with the worker to act next. "
-            "Each worker will perform a task and respond with their results and status. "
-            "When finished, respond with FINISH."
+        template = (
+            SYSTEM_SUPERVISOR_PROMPT.template
+            if layer == "head"
+            else TEAM_SUPERVISOR_PROMPT.template
         )
+        system_prompt = template.format(members=members)
     else:
         system_prompt = system_prompt_template.format(members=members)
 
@@ -55,18 +56,7 @@ def make_supervisor_node(
             else ""
         )
 
-        system_prompt_plus = (
-            f"{system_prompt}{plan_instruction}\n\n"
-            "CRITICAL GUIDELINES:\n"
-            "1. You must write a detailed step-by-step plan in the 'reasoning' field before making any routing decision. If a CURRENT TASK PLAN is provided, refer to it and state which step you are executing.\n"
-            "2. For any questions about current events, news, or topics that require the latest information (e.g., wars, politics, stock market), "
-            "you MUST delegate to the 'research_team'. Do not attempt to answer from your own internal knowledge.\n"
-            "3. If you can answer simple greetings or general common sense directly, "
-            "provide your answer in the 'content' field and set 'next' to 'FINISH'.\n"
-            "4. Always prioritize using specialized workers over answering yourself for complex tasks.\n"
-            "5. If you receive a [Validation Failed] message from a validator, read the feedback and route the task BACK to the appropriate worker for self-correction.\n"
-            "6. If the requested task involves executing code, writing to the filesystem, or any potentially dangerous operation, set 'requires_approval' to true."
-        )
+        system_prompt_plus = f"{system_prompt}{plan_instruction}"
 
         messages = [{"role": "system", "content": system_prompt_plus}] + state[
             "messages"

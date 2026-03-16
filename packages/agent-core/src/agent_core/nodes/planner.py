@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 from langchain_core.language_models.chat_models import BaseChatModel
 from langgraph.types import Command
 from langchain_core.messages import AIMessage
+from prompt_kit.prompts import PLANNER_PROMPT
 
 from agent_core.state import BaseAgentState
 
@@ -18,16 +19,7 @@ def make_planner_node(llm: BaseChatModel) -> Callable:
     Creates a planner node that executes immediately after user input.
     It decomposes complex requests into a markdown plan and saves it to state.
     """
-    system_prompt = (
-        "You are the Head Planner of the OrchAgent multi-agent system.\n"
-        "Your task is to analyze the user's request and create a step-by-step execution plan.\n"
-        "Available teams: research_team (for gathering info), writing_team (for drafting/editing), vision_team (for image analysis).\n"
-        "If the user's request is a simple greeting, conversational pleasantry, or a direct question that doesn't need decomposition, set the plan to 'NO_PLAN'.\n"
-        "Otherwise, output a clear, numbered Markdown list of steps.\n"
-        "Example Plan:\n"
-        "1. [research_team] Search for latest trends in AI.\n"
-        "2. [writing_team] Draft a summary report based on the trends."
-    )
+    system_prompt = PLANNER_PROMPT.template
 
     async def planner_node(state: BaseAgentState) -> Command:
         print("[Planner] Analyzing request and creating plan...", flush=True)

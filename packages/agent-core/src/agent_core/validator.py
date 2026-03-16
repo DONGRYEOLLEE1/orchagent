@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 from langchain_core.language_models.chat_models import BaseChatModel
 from langgraph.types import Command
 from langchain_core.messages import AIMessage
+from prompt_kit.prompts import REVIEWER_PROMPT
 
 from agent_core.state import BaseAgentState
 
@@ -30,17 +31,7 @@ def make_reviewer_node(
     async def reviewer_node(state: BaseAgentState) -> Command:
         print(f"[Reviewer - {team_name}] Critiquing output...", flush=True)
 
-        system_prompt = (
-            f"You are the Expert Reviewer and Quality Critic for the {team_name}.\n"
-            "Your mission is to rigorously evaluate the work produced by the agents.\n"
-            "Evaluate based on the following criteria:\n"
-            "1. Completeness: Does it answer all aspects of the user's request?\n"
-            "2. Accuracy: Are there any factual errors, logical inconsistencies, or hallucinations?\n"
-            "3. Quality: Is the tone, structure, and depth appropriate?\n\n"
-            "Be extremely critical. If the response is incomplete or has minor flaws, mark it as invalid (is_valid=False).\n"
-            "Provide a detailed 'critique' and specific 'feedback' for the worker to follow.\n"
-            "Only approve (is_valid=True) if the response is excellent and fully resolves the request."
-        )
+        system_prompt = REVIEWER_PROMPT.template.format(team_name=team_name)
 
         messages = [{"role": "system", "content": system_prompt}] + state.get(
             "messages", []
