@@ -48,11 +48,15 @@ The easiest way to get started is using the provided development script:
 
 ### 🛡️ Code Quality & Safety
 We use **pre-commit** hooks to ensure code integrity. Before committing, the following checks are run:
-- **Python**: 
+- **Python**:
   - **Linter/Formatter**: `ruff` (with auto-fix)
   - **Type Checker**: `ty` (lightning-fast checker via `uvx ty check`)
-- **Frontend**: 
+- **Frontend**:
   - **Linter**: `eslint`
+
+### 🏗️ Engineering Mandates (필수 준수 사항)
+- **Centralized Prompts**: 모든 시스템 프롬프트는 반드시 `packages/prompt-kit` 패키지 내에서 관리되어야 합니다. 소스 코드 내에 프롬프트 문자열을 하드코딩하는 것은 엄격히 금지됩니다.
+- **Agent Factory**: 워커 에이전트 생성 시 반드시 `langchain.agents.create_agent`를 사용하십시오. `langgraph.prebuilt.create_react_agent`는 Deprecated 되었으므로 사용을 금지합니다.
 
 ### 📋 Architectural Patterns
 - **Hierarchical Teams**: Logic is split into specialized teams (Vision, Research, Writing), each managed by its own supervisor.
@@ -62,13 +66,6 @@ We use **pre-commit** hooks to ensure code integrity. Before committing, the fol
 ### 📝 Plan Management (계획 관리)
 - **Progress Tracking**: `plans/*` 폴더 내의 구현 목표를 실행할 때, 해당 마크다운 파일의 TODO 리스트(`- [ ]`)를 단계별로 체크(`- [x]`)하여 항상 최신 진행 상황을 반영해야 합니다.
 - **Dynamic Updates**: 구현 과정에서 계획의 수정이나 추가 단계가 필요한 경우, 즉시 해당 계획 파일을 업데이트하여 설계와 구현의 일관성을 유지합니다.
-
-### 🚀 Hierarchical Architecture Evolution (고도화 전략)
-OrchAgent는 단순한 에이전트 호출을 넘어, 더욱 강력하고 유연한 계층적 구조를 지향합니다.
-- **Native Subgraph Integration**: `invoke()`를 통한 동기 호출 방식에서 LangGraph 네이티브 서브그래프 구조로 전환하여 상태 전파 및 체크포인팅 기능을 강화합니다.
-- **Validation & Self-Correction**: 각 팀의 결과물을 검증하는 Validator 노드를 도입하여 할루시네이션을 최소화하고 자가 수정(Self-Correction) 루프를 구축합니다.
-- **Shared Workspace**: 단순 메시지 전달 방식에서 벗어나, 구조화된 데이터를 공유하고 관리하는 `shared_context` 기반의 협업 환경을 구축합니다.
-- **Human-in-the-Loop (HITL)**: 고위험 의사결정 단계에서 사람의 개입과 승인을 위한 인터럽트 메커니즘을 표준화합니다.
 
 ### 🧪 Testing
 - Backend tests are located in `apps/backend/tests/`.
