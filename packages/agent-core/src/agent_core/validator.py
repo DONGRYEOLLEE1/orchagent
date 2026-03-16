@@ -39,13 +39,40 @@ def make_validator_node(
             "Do not act as a worker yourself; only evaluate the work done so far."
         )
 
-        messages = [{"role": "system", "content": system_prompt}] + state["messages"]
+        messages = [{"role": "system", "content": system_prompt}] + state.get(
+            "messages", []
+        )
         from typing import cast
 
-        result = cast(
-            ValidationResult,
-            await llm.with_structured_output(ValidationResult).ainvoke(messages),
-        )
+        # Edge Case 1: 무한 자가 수정 루프 방지 (Infinite Correction Loop)
+        remaining_steps = state.get("remaining_steps", 100)
+        if remaining_steps <= 1:
+            print(
+                f"[Validator - {team_name}] Recursion limit reached. Halting loop.",
+                flush=True,
+            )
+            fallback_message = AIMessage(
+                content="[Validation Warning] Maximum correction steps reached. Output might be incomplete.",
+                name=f"{team_name}_validator",
+            )
+            return Command(goto="supervisor", update={"messages": [fallback_message]})
+
+        try:
+            result = cast(
+                ValidationResult,
+                await llm.with_structured_output(ValidationResult).ainvoke(messages),
+            )
+        except Exception as e:
+            # Edge Case 2: Validator의 환각 (Validator Hallucination)
+            print(
+                f"[Validator - {team_name}] Error parsing validation result: {e}",
+                flush=True,
+            )
+            fallback_message = AIMessage(
+                content="[Validation Error] System encountered an error during validation. Proceeding safely.",
+                name=f"{team_name}_validator",
+            )
+            return Command(goto="supervisor", update={"messages": [fallback_message]})
 
         print(
             f"[Validator - {team_name}] Valid: {result.is_valid}, Reasoning: {result.reasoning}",
