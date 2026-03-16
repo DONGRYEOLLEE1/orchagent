@@ -1,5 +1,6 @@
 import json
 import sys
+import asyncio
 from datetime import datetime, UTC
 from typing import Any
 
@@ -426,6 +427,14 @@ async def chat_stream(request: ChatRequest, db: AsyncSession = Depends(get_db)):
                     message="Requires user action.",
                 )
             )
+        except asyncio.CancelledError:
+            print(
+                f"[Chat] Client disconnected during stream for thread_id={request.thread_id}",
+                file=sys.stderr,
+                flush=True,
+            )
+            # Trace events will still be persisted by the finally block
+            raise
         except Exception as e:
             yield emit(
                 _status_payload(
@@ -737,6 +746,15 @@ async def chat_resume_stream(
                     message="Requires user action.",
                 )
             )
+        except asyncio.CancelledError:
+            print(
+                f"[Chat] Client disconnected during stream for thread_id={request.thread_id}",
+                file=sys.stderr,
+                flush=True,
+            )
+            # We don't yield any more SSE events since the connection is gone,
+            # but the finally block will still execute and persist trace_events.
+            raise
         except Exception as e:
             yield emit(
                 _status_payload(

@@ -50,7 +50,7 @@
 ### 2.4. SSE Stream Parsing & Tracing
 **대상 파일:** `test_trace_service.py` / `test_api.py`
 
-*   **[ ] Edge Case 8: 극단적으로 짧은 연결 끊김 (Client Disconnect)**
+*   **[x] Edge Case 8: 극단적으로 짧은 연결 끊김 (Client Disconnect)**
     *   **시나리오:** LLM이 응답을 스트리밍하는 도중에 클라이언트(프론트엔드)가 연결을 강제로 끊어버린 상황.
     *   **검증 목표:** 서버에 Broken Pipe 에러가 발생하더라도, 그 시점까지의 `trace_events`가 유실되지 않고 `finally` 블록을 통해 DB에 배치 저장(Batch Save)되는지 확인.
 
