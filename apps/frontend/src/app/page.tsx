@@ -259,7 +259,12 @@ export default function ChatWorkspace() {
     setSelectedImages(prev => prev.filter((_, i) => i !== index));
   };
 
+  const [rawTraces, setRawTraces] = useState<StreamEvent[]>([]);
+  const [showDebug, setShowDebug] = useState(false);
+
   const handleStreamEvent = (payload: StreamEvent, assistantMsgId: string) => {
+    // Collect all events for debug panel
+    setRawTraces(prev => [...prev, payload]);
     if (payload.event_type === 'status') {
       setLoading(payload.status === 'running');
 
@@ -761,14 +766,53 @@ export default function ChatWorkspace() {
 
           <ToolPanel toolExecutions={toolExecutions} />
 
-          <div className="flex flex-col gap-2 p-4 bg-blue-500/5 border border-blue-500/10 rounded-2xl">
-            <div className="flex items-center gap-2 mb-2">
-              <Activity size={14} className="text-blue-400" />
-              <span className="text-xs font-semibold text-blue-300 uppercase">Live Trace</span>
+          {/* Debug Panel Toggle */}
+          <div className="mt-8 border-t border-slate-800/30 pt-4">
+            <button
+              onClick={() => setShowDebug(!showDebug)}
+              className="flex items-center justify-between w-full px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-500 hover:text-slate-300 transition-colors group"
+            >
+              <span className="flex items-center gap-2">
+                <Terminal size={14} className="group-hover:text-blue-400" />
+                Raw Events ({rawTraces.length})
+              </span>
+              <ChevronDown size={14} className={cn("transition-transform duration-300", showDebug ? "rotate-180" : "")} />
+            </button>
+
+            {showDebug && (
+              <div className="mt-3 bg-black/40 rounded-xl border border-slate-800/50 p-3 max-h-96 overflow-y-auto font-mono text-[9px] text-slate-400 space-y-2 scrollbar-none animate-in fade-in slide-in-from-top-2">
+                {rawTraces.length === 0 ? (
+                  <div className="text-center py-4 text-slate-600 italic">No events recorded yet.</div>
+                ) : (
+                  [...rawTraces].reverse().map((trace, i) => (
+                    <div key={i} className="border-b border-slate-800/30 pb-2 last:border-0 last:pb-0">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className={cn(
+                          "px-1.5 py-0.5 rounded uppercase font-bold text-[8px]",
+                          trace.event_type === 'error' ? "bg-red-500/20 text-red-400" :
+                          trace.event_type === 'status' ? "bg-blue-500/20 text-blue-400" :
+                          trace.event_type === 'tool_start' ? "bg-emerald-500/20 text-emerald-400" :
+                          "bg-slate-800 text-slate-400"
+                        )}>
+                          {trace.event_type}
+                        </span>
+                        <span className="text-[8px] opacity-50">{new Date(trace.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                      </div>
+                      <pre className="whitespace-pre-wrap break-all opacity-80">
+                        {JSON.stringify({ ...trace, timestamp: undefined, event_type: undefined }, (key, value) =>
+                          typeof value === 'string' && value.length > 100 ? value.substring(0, 100) + '...' : value
+                        , 1)}
+                      </pre>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+            <div className="mt-4 px-2">
+              <p className="text-[11px] text-slate-500 italic leading-relaxed">
+                Real-time tool execution logs and internal reasoning will be streamed here.
+              </p>
             </div>
-            <p className="text-[11px] text-slate-500 italic leading-relaxed">
-              Real-time tool execution logs and internal reasoning will be streamed here.
-            </p>
           </div>
         </div>
       </aside>    </main>
