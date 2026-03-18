@@ -36,11 +36,9 @@ npm-debug.log
 infra/docker/*.Dockerfile
 infra/compose/docker-compose.yml
 
-# Project specific
+# Project specific (Keep uv.lock and pyproject.toml for build)
 .env
 .python-version
-uv.lock
-pyproject.toml
 README.md
 GEMINI.md
 plans/
