@@ -81,16 +81,16 @@ def _extract_final_supervisor_content_text(
     state["raw_buffer"] = raw_buffer
 
     if not state.get("next_parsed"):
-        next_match = re.search(r'"next":"((?:\\.|[^"])*)"', raw_buffer)
+        next_match = re.search(r'"next"\s*:\s*"((?:\\.|[^"])*)"', raw_buffer)
         if next_match:
             state["next_parsed"] = True
             state["next_value"] = _parse_json_string(next_match.group(1))
 
     if state.get("content_scan_pos") is None:
-        marker = '"content":"'
-        marker_index = raw_buffer.find(marker)
-        if marker_index != -1:
-            state["content_scan_pos"] = marker_index + len(marker)
+        # Flexible marker search to handle optional space after colon
+        marker_match = re.search(r'"content"\s*:\s*"', raw_buffer)
+        if marker_match:
+            state["content_scan_pos"] = marker_match.end()
 
     scan_pos = state.get("content_scan_pos")
     if scan_pos is None:
