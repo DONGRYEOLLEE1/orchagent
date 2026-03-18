@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Terminal, Loader2, Bot, User, CheckCircle2, Activity, Image as ImageIcon, X } from 'lucide-react';
+import { Send, Terminal, Loader2, Bot, User, CheckCircle2, Activity, Image as ImageIcon, X, ChevronDown } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import NextImage from 'next/image';
@@ -16,6 +16,8 @@ import { HITLPanel } from '@/components/HITLPanel';
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
+
+const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8002').replace(/\/$/, '');
 
 // --- Markdown Renderer ---
 const MarkdownContent = ({ content }: { content: string }) => {
@@ -78,6 +80,7 @@ const fileToBase64 = (file: File): Promise<string> => {
 // --- Components ---
 
 const ToolCard = ({ tool }: { tool: ToolExecution }) => {
+  const [open, setOpen] = useState(false);
   const isRunning = tool.status === 'running';
   const duration = tool.endTime ? ((tool.endTime - tool.startTime) / 1000).toFixed(1) : null;
 
@@ -86,40 +89,56 @@ const ToolCard = ({ tool }: { tool: ToolExecution }) => {
       "backdrop-blur-lg bg-slate-900/40 p-4 rounded-2xl border transition-all duration-500 animate-in fade-in slide-in-from-right-4",
       isRunning ? "border-blue-500/50 shadow-[0_0_15px_rgba(59,130,246,0.2)]" : "border-slate-800/50"
     )}>
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <div className={cn(
-            "w-2 h-2 rounded-full",
-            isRunning ? "bg-blue-400 animate-pulse" : tool.status === 'success' ? "bg-emerald-400" : "bg-red-400"
-          )} />
-          <span className="text-[10px] font-mono uppercase tracking-widest text-slate-400">Tool Call</span>
-        </div>
-        {duration && <span className="text-[10px] font-mono text-slate-500">{duration}s</span>}
-      </div>
-
-      <div className="flex items-center gap-3 mb-3">
-        <div className="p-2 bg-slate-800/50 rounded-lg text-blue-400">
-          <Terminal size={14} />
-        </div>
-        <h4 className="text-sm font-bold text-slate-200">{tool.name}</h4>
-      </div>
-
-      {!!tool.input && (
-        <div className="mt-2 space-y-1">
-          <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-tighter">Input</p>
-          <pre className="text-[11px] bg-black/30 p-2 rounded-lg text-slate-400 overflow-x-auto font-mono max-h-24">
-            {typeof tool.input === 'string' ? tool.input : JSON.stringify(tool.input, null, 2)}
-          </pre>
-        </div>
-      )}
-
-      {!!tool.output && (
-        <div className="mt-3 space-y-1">
-          <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-tighter">Output</p>
-          <div className="text-[11px] bg-blue-500/5 border border-blue-500/10 p-2 rounded-lg text-slate-300 overflow-x-auto font-mono max-h-32">
-            {typeof tool.output === 'string' ? tool.output : JSON.stringify(tool.output, null, 2)}
+      <button
+        type="button"
+        onClick={() => setOpen(prev => !prev)}
+        className="w-full text-left"
+      >
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <div className={cn(
+              "w-2 h-2 rounded-full",
+              isRunning ? "bg-blue-400 animate-pulse" : tool.status === 'success' ? "bg-emerald-400" : "bg-red-400"
+            )} />
+            <span className="text-[10px] font-mono uppercase tracking-widest text-slate-400">Tool Call</span>
+          </div>
+          <div className="flex items-center gap-2">
+            {duration && <span className="text-[10px] font-mono text-slate-500">{duration}s</span>}
+            <ChevronDown
+              size={14}
+              className={cn("text-slate-500 transition-transform", open && "rotate-180")}
+            />
           </div>
         </div>
+
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-slate-800/50 rounded-lg text-blue-400">
+            <Terminal size={14} />
+          </div>
+          <h4 className="text-sm font-bold text-slate-200">{tool.name}</h4>
+        </div>
+      </button>
+
+      {open && (
+        <>
+          {!!tool.input && (
+            <div className="mt-3 space-y-1">
+              <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-tighter">Input</p>
+              <pre className="text-[11px] bg-black/30 p-2 rounded-lg text-slate-400 overflow-x-auto font-mono max-h-24">
+                {typeof tool.input === 'string' ? tool.input : JSON.stringify(tool.input, null, 2)}
+              </pre>
+            </div>
+          )}
+
+          {!!tool.output && (
+            <div className="mt-3 space-y-1">
+              <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-tighter">Output</p>
+              <div className="text-[11px] bg-blue-500/5 border border-blue-500/10 p-2 rounded-lg text-slate-300 overflow-x-auto font-mono max-h-32">
+                {typeof tool.output === 'string' ? tool.output : JSON.stringify(tool.output, null, 2)}
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -213,6 +232,7 @@ export default function ChatWorkspace() {
   const [streamError, setStreamError] = useState('');
   const [isInterrupted, setIsInterrupted] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const toolIdCounterRef = useRef(0);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const actionSpaceRef = useRef<HTMLDivElement>(null);
@@ -274,7 +294,7 @@ export default function ChatWorkspace() {
 
     if (payload.event_type === 'tool_start') {
       const newTool: ToolExecution = {
-        id: payload.run_id || Math.random().toString(36).slice(2, 11),
+        id: `tool_${toolIdCounterRef.current++}`,
         runId: payload.run_id,
         name: payload.display_name || payload.tool_name || payload.node || 'Tool',
         status: 'running',
@@ -287,23 +307,77 @@ export default function ChatWorkspace() {
 
     if (payload.event_type === 'tool_end') {
       const targetName = payload.display_name || payload.tool_name || payload.node || 'Tool';
-      setToolExecutions(prev => prev.map(tool =>
-        ((payload.run_id && tool.runId === payload.run_id) || (!payload.run_id && tool.name === targetName))
-          && tool.status === 'running'
-          ? { ...tool, status: 'success', output: payload.output, endTime: Date.now() }
-          : tool
-      ));
+      setToolExecutions(prev => {
+        const next = [...prev];
+        let targetIndex = -1;
+
+        if (payload.run_id) {
+          for (let i = next.length - 1; i >= 0; i -= 1) {
+            if (next[i].runId === payload.run_id && next[i].status === 'running') {
+              targetIndex = i;
+              break;
+            }
+          }
+        }
+
+        if (targetIndex === -1) {
+          for (let i = next.length - 1; i >= 0; i -= 1) {
+            if (next[i].name === targetName && next[i].status === 'running') {
+              targetIndex = i;
+              break;
+            }
+          }
+        }
+
+        if (targetIndex !== -1) {
+          next[targetIndex] = {
+            ...next[targetIndex],
+            status: 'success',
+            output: payload.output,
+            endTime: Date.now(),
+          };
+        }
+
+        return next;
+      });
       return;
     }
 
     if (payload.event_type === 'tool_error') {
       const targetName = payload.display_name || payload.tool_name || payload.node || 'Tool';
-      setToolExecutions(prev => prev.map(tool =>
-        ((payload.run_id && tool.runId === payload.run_id) || (!payload.run_id && tool.name === targetName))
-          && tool.status === 'running'
-          ? { ...tool, status: 'error', output: payload.error, endTime: Date.now() }
-          : tool
-      ));
+      setToolExecutions(prev => {
+        const next = [...prev];
+        let targetIndex = -1;
+
+        if (payload.run_id) {
+          for (let i = next.length - 1; i >= 0; i -= 1) {
+            if (next[i].runId === payload.run_id && next[i].status === 'running') {
+              targetIndex = i;
+              break;
+            }
+          }
+        }
+
+        if (targetIndex === -1) {
+          for (let i = next.length - 1; i >= 0; i -= 1) {
+            if (next[i].name === targetName && next[i].status === 'running') {
+              targetIndex = i;
+              break;
+            }
+          }
+        }
+
+        if (targetIndex !== -1) {
+          next[targetIndex] = {
+            ...next[targetIndex],
+            status: 'error',
+            output: payload.error,
+            endTime: Date.now(),
+          };
+        }
+
+        return next;
+      });
       return;
     }
 
@@ -355,7 +429,7 @@ export default function ChatWorkspace() {
     setIsInterrupted(false);
 
     try {
-      const response = await fetch('http://localhost:8000/api/chat', {
+      const response = await fetch(`${API_BASE_URL}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -425,7 +499,7 @@ export default function ChatWorkspace() {
     setStreamError('');
 
     try {
-      const response = await fetch('http://localhost:8000/api/chat/resume', {
+      const response = await fetch(`${API_BASE_URL}/api/chat/resume`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
