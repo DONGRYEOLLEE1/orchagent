@@ -44,13 +44,18 @@ def normalize_team_name(team_name: str | None) -> str | None:
     if not team_name:
         return None
 
-    normalized = team_name
+    # Strip and replace spaces with underscores to handle "[ Research Team ]" -> "research_team"
+    normalized = team_name.strip().lower().replace(" ", "_")
+
     if normalized.endswith("_team"):
         normalized = normalized[: -len("_team")]
-    elif normalized.endswith("Team"):
-        normalized = normalized[: -len("Team")]
+    elif normalized.endswith("team"):
+        normalized = normalized[: -len("team")]
 
-    return normalized.lower()
+    # Remove trailing underscores if any (e.g. from "research _team" -> "research_")
+    normalized = normalized.strip("_")
+
+    return normalized
 
 
 def build_route_entry(

@@ -5,9 +5,13 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "OrchAgent"
     API_V1_STR: str = "/api"
     BACKEND_PORT: int = 8002
+    # Graph & Loop Limits
+    # GRAPH_RECURSION_LIMIT: Hard stop by LangGraph to prevent infinite cycles at any level.
+    # TEAM_MAX_DISPATCHES: Soft stop by supervisor to ensure synthesis after N worker calls.
+    # The team-level limit is checked first by the supervisor node.
     GRAPH_RECURSION_LIMIT: int = 100
     RESEARCH_TEAM_MAX_DISPATCHES: int = 5
-    WRITING_TEAM_MAX_DISPATCHES: int = 3
+    WRITING_TEAM_MAX_DISPATCHES: int = 5
 
     POSTGRES_USER: str = "postgres"
     POSTGRES_PASSWORD: str = "postgres"

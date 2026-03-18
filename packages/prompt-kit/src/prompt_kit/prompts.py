@@ -20,9 +20,10 @@ When finished, respond with FINISH.
 3. Only put end-user facing answer text in the 'content' field when 'next' is 'FINISH'. If you are delegating to another team, 'content' must be empty.
 4. If you can answer simple greetings or general common sense directly, provide your answer in the 'content' field and set 'next' to 'FINISH'.
 5. Always prioritize using specialized workers over answering yourself for complex tasks.
-6. For requests that require research first and then a polished explanation/summary/report for the user, do not expose raw research drafts as the final answer. When finishing, synthesize one final end-user answer in the 'content' field.
-7. If you receive a [Validation Failed] message from a validator, read the feedback and route the task BACK to the appropriate worker for self-correction.
-8. If the requested task involves executing code, writing to the filesystem, or any potentially dangerous operation, set 'requires_approval' to true.
+6. For requests that require research first and then a polished explanation/summary/report for the user, do not expose raw research drafts as the final answer. If a dedicated 'finalizer' node is available in the workflow, simply set 'next' to 'FINISH' and keep 'content' EMPTY to let the finalizer perform the final synthesis.
+7. Use the 'content' field ONLY for simple direct answers (greetings, common sense) or when you are absolutely sure no further synthesis is needed.
+8. If you receive a [Validation Failed] message from a validator, read the feedback and route the task BACK to the appropriate worker for self-correction.
+9. If the requested task involves executing code, writing to the filesystem, or any potentially dangerous operation, set 'requires_approval' to true.
 """,
     version="2.2",
 )
@@ -35,12 +36,13 @@ Each worker will perform a task and respond with their results and status.
 When finished, respond with FINISH.
 
 # CRITICAL GUIDELINES
-1. You must write a detailed step-by-step plan in the 'reasoning' field before making any routing decision.
+1. You must write a detailed step-by-step plan in the 'reasoning' field before making any routing decision. Explicitly state which worker has completed their task and what remains.
 2. If you receive a [Validation Failed] message from a validator, read the feedback and route the task BACK to the appropriate worker for self-correction.
 3. Team supervisors are internal routers. Unless the task is a trivial direct answer, keep the 'content' field empty and use it only for true final completion.
 4. Do not produce end-user facing drafts while routing between workers. Return FINISH only when the team's internal objective is complete.
+5. AVOID loops: If a worker has already attempted a task and failed multiple times, do not keep sending it back without a clear reason. If you cannot improve the output further, return FINISH and let the head supervisor decide.
 """,
-    version="1.0",
+    version="1.1",
 )
 
 FINALIZER_PROMPT = PromptTemplate(

@@ -18,11 +18,19 @@ def _extract_team_stage_sequence(task_plan: str | None) -> list[str]:
     if not task_plan:
         return []
 
-    stages = re.findall(r"\[([a-zA-Z0-9_]+_team)\]", task_plan)
+    # More robust regex: handle optional spaces, case-insensitive, and various formats
+    # Matches [research_team], [Research Team], [research team] etc.
+    stages = re.findall(
+        r"\[\s*([a-zA-Z0-9_\s]+(?:_team|team))\s*\]", task_plan, re.IGNORECASE
+    )
     compressed: list[str] = []
     for stage in stages:
-        if not compressed or compressed[-1] != stage:
-            compressed.append(stage)
+        normalized = normalize_team_name(stage)
+        if not normalized:
+            continue
+        full_name = f"{normalized}_team"
+        if not compressed or compressed[-1] != full_name:
+            compressed.append(full_name)
     return compressed
 
 
@@ -31,12 +39,16 @@ def _extract_completed_team_sequence(route_history: list[Any]) -> list[str]:
     for entry in route_history:
         if entry.get("layer") != "team":
             continue
+        # Check if the team supervisor returned FINISH
         if entry.get("next") != "FINISH":
             continue
         team = entry.get("team")
         if not team:
             continue
-        completed.append(f"{team}_team")
+        # Use normalized name to ensure consistency
+        normalized = normalize_team_name(team)
+        if normalized:
+            completed.append(f"{normalized}_team")
     return completed
 
 
@@ -48,8 +60,9 @@ def _next_pending_team_stage(
         return None
 
     completed = _extract_completed_team_sequence(route_history)
-    completed_index = 0
 
+    # Simple sequence tracking: skip already completed stages in order
+    completed_index = 0
     for stage in planned:
         if completed_index < len(completed) and completed[completed_index] == stage:
             completed_index += 1
@@ -248,6 +261,7 @@ def make_supervisor_node(
                         flush=True,
                     )
                 next_node = "FINISH"
+                content = ""  # Explicitly clear content when plan is complete to avoid mixing with finalizer
 
         should_use_finalizer = (
             layer == "head"
