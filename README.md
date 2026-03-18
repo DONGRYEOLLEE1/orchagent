@@ -109,13 +109,17 @@ The easiest way to spin up the entire stack:
 ```bash
 ./infra/scripts/start-dev.sh
 ```
+This compose stack runs in development mode with bind mounts and autoreload.
+Changes under `apps/backend`, `apps/frontend`, and `packages/*` are reflected without rebuilding containers.
+Rebuild the stack only when dependencies, lockfiles, or Dockerfiles change.
+The frontend container may run `npm install` on first boot to populate its dev `node_modules` volume.
 
 ### 3. Backend Development & Testing (Local)
 ```bash
 cd apps/backend
 uv sync
 uv run pytest tests/ -v
-uv run uvicorn main:app --reload --port 8000
+uv run uvicorn main:app --reload --port 8002
 ```
 
 ### 4. Frontend Development (Local)
@@ -130,6 +134,12 @@ npm run dev
 cd apps/frontend
 node --test src/lib/chat-stream.test.mjs
 npm run build
+```
+
+### 6. Container Logs
+```bash
+docker compose -f infra/compose/docker-compose.yml logs -f backend
+docker compose -f infra/compose/docker-compose.yml logs -f frontend
 ```
 
 ---

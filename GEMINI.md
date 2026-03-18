@@ -29,11 +29,14 @@ The easiest way to get started is using the provided development script:
 ./infra/scripts/start-dev.sh
 ```
 *Note: Ensure `OPENAI_API_KEY` and `TAVILY_API_KEY` are set in `apps/backend/.env`.*
+This Docker stack uses bind mounts plus autoreload, so source edits under `apps/` and `packages/` should refresh without rebuilding.
+Only rebuild when dependencies or Dockerfiles change.
+On the first frontend boot, the container may run `npm install` once to populate the mounted `node_modules` volume.
 
 ### 🐍 Backend Development (Local)
 1. **Navigate**: `cd apps/backend`
 2. **Install**: `uv sync` (includes workspace packages)
-3. **Run**: `uv run uvicorn main:app --reload --port 8000`
+3. **Run**: `uv run uvicorn main:app --reload --port 8002`
 4. **Test**: `uv run pytest tests/ -v`
 
 ### ⚛️ Frontend Development (Local)

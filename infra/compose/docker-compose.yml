@@ -24,14 +24,21 @@ services:
     env_file:
       - ../../apps/backend/.env
     ports:
-      - "8000:8000"
+      - "8002:8002"
     environment:
       POSTGRES_SERVER: db
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: orchagent
+      BACKEND_PORT: "8002"
       PYTHONUNBUFFERED: "1"
-    command: ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "debug"]
+      WATCHFILES_FORCE_POLLING: "true"
+    volumes:
+      - ../../apps/backend:/app/apps/backend
+      - ../../packages/agent-core:/app/packages/agent-core
+      - ../../packages/agent-tools:/app/packages/agent-tools
+      - ../../packages/prompt-kit:/app/packages/prompt-kit
+    command: ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8002", "--reload", "--reload-dir", "/app/apps/backend", "--reload-dir", "/app/packages/agent-core/src", "--reload-dir", "/app/packages/agent-tools/src", "--reload-dir", "/app/packages/prompt-kit/src", "--log-level", "debug"]
     depends_on:
       db:
         condition: service_healthy
@@ -40,13 +47,30 @@ services:
     build:
       context: ../../
       dockerfile: infra/docker/frontend.Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8002
     container_name: orchagent-frontend
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NODE_ENV: development
+      NEXT_PUBLIC_API_URL: http://localhost:8002
+      CHOKIDAR_USEPOLLING: "true"
+      WATCHPACK_POLLING: "true"
+    volumes:
+      - ../../apps/frontend:/app/apps/frontend
+      - frontend_node_modules:/app/apps/frontend/node_modules
+      - frontend_next_cache:/app/apps/frontend/.next
+    command:
+      [
+        "sh",
+        "-lc",
+        "npm install --include=dev && npm run dev -- --hostname 0.0.0.0 --port 3000",
+      ]
     depends_on:
       - backend
 
 volumes:
   pgdata:
+  frontend_node_modules:
+  frontend_next_cache:

@@ -29,8 +29,8 @@ ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONPATH="/app/apps/backend:/app/packages/agent-core/src:/app/packages/agent-tools/src:/app/packages/prompt-kit/src"
 
 # Command to run the backend
-EXPOSE 8000
+EXPOSE 8002
 WORKDIR /app/apps/backend
 
 # Use 'uv run' to ensure the virtual environment is correctly managed and uvicorn is found
-CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8002"]
