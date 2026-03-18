@@ -1,7 +1,7 @@
 import pytest
 from typing import cast
 from agent_core.supervisor import make_supervisor_node
-from agent_core.state import BaseAgentState
+from agent_core.state import BaseAgentState, build_route_entry
 from langchain_core.messages import HumanMessage
 
 
@@ -90,3 +90,111 @@ async def test_supervisor_routes_to_vision_team():
     assert command.update["active_worker"] is None
     assert command.update["streaming_status"] == "running"
     assert command.update["route_history"][0]["team"] == "vision"
+
+
+@pytest.mark.asyncio
+async def test_head_supervisor_routes_complex_finish_to_finalizer():
+    fake_llm = FakeRouterLLM("FINISH")
+    supervisor_func = make_supervisor_node(
+        fake_llm,  # type: ignore
+        ["research_team", "writing_team", "vision_team"],
+        layer="head",
+        final_node_name="finalizer",
+    )
+
+    state = cast(
+        BaseAgentState,
+        {
+            "messages": [HumanMessage(content="Research something and summarize it")],
+            "next": "",
+            "task_plan": "1. [research_team] Search.\n2. [writing_team] Write.",
+            "route_history": [
+                build_route_entry(
+                    layer="team",
+                    node="supervisor",
+                    next_node="FINISH",
+                    team="research",
+                ),
+                build_route_entry(
+                    layer="team",
+                    node="supervisor",
+                    next_node="FINISH",
+                    team="writing",
+                ),
+            ],
+        },
+    )
+    command = await supervisor_func(state)
+
+    assert command.goto == "finalizer"
+    assert command.update["streaming_status"] == "running"
+    assert command.update["route_history"][0]["next"] == "finalizer"
+
+
+@pytest.mark.asyncio
+async def test_head_supervisor_uses_task_plan_stage_progression():
+    fake_llm = FakeRouterLLM("research_team")
+    supervisor_func = make_supervisor_node(
+        fake_llm,  # type: ignore
+        ["research_team", "writing_team", "vision_team"],
+        layer="head",
+        final_node_name="finalizer",
+    )
+
+    state = cast(
+        BaseAgentState,
+        {
+            "messages": [HumanMessage(content="Research and summarize")],
+            "next": "",
+            "task_plan": "1. [research_team] Search.\n2. [writing_team] Write.",
+            "route_history": [
+                build_route_entry(
+                    layer="team",
+                    node="supervisor",
+                    next_node="FINISH",
+                    team="research",
+                )
+            ],
+        },
+    )
+    command = await supervisor_func(state)
+
+    assert command.goto == "writing_team"
+    assert command.update["active_team"] == "writing"
+
+
+@pytest.mark.asyncio
+async def test_research_team_supervisor_stops_after_dispatch_limit():
+    fake_llm = FakeRouterLLM("search_agent")
+    supervisor_func = make_supervisor_node(
+        fake_llm,  # type: ignore
+        ["search_agent", "web_scraper"],
+        layer="team",
+        team_name="ResearchTeam",
+        max_team_dispatches=5,
+    )
+
+    state = cast(
+        BaseAgentState,
+        {
+            "messages": [HumanMessage(content="Keep researching")],
+            "next": "",
+            "shared_context": {"research_dispatch_count": 5},
+            "route_history": [
+                build_route_entry(
+                    layer="team",
+                    node="supervisor",
+                    next_node="search_agent",
+                    team="research",
+                    worker="search_agent",
+                )
+                for _ in range(5)
+            ],
+        },
+    )
+    command = await supervisor_func(state)
+
+    assert command.goto == "__end__"
+    assert command.update["route_history"][0]["next"] == "FINISH"
+    assert command.update["active_team"] is None
+    assert command.update["active_worker"] is None

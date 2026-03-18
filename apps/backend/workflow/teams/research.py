@@ -19,5 +19,6 @@ class ResearchTeamBuilder(TeamBuilder):
 
 def get_research_graph(llm):
     return ResearchTeamBuilder(llm, "ResearchTeam", ["search", "web_scraper"]).build(
-        with_validator=True
+        with_validator=True,
+        max_team_dispatches=5,
     )

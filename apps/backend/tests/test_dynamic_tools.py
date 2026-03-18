@@ -1,15 +1,9 @@
-from typing import cast
 from agent_core.builder import TeamBuilder
-from agent_core.state import BaseAgentState
 from langchain_core.tools import tool
 
 
 class DummyChatModel:
-    def __init__(self, bound_tools=None):
-        self.bound_tools = bound_tools or []
-
-    def bind_tools(self, tools):
-        return DummyChatModel(tools)
+    pass
 
 
 class DummyTeamBuilder(TeamBuilder):
@@ -25,13 +19,15 @@ class DummyTeamBuilder(TeamBuilder):
         self.add_worker("worker_a", tools=[tool_a, tool_b], prompt="prompt")
 
 
-def test_dynamic_tools_binding(monkeypatch):
-    captured_model = []
+def test_worker_registration_uses_concrete_chat_model(monkeypatch):
+    captured = {}
 
     def fake_create_agent(
         *, model, tools=None, system_prompt=None, state_schema=None, name=None, **kwargs
     ):
-        captured_model.append(model)
+        captured["model"] = model
+        captured["tools"] = tools
+        captured["name"] = name
         return lambda state: {}
 
     monkeypatch.setattr("agent_core.builder.create_agent", fake_create_agent)
@@ -39,43 +35,6 @@ def test_dynamic_tools_binding(monkeypatch):
     llm = DummyChatModel()
     DummyTeamBuilder(llm, "DummyTeam", ["worker_a"]).build()  # type: ignore
 
-    dynamic_model = captured_model[0]
-
-    # Test state with no restrictions
-    state1 = cast(BaseAgentState, {"messages": [], "next": ""})
-    model1 = dynamic_model(state1, None)
-    assert len(model1.bound_tools) == 2
-
-    # Test state with restriction
-    state2 = cast(
-        BaseAgentState, {"messages": [], "next": "", "active_tools": ["tool_a"]}
-    )
-    model2 = dynamic_model(state2, None)
-    assert len(model2.bound_tools) == 1
-    assert (
-        getattr(
-            model2.bound_tools[0],
-            "name",
-            getattr(model2.bound_tools[0], "__name__", str(model2.bound_tools[0])),
-        )
-        == "tool_a"
-    )
-
-    # Edge Case 6: 존재하지 않는 도구 이름 주입 (Invalid tool names)
-    state3 = cast(
-        BaseAgentState,
-        {
-            "messages": [],
-            "next": "",
-            "active_tools": ["delete_database", "hack_system"],
-        },
-    )
-    model3 = dynamic_model(state3, None)
-    # Should safely filter to empty list and return unbound llm (0 tools)
-    assert len(getattr(model3, "bound_tools", [])) == 0
-
-    # Edge Case 7: 도구 리스트가 완전히 비워진 경우의 ReAct Agent
-    state4 = cast(BaseAgentState, {"messages": [], "next": "", "active_tools": []})
-    model4 = dynamic_model(state4, None)
-    # Should return self.llm directly (no bound_tools or empty bound_tools)
-    assert len(getattr(model4, "bound_tools", [])) == 0
+    assert captured["model"] is llm
+    assert captured["name"] == "worker_a"
+    assert len(captured["tools"]) == 2

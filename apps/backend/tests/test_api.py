@@ -115,6 +115,7 @@ def test_chat_stream_emits_normalized_events(monkeypatch):
             yield {
                 "event": "on_chat_model_stream",
                 "name": "search",
+                "metadata": {"langgraph_node": "search"},
                 "data": {"chunk": chunk},
                 "run_id": "model-1",
             }
@@ -176,7 +177,6 @@ def test_chat_stream_emits_normalized_events(monkeypatch):
         "status",
         "tool_start",
         "tool_end",
-        "text",
         "route",
         "status",
         "checkpoint",
@@ -185,9 +185,16 @@ def test_chat_stream_emits_normalized_events(monkeypatch):
     assert payloads[1]["target"] == "research_team"
     assert payloads[2]["active_team"] == "research"
     assert payloads[3]["tool_name"] == "tavily_tool"
-    assert payloads[5]["content"] == "hello"
-    assert payloads[7]["status"] == "completed"
-    assert payloads[8]["checkpoint_id"] == "cp-1"
+    completed_status = next(
+        payload
+        for payload in payloads
+        if payload["event_type"] == "status" and payload["status"] == "completed"
+    )
+    checkpoint_payload = next(
+        payload for payload in payloads if payload["event_type"] == "checkpoint"
+    )
+    assert completed_status["status"] == "completed"
+    assert checkpoint_payload["checkpoint_id"] == "cp-1"
     assert len(persisted_batches) == 1
     assert all(event.event_type != "text" for event in persisted_batches[0])
 
@@ -291,6 +298,228 @@ def test_chat_stream_direct_supervisor_response_uses_same_text_contract(monkeypa
         and "hello from supervisor" in payload["content"]
         for payload in payloads
     )
+
+
+def test_chat_stream_suppresses_internal_structured_output_tokens(monkeypatch):
+    class MockTuple:
+        tasks = ["dummy_task"]
+
+    class MockSaver:
+        async def setup(self):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def aget_tuple(self, config):
+            return MockTuple()
+
+    monkeypatch.setattr(AsyncPostgresSaver, "from_conn_string", lambda x: MockSaver())
+
+    class Snapshot:
+        config = {
+            "configurable": {
+                "thread_id": "structured_1",
+                "checkpoint_id": "cp-structured",
+                "checkpoint_ns": "",
+            }
+        }
+        values = {
+            "messages": ["user", "assistant"],
+            "route_history": [],
+            "streaming_status": "completed",
+        }
+        next = ()
+        created_at = "2026-03-11T00:00:00+00:00"
+
+    class Chunk:
+        def __init__(self, text: str):
+            self.content = [{"type": "text", "text": text}]
+            self.additional_kwargs = {}
+
+    class MockGraph:
+        async def astream_events(self, *args, **kwargs):
+            for text in ['{"', "plan", '":"', "NO_PLAN", '"}']:
+                yield {
+                    "event": "on_chat_model_stream",
+                    "name": "ChatOpenAI",
+                    "metadata": {"langgraph_node": "planner"},
+                    "data": {"chunk": Chunk(text)},
+                    "run_id": "planner-run",
+                }
+            for text in [
+                "{",
+                '"reasoning":"simple greeting",',
+                '"next":"FINISH",',
+                '"content":"hello from supervisor"}',
+            ]:
+                yield {
+                    "event": "on_chat_model_stream",
+                    "name": "ChatOpenAI",
+                    "metadata": {"langgraph_node": "head_supervisor"},
+                    "data": {"chunk": Chunk(text)},
+                    "run_id": "supervisor-run",
+                }
+            yield {
+                "event": "on_chain_end",
+                "name": "head_supervisor",
+                "data": {
+                    "output": Command(
+                        update={
+                            "messages": [AIMessage(content="hello from supervisor")],
+                            "active_team": None,
+                            "active_worker": None,
+                            "streaming_status": "completed",
+                            "route_history": [
+                                build_route_entry(
+                                    layer="head",
+                                    node="head_supervisor",
+                                    next_node="FINISH",
+                                    status="completed",
+                                )
+                            ],
+                        },
+                        goto="__end__",
+                    )
+                },
+            }
+
+        async def aget_state(self, config, subgraphs=False):
+            return Snapshot()
+
+    monkeypatch.setattr(
+        "api.routes.chat.get_orchagent_graph",
+        lambda: type("B", (), {"compile": lambda self, checkpointer: MockGraph()})(),
+    )
+
+    async def mock_create_events(*args, **kwargs):
+        return []
+
+    monkeypatch.setattr(TraceService, "create_events", mock_create_events)
+
+    async def mock_log_message(*args, **kwargs):
+        pass
+
+    from services.logging_service import LoggingService
+
+    monkeypatch.setattr(LoggingService, "log_message", mock_log_message)
+
+    with client.stream(
+        "POST", "/api/chat", json={"message": "hello", "thread_id": "structured_1"}
+    ) as response:
+        payloads = _sse_payloads(response)
+
+    text_payloads = [
+        payload["content"] for payload in payloads if payload["event_type"] == "text"
+    ]
+
+    assert "".join(text_payloads) == "hello from supervisor"
+    assert not any(
+        '"plan"' in payload or '"reasoning"' in payload for payload in text_payloads
+    )
+
+
+def test_chat_stream_suppresses_worker_text_from_final_answer_channel(monkeypatch):
+    class MockTuple:
+        tasks = ["dummy_task"]
+
+    class MockSaver:
+        async def setup(self):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def aget_tuple(self, config):
+            return MockTuple()
+
+    monkeypatch.setattr(AsyncPostgresSaver, "from_conn_string", lambda x: MockSaver())
+
+    class Snapshot:
+        config = {
+            "configurable": {
+                "thread_id": "worker_suppressed",
+                "checkpoint_id": "cp-worker",
+                "checkpoint_ns": "",
+            }
+        }
+        values = {
+            "messages": ["user", "assistant"],
+            "route_history": [],
+            "streaming_status": "completed",
+        }
+        next = ()
+        created_at = "2026-03-11T00:00:00+00:00"
+
+    class MockGraph:
+        async def astream_events(self, *args, **kwargs):
+            yield {
+                "event": "on_chat_model_stream",
+                "name": "ChatOpenAI",
+                "metadata": {"langgraph_node": "search"},
+                "data": {"chunk": AIMessageChunk(content="internal research draft")},
+                "run_id": "search-run",
+            }
+            yield {
+                "event": "on_chain_end",
+                "name": "head_supervisor",
+                "data": {
+                    "output": Command(
+                        update={
+                            "messages": [AIMessage(content="final answer")],
+                            "active_team": None,
+                            "active_worker": None,
+                            "streaming_status": "completed",
+                            "route_history": [
+                                build_route_entry(
+                                    layer="head",
+                                    node="head_supervisor",
+                                    next_node="FINISH",
+                                    status="completed",
+                                )
+                            ],
+                        },
+                        goto="__end__",
+                    )
+                },
+            }
+
+        async def aget_state(self, config, subgraphs=False):
+            return Snapshot()
+
+    monkeypatch.setattr(
+        "api.routes.chat.get_orchagent_graph",
+        lambda: type("B", (), {"compile": lambda self, checkpointer: MockGraph()})(),
+    )
+
+    async def mock_create_events(*args, **kwargs):
+        return []
+
+    monkeypatch.setattr(TraceService, "create_events", mock_create_events)
+
+    async def mock_log_message(*args, **kwargs):
+        pass
+
+    from services.logging_service import LoggingService
+
+    monkeypatch.setattr(LoggingService, "log_message", mock_log_message)
+
+    with client.stream(
+        "POST", "/api/chat", json={"message": "hello", "thread_id": "worker_suppressed"}
+    ) as response:
+        payloads = _sse_payloads(response)
+
+    text_payloads = [
+        payload["content"] for payload in payloads if payload["event_type"] == "text"
+    ]
+    assert "internal research draft" not in "".join(text_payloads)
+    assert "".join(text_payloads) == "final answer"
 
 
 def test_chat_stream_resume_same_thread_id_restores_checkpoint_state(monkeypatch):

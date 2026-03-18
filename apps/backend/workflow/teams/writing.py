@@ -35,4 +35,4 @@ class WritingTeamBuilder(TeamBuilder):
 def get_writing_graph(llm):
     return WritingTeamBuilder(
         llm, "WritingTeam", ["doc_writer", "note_taker", "chart_generator"]
-    ).build(with_validator=True)
+    ).build(with_validator=True, max_team_dispatches=3)

@@ -94,9 +94,15 @@ def test_chat_stream_client_disconnect_saves_traces(monkeypatch):
     # The final assertion: even though the stream was cancelled, the "First chunk" trace
     # and the status trace must have been appended and persisted in the finally block.
 
-    # Find text_summary trace event generated in finally block
+    # Internal worker text is no longer emitted on the final-answer channel,
+    # so disconnect persistence should still keep the running status trace
+    # without fabricating a user-facing text summary.
+    status_traces = [
+        t for t in captured_traces if t.payload.get("event_type") == "status"
+    ]
     summary_traces = [
         t for t in captured_traces if t.payload.get("event_type") == "text_summary"
     ]
-    assert len(summary_traces) == 1
-    assert "First chunk of response" in summary_traces[0].payload.get("content", "")
+
+    assert any(trace.payload.get("status") == "running" for trace in status_traces)
+    assert summary_traces == []

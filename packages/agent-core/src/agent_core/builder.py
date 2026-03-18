@@ -28,30 +28,16 @@ class TeamBuilder(ABC):
         pass
 
     def add_worker(self, node_name: str, *, tools: List[Any], prompt: str):
-        """Register a worker as a native LangGraph subgraph instead of a blocking wrapper."""
+        """Register a worker as a native LangGraph subgraph.
 
-        # Create a dynamic model wrapper to filter tools based on state
-        def dynamic_model(state: BaseAgentState, runtime):
-            active_tools = state.get("active_tools")
-
-            # If no restriction is specified, bind all tools
-            if active_tools is None:
-                tools_to_bind = tools
-            else:
-                tools_to_bind = [
-                    t
-                    for t in tools
-                    if getattr(t, "name", getattr(t, "__name__", str(t)))
-                    in active_tools
-                ]
-
-            # ReAct agent fails if we bind empty tools list, so we check
-            if tools_to_bind:
-                return self.llm.bind_tools(tools_to_bind)
-            return self.llm
+        Dynamic tool filtering is intentionally disabled for now because the
+        current `langchain.agents.create_agent()` API expects a concrete
+        `BaseChatModel`, not the callable model factory pattern used by older
+        experiments. Tool policy can be reintroduced later via middleware.
+        """
 
         worker_graph = create_agent(
-            model=dynamic_model,  # type: ignore
+            model=self.llm,
             tools=tools,
             system_prompt=prompt,
             state_schema=BaseAgentState,  # type: ignore
@@ -59,7 +45,9 @@ class TeamBuilder(ABC):
         )
         self.builder.add_node(node_name, worker_graph)
 
-    def build(self, with_validator: bool = False):
+    def build(
+        self, with_validator: bool = False, max_team_dispatches: int | None = None
+    ):
         """Compiles the subgraph with a supervisor."""
         # 1. Register Supervisor
         supervisor_node = make_supervisor_node(
@@ -67,6 +55,7 @@ class TeamBuilder(ABC):
             self.members,
             layer="team",
             team_name=self.team_name,
+            max_team_dispatches=max_team_dispatches,
         )
         self.builder.add_node("supervisor", supervisor_node)
 

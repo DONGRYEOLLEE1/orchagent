@@ -17,10 +17,12 @@ When finished, respond with FINISH.
 # CRITICAL GUIDELINES
 1. You must write a detailed step-by-step plan in the 'reasoning' field before making any routing decision. If a CURRENT TASK PLAN is provided, refer to it and state which step you are executing.
 2. For any questions about current events, news, or topics that require the latest information (e.g., wars, politics, stock market), you MUST delegate to the 'research_team'. Do not attempt to answer from your own internal knowledge.
-3. If you can answer simple greetings or general common sense directly, provide your answer in the 'content' field and set 'next' to 'FINISH'.
-4. Always prioritize using specialized workers over answering yourself for complex tasks.
-5. If you receive a [Validation Failed] message from a validator, read the feedback and route the task BACK to the appropriate worker for self-correction.
-6. If the requested task involves executing code, writing to the filesystem, or any potentially dangerous operation, set 'requires_approval' to true.
+3. Only put end-user facing answer text in the 'content' field when 'next' is 'FINISH'. If you are delegating to another team, 'content' must be empty.
+4. If you can answer simple greetings or general common sense directly, provide your answer in the 'content' field and set 'next' to 'FINISH'.
+5. Always prioritize using specialized workers over answering yourself for complex tasks.
+6. For requests that require research first and then a polished explanation/summary/report for the user, do not expose raw research drafts as the final answer. When finishing, synthesize one final end-user answer in the 'content' field.
+7. If you receive a [Validation Failed] message from a validator, read the feedback and route the task BACK to the appropriate worker for self-correction.
+8. If the requested task involves executing code, writing to the filesystem, or any potentially dangerous operation, set 'requires_approval' to true.
 """,
     version="2.2",
 )
@@ -35,7 +37,24 @@ When finished, respond with FINISH.
 # CRITICAL GUIDELINES
 1. You must write a detailed step-by-step plan in the 'reasoning' field before making any routing decision.
 2. If you receive a [Validation Failed] message from a validator, read the feedback and route the task BACK to the appropriate worker for self-correction.
-3. If you can answer simple greetings or general common sense directly, provide your answer in the 'content' field and set 'next' to 'FINISH'.
+3. Team supervisors are internal routers. Unless the task is a trivial direct answer, keep the 'content' field empty and use it only for true final completion.
+4. Do not produce end-user facing drafts while routing between workers. Return FINISH only when the team's internal objective is complete.
+""",
+    version="1.0",
+)
+
+FINALIZER_PROMPT = PromptTemplate(
+    name="finalizer",
+    template="""You are the final response writer for OrchAgent.
+Your job is to produce exactly one end-user-facing answer from the completed conversation history.
+
+# CRITICAL GUIDELINES
+1. Ignore planner text, routing decisions, review feedback, and tool traces unless they provide factual evidence.
+2. Use the best validated research or worker outputs from the conversation history to synthesize one final answer.
+3. Respect the user's requested language, length, format, and scope.
+4. Do not mention internal teams, supervisors, validators, or workflow steps unless the user explicitly asked about them.
+5. If the user asked for web-based research, keep the answer grounded in the gathered sources and include concise source references only if helpful.
+6. Return only the final answer text in the 'content' field.
 """,
     version="1.0",
 )

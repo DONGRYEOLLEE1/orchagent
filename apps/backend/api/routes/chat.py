@@ -1,4 +1,5 @@
 import json
+import re
 import sys
 import asyncio
 from datetime import datetime, UTC
@@ -22,6 +23,8 @@ from services.file_logger import JsonLogger
 from services.storage_service import StorageService
 
 router = APIRouter()
+FINAL_TEXT_STREAM_NODES = {"head_supervisor", "finalizer"}
+INTERNAL_MESSAGE_NAMES = {"planner", "supervisor", "reviewer", "validator"}
 
 
 def _utc_timestamp() -> str:
@@ -44,6 +47,123 @@ def _display_name(name: str | None) -> str | None:
 
     parts = name.replace("_team", "").replace("_", " ").split()
     return " ".join(part.capitalize() for part in parts)
+
+
+def _event_node_name(event: dict[str, Any]) -> str:
+    metadata = event.get("metadata") or {}
+    return metadata.get("langgraph_node") or event.get("name", "unknown")
+
+
+def _parse_json_string(value: str) -> str:
+    return json.loads(f'"{value}"')
+
+
+def _extract_final_supervisor_content_text(
+    text_chunk: str, state: dict[str, Any]
+) -> str:
+    if not text_chunk and not (
+        state.get("content_done")
+        and state.get("next_parsed")
+        and state.get("next_value") == "FINISH"
+        and state.get("pending_content")
+    ):
+        return ""
+
+    if state.get("content_done") and state.get("next_parsed"):
+        pending_content = state.get("pending_content", "")
+        if state.get("next_value") == "FINISH" and pending_content:
+            state["pending_content"] = ""
+            return pending_content
+        state["pending_content"] = ""
+        return ""
+
+    raw_buffer = state.get("raw_buffer", "") + text_chunk
+    state["raw_buffer"] = raw_buffer
+
+    if not state.get("next_parsed"):
+        next_match = re.search(r'"next":"((?:\\.|[^"])*)"', raw_buffer)
+        if next_match:
+            state["next_parsed"] = True
+            state["next_value"] = _parse_json_string(next_match.group(1))
+
+    if state.get("content_scan_pos") is None:
+        marker = '"content":"'
+        marker_index = raw_buffer.find(marker)
+        if marker_index != -1:
+            state["content_scan_pos"] = marker_index + len(marker)
+
+    scan_pos = state.get("content_scan_pos")
+    if scan_pos is None:
+        return ""
+
+    emitted: list[str] = []
+    pending_content = state.get("pending_content", "")
+    escape_next = state.get("escape_next", False)
+
+    while scan_pos < len(raw_buffer):
+        char = raw_buffer[scan_pos]
+        scan_pos += 1
+
+        if escape_next:
+            decoded_char = {
+                "n": "\n",
+                "r": "\r",
+                "t": "\t",
+                '"': '"',
+                "\\": "\\",
+            }.get(char, char)
+            if state.get("next_parsed") and state.get("next_value") == "FINISH":
+                emitted.append(decoded_char)
+            else:
+                pending_content += decoded_char
+            escape_next = False
+            continue
+
+        if char == "\\":
+            escape_next = True
+            continue
+
+        if char == '"':
+            state["content_done"] = True
+            break
+
+        if state.get("next_parsed") and state.get("next_value") == "FINISH":
+            emitted.append(char)
+        else:
+            pending_content += char
+
+    state["content_scan_pos"] = scan_pos
+    state["escape_next"] = escape_next
+
+    if state.get("next_parsed"):
+        if state.get("next_value") == "FINISH":
+            if pending_content:
+                emitted.insert(0, pending_content)
+                pending_content = ""
+        else:
+            pending_content = ""
+
+    state["pending_content"] = pending_content
+    return "".join(emitted)
+
+
+def _normalize_model_text_chunk(
+    event: dict[str, Any],
+    text_chunk: str,
+    structured_content_states: dict[str, dict[str, Any]],
+) -> str:
+    if not text_chunk:
+        return ""
+
+    node_name = _event_node_name(event)
+    if node_name in FINAL_TEXT_STREAM_NODES:
+        run_id = event.get("run_id") or node_name
+        state = structured_content_states.setdefault(run_id, {})
+        if node_name == "finalizer":
+            state.setdefault("next_parsed", True)
+            state.setdefault("next_value", "FINISH")
+        return _extract_final_supervisor_content_text(text_chunk, state)
+    return ""
 
 
 def _serialize_value(value: Any) -> Any:
@@ -114,6 +234,34 @@ def _trace_event(thread_id: str, payload: dict[str, Any]):
         node_name=payload.get("node"),
         payload=payload,
     )
+
+
+def _extract_final_message_from_state(state_values: dict[str, Any]) -> str:
+    messages = state_values.get("messages", [])
+    for message in reversed(messages):
+        message_type = getattr(message, "type", "")
+        if message_type not in {"ai", "assistant"}:
+            continue
+
+        message_name = getattr(message, "name", None)
+        if message_name in INTERNAL_MESSAGE_NAMES or (
+            isinstance(message_name, str) and message_name.endswith("_reviewer")
+        ):
+            continue
+
+        content = _extract_text_content(getattr(message, "content", ""))
+        stripped = content.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("**[Planner]"):
+            continue
+        if stripped.startswith("[Review "):
+            continue
+        if stripped == "FINISH":
+            continue
+        return content
+
+    return ""
 
 
 def _status_payload(
@@ -226,10 +374,14 @@ async def chat_stream(request: ChatRequest, db: AsyncSession = Depends(get_db)):
         else:
             inputs = {"messages": [("user", request.message)]}
 
-        config = {"configurable": {"thread_id": request.thread_id}}
+        config = {
+            "configurable": {"thread_id": request.thread_id},
+            "recursion_limit": settings.GRAPH_RECURSION_LIMIT,
+        }
         final_answer_chunks: list[str] = []
         reasoning_chunks: list[str] = []
         trace_events = []
+        structured_content_states: dict[str, dict[str, Any]] = {}
         graph = None
         completed_payload_emitted = False
 
@@ -257,6 +409,7 @@ async def chat_stream(request: ChatRequest, db: AsyncSession = Depends(get_db)):
                 async for event in graph.astream_events(inputs, config, version="v2"):
                     kind = event["event"]
                     name = event.get("name", "unknown")
+                    event_node = _event_node_name(event)
                     data = event.get("data", {})
                     run_id = event.get("run_id")
 
@@ -268,8 +421,8 @@ async def chat_stream(request: ChatRequest, db: AsyncSession = Depends(get_db)):
                             yield emit(
                                 {
                                     "event_type": "reasoning",
-                                    "node": name,
-                                    "display_name": _display_name(name),
+                                    "node": event_node,
+                                    "display_name": _display_name(event_node),
                                     "content": reasoning_chunk,
                                     "run_id": run_id,
                                     "timestamp": _utc_timestamp(),
@@ -280,14 +433,17 @@ async def chat_stream(request: ChatRequest, db: AsyncSession = Depends(get_db)):
                         text_chunk = _extract_text_content(
                             getattr(chunk, "content", "")
                         )
-                        if text_chunk:
-                            final_answer_chunks.append(text_chunk)
+                        normalized_text_chunk = _normalize_model_text_chunk(
+                            event, text_chunk, structured_content_states
+                        )
+                        if normalized_text_chunk:
+                            final_answer_chunks.append(normalized_text_chunk)
                             yield emit(
                                 {
                                     "event_type": "text",
-                                    "node": name,
-                                    "display_name": _display_name(name),
-                                    "content": text_chunk,
+                                    "node": event_node,
+                                    "display_name": _display_name(event_node),
+                                    "content": normalized_text_chunk,
                                     "run_id": run_id,
                                     "timestamp": _utc_timestamp(),
                                 },
@@ -365,7 +521,7 @@ async def chat_stream(request: ChatRequest, db: AsyncSession = Depends(get_db)):
                                     )
 
                                 direct_messages = update.get("messages") or []
-                                if direct_messages:
+                                if direct_messages and status == "completed":
                                     content_str = _extract_text_content(
                                         getattr(direct_messages[-1], "content", "")
                                     )
@@ -383,9 +539,43 @@ async def chat_stream(request: ChatRequest, db: AsyncSession = Depends(get_db)):
                                                 persist=False,
                                             )
 
+                            elif name == "finalizer":
+                                status = update.get("streaming_status")
+                                if status:
+                                    completed_payload_emitted = status == "completed"
+                                    yield emit(
+                                        _status_payload(
+                                            status=status,
+                                            thread_id=request.thread_id,
+                                            node=name,
+                                            message="Completed",
+                                        )
+                                    )
+
                 checkpoint_payload = await _build_checkpoint_payload(
                     graph, config, request.thread_id
                 )
+
+                snapshot = await graph.aget_state(config, subgraphs=True)
+                state_values = (
+                    snapshot.values if isinstance(snapshot.values, dict) else {}
+                )
+                if not final_answer_chunks:
+                    fallback_answer = _extract_final_message_from_state(state_values)
+                    if fallback_answer:
+                        for text_chunk in _chunk_text(fallback_answer):
+                            final_answer_chunks.append(text_chunk)
+                            yield emit(
+                                {
+                                    "event_type": "text",
+                                    "node": "assistant",
+                                    "display_name": "Assistant",
+                                    "content": text_chunk,
+                                    "timestamp": _utc_timestamp(),
+                                },
+                                persist=False,
+                            )
+
                 yield emit(checkpoint_payload)
 
                 if not completed_payload_emitted:
@@ -550,11 +740,15 @@ async def chat_resume_stream(
         command = Command(
             resume={"action": request.action, "feedback": request.feedback}
         )
-        config = {"configurable": {"thread_id": request.thread_id}}
+        config = {
+            "configurable": {"thread_id": request.thread_id},
+            "recursion_limit": settings.GRAPH_RECURSION_LIMIT,
+        }
 
         final_answer_chunks: list[str] = []
         reasoning_chunks: list[str] = []
         trace_events = []
+        structured_content_states: dict[str, dict[str, Any]] = {}
         graph = None
         completed_payload_emitted = False
 
@@ -582,6 +776,7 @@ async def chat_resume_stream(
                 async for event in graph.astream_events(command, config, version="v2"):
                     kind = event["event"]
                     name = event.get("name", "unknown")
+                    event_node = _event_node_name(event)
                     data = event.get("data", {})
                     run_id = event.get("run_id")
 
@@ -593,8 +788,8 @@ async def chat_resume_stream(
                             yield emit(
                                 {
                                     "event_type": "reasoning",
-                                    "node": name,
-                                    "display_name": _display_name(name),
+                                    "node": event_node,
+                                    "display_name": _display_name(event_node),
                                     "content": reasoning_chunk,
                                     "run_id": run_id,
                                     "timestamp": _utc_timestamp(),
@@ -605,14 +800,17 @@ async def chat_resume_stream(
                         text_chunk = _extract_text_content(
                             getattr(chunk, "content", "")
                         )
-                        if text_chunk:
-                            final_answer_chunks.append(text_chunk)
+                        normalized_text_chunk = _normalize_model_text_chunk(
+                            event, text_chunk, structured_content_states
+                        )
+                        if normalized_text_chunk:
+                            final_answer_chunks.append(normalized_text_chunk)
                             yield emit(
                                 {
                                     "event_type": "text",
-                                    "node": name,
-                                    "display_name": _display_name(name),
-                                    "content": text_chunk,
+                                    "node": event_node,
+                                    "display_name": _display_name(event_node),
+                                    "content": normalized_text_chunk,
                                     "run_id": run_id,
                                     "timestamp": _utc_timestamp(),
                                 },
@@ -690,7 +888,7 @@ async def chat_resume_stream(
                                     )
 
                                 direct_messages = update.get("messages") or []
-                                if direct_messages:
+                                if direct_messages and status == "completed":
                                     content_str = _extract_text_content(
                                         getattr(direct_messages[-1], "content", "")
                                     )
@@ -708,9 +906,43 @@ async def chat_resume_stream(
                                                 persist=False,
                                             )
 
+                            elif name == "finalizer":
+                                status = update.get("streaming_status")
+                                if status:
+                                    completed_payload_emitted = status == "completed"
+                                    yield emit(
+                                        _status_payload(
+                                            status=status,
+                                            thread_id=request.thread_id,
+                                            node=name,
+                                            message="Completed",
+                                        )
+                                    )
+
                 checkpoint_payload = await _build_checkpoint_payload(
                     graph, config, request.thread_id
                 )
+
+                snapshot = await graph.aget_state(config, subgraphs=True)
+                state_values = (
+                    snapshot.values if isinstance(snapshot.values, dict) else {}
+                )
+                if not final_answer_chunks:
+                    fallback_answer = _extract_final_message_from_state(state_values)
+                    if fallback_answer:
+                        for text_chunk in _chunk_text(fallback_answer):
+                            final_answer_chunks.append(text_chunk)
+                            yield emit(
+                                {
+                                    "event_type": "text",
+                                    "node": "assistant",
+                                    "display_name": "Assistant",
+                                    "content": text_chunk,
+                                    "timestamp": _utc_timestamp(),
+                                },
+                                persist=False,
+                            )
+
                 yield emit(checkpoint_payload)
 
                 if not completed_payload_emitted:

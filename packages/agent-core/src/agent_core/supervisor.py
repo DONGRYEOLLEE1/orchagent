@@ -1,6 +1,8 @@
-from typing import Literal, List, Callable
+import re
+from typing import Literal, List, Callable, Any
 from typing_extensions import TypedDict
 from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import AIMessage
 from langgraph.types import Command
 from langgraph.graph import END
 
@@ -12,6 +14,51 @@ from agent_core.state import (
 from prompt_kit.prompts import SYSTEM_SUPERVISOR_PROMPT, TEAM_SUPERVISOR_PROMPT
 
 
+def _extract_team_stage_sequence(task_plan: str | None) -> list[str]:
+    if not task_plan:
+        return []
+
+    stages = re.findall(r"\[([a-zA-Z0-9_]+_team)\]", task_plan)
+    compressed: list[str] = []
+    for stage in stages:
+        if not compressed or compressed[-1] != stage:
+            compressed.append(stage)
+    return compressed
+
+
+def _extract_completed_team_sequence(route_history: list[Any]) -> list[str]:
+    completed: list[str] = []
+    for entry in route_history:
+        if entry.get("layer") != "team":
+            continue
+        if entry.get("next") != "FINISH":
+            continue
+        team = entry.get("team")
+        if not team:
+            continue
+        completed.append(f"{team}_team")
+    return completed
+
+
+def _next_pending_team_stage(
+    task_plan: str | None, route_history: list[Any]
+) -> str | None:
+    planned = _extract_team_stage_sequence(task_plan)
+    if not planned:
+        return None
+
+    completed = _extract_completed_team_sequence(route_history)
+    completed_index = 0
+
+    for stage in planned:
+        if completed_index < len(completed) and completed[completed_index] == stage:
+            completed_index += 1
+            continue
+        return stage
+
+    return None
+
+
 def make_supervisor_node(
     llm: BaseChatModel,
     members: List[str],
@@ -19,6 +66,8 @@ def make_supervisor_node(
     *,
     layer: Literal["head", "team"] = "head",
     team_name: str | None = None,
+    final_node_name: str | None = None,
+    max_team_dispatches: int | None = None,
 ) -> Callable:
     """
     Creates a supervisor node that manages workflow routing between multiple agents.
@@ -43,6 +92,48 @@ def make_supervisor_node(
             requires_approval: bool
 
         print(f"[Supervisor] Processing next turn... Members: {members}", flush=True)
+        normalized_team = normalize_team_name(team_name)
+        route_history = state.get("route_history", []) or []
+        shared_context = state.get("shared_context", {}) or {}
+        team_dispatch_count_key = (
+            f"{normalized_team}_dispatch_count" if normalized_team else None
+        )
+        team_dispatch_count = (
+            int(shared_context.get(team_dispatch_count_key, 0))
+            if team_dispatch_count_key
+            else 0
+        )
+
+        if layer == "team" and normalized_team and max_team_dispatches is not None:
+            if team_dispatch_count >= max_team_dispatches:
+                print(
+                    f"[Supervisor] {normalized_team} team dispatch limit reached ({team_dispatch_count}/{max_team_dispatches}).",
+                    flush=True,
+                )
+                return Command(
+                    update={
+                        "active_team": None,
+                        "active_worker": None,
+                        "route_history": [
+                            build_route_entry(
+                                layer="team",
+                                node="supervisor",
+                                next_node="FINISH",
+                                team=normalized_team,
+                            )
+                        ],
+                        "messages": [
+                            AIMessage(
+                                content=(
+                                    f"[{normalized_team.capitalize()} Team Limit] Dispatch budget reached. "
+                                    "Return to the head supervisor and synthesize with the gathered evidence."
+                                ),
+                                name="supervisor",
+                            )
+                        ],
+                    },
+                    goto=END,
+                )
 
         # Incorporate task_plan into system prompt if it exists
         task_plan = state.get("task_plan", "")
@@ -91,7 +182,7 @@ def make_supervisor_node(
                 action = user_feedback.get("action")
                 feedback_text = user_feedback.get("feedback")
 
-                from langchain_core.messages import AIMessage, HumanMessage
+                from langchain_core.messages import HumanMessage
 
                 if action == "reject":
                     reject_msg = (
@@ -123,19 +214,80 @@ def make_supervisor_node(
                     return Command(update=update_data, goto="head_supervisor")
                 # if "approve", fall through to normal routing
 
-        if goto == "FINISH":
+        if (
+            layer == "head"
+            and next_node.endswith("_team")
+            and max_team_dispatches is not None
+        ):
+            next_team_name = normalize_team_name(next_node)
+            next_team_dispatch_count = int(
+                shared_context.get(f"{next_team_name}_dispatch_count", 0)
+            )
+            if next_team_dispatch_count >= max_team_dispatches:
+                print(
+                    f"[Supervisor] Head supervisor stopping further {next_team_name} dispatches after {next_team_dispatch_count} team-level dispatches.",
+                    flush=True,
+                )
+                next_node = "FINISH"
+                content = ""
+
+        if layer == "head" and task_plan and task_plan != "NO_PLAN":
+            next_planned_stage = _next_pending_team_stage(task_plan, route_history)
+            if next_planned_stage:
+                if next_node != next_planned_stage:
+                    print(
+                        f"[Supervisor] Overriding head route {next_node} -> {next_planned_stage} based on task plan progress.",
+                        flush=True,
+                    )
+                next_node = next_planned_stage
+                content = ""
+            else:
+                if next_node != "FINISH":
+                    print(
+                        f"[Supervisor] Overriding head route {next_node} -> FINISH because all planned stages are complete.",
+                        flush=True,
+                    )
+                next_node = "FINISH"
+
+        should_use_finalizer = (
+            layer == "head"
+            and next_node == "FINISH"
+            and final_node_name is not None
+            and (
+                (task_plan and task_plan != "NO_PLAN")
+                or any(
+                    entry.get("layer") == "team"
+                    or (
+                        entry.get("layer") == "head"
+                        and entry.get("next") not in {None, "FINISH"}
+                    )
+                    for entry in route_history
+                )
+            )
+        )
+
+        if should_use_finalizer:
+            goto = final_node_name
+            content = ""
+        elif next_node == "FINISH":
             goto = END
+        else:
+            goto = next_node
 
         update_data = {"next": goto}
-        normalized_team = normalize_team_name(team_name)
 
         if layer == "head":
             next_team = (
-                normalize_team_name(next_node) if next_node != "FINISH" else None
+                normalize_team_name(next_node)
+                if next_node not in {"FINISH", final_node_name}
+                else None
             )
             status: Literal["running", "completed"] = (
-                "completed" if next_node == "FINISH" else "running"
+                "completed"
+                if next_node == "FINISH" and not should_use_finalizer
+                else "running"
             )
+            route_next_node = final_node_name if should_use_finalizer else next_node
             update_data.update(
                 {
                     "active_team": next_team,
@@ -145,7 +297,7 @@ def make_supervisor_node(
                         build_route_entry(
                             layer="head",
                             node="head_supervisor",
-                            next_node=next_node,
+                            next_node=route_next_node or next_node,
                             team=next_team,
                             status=status,
                         )
@@ -169,11 +321,13 @@ def make_supervisor_node(
                     ],
                 }
             )
+            if normalized_team and next_worker is not None:
+                update_data["shared_context"] = {
+                    f"{normalized_team}_dispatch_count": team_dispatch_count + 1
+                }
 
         if content:
             # Add the supervisor's response to the message history
-            from langchain_core.messages import AIMessage
-
             update_data["messages"] = [AIMessage(content=content, name="supervisor")]
 
         return Command(update=update_data, goto=goto)

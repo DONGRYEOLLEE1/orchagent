@@ -34,3 +34,341 @@
 {"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 6, "has_images": false, "image_paths": [], "timestamp": "2026-03-12T15:52:37.780931+09:00"}
 {"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-12T15:52:37.826939+09:00"}
 {"session_id": "999", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 7, "has_images": false, "image_paths": [], "timestamp": "2026-03-12T15:52:37.866195+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-12T16:07:38.722600+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 5, "timestamp": "2026-03-12T16:07:38.734626+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-12T16:07:38.742004+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 21, "timestamp": "2026-03-12T16:07:38.743014+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-12T16:07:38.755013+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-12T16:07:38.761071+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 6, "has_images": false, "image_paths": [], "timestamp": "2026-03-12T16:07:38.766306+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-12T16:07:38.772236+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-12T16:19:29.111865+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 5, "timestamp": "2026-03-12T16:19:29.119193+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-12T16:19:29.125659+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 21, "timestamp": "2026-03-12T16:19:29.126529+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-12T16:19:29.136025+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-12T16:19:29.143811+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 6, "has_images": false, "image_paths": [], "timestamp": "2026-03-12T16:19:29.148380+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-12T16:19:29.153269+09:00"}
+{"session_id": "999", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 7, "has_images": false, "image_paths": [], "timestamp": "2026-03-12T16:49:37.293782+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-12T16:55:49.291373+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 5, "timestamp": "2026-03-12T16:55:49.342404+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-12T16:55:49.401470+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 21, "timestamp": "2026-03-12T16:55:49.403441+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-12T16:55:49.426897+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-12T16:55:49.511570+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 6, "has_images": false, "image_paths": [], "timestamp": "2026-03-12T16:55:49.518625+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-12T16:55:49.533306+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 22, "has_images": false, "image_paths": [], "timestamp": "2026-03-12T16:56:53.672125+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "resume_start", "action": "approve", "has_feedback": true, "timestamp": "2026-03-12T16:56:53.728354+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-12T16:57:41.460013+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 5, "timestamp": "2026-03-12T16:57:41.469091+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-12T16:57:41.479211+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 21, "timestamp": "2026-03-12T16:57:41.480325+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-12T16:57:41.493227+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-12T16:57:41.499718+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 6, "has_images": false, "image_paths": [], "timestamp": "2026-03-12T16:57:41.510934+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-12T16:57:41.520034+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 22, "has_images": false, "image_paths": [], "timestamp": "2026-03-12T16:57:41.531003+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 22, "has_images": false, "image_paths": [], "timestamp": "2026-03-12T16:58:15.577088+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 22, "has_images": false, "image_paths": [], "timestamp": "2026-03-12T16:59:36.294869+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 22, "has_images": false, "image_paths": [], "timestamp": "2026-03-12T17:01:18.919778+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 22, "has_images": false, "image_paths": [], "timestamp": "2026-03-12T17:02:00.347074+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 22, "has_images": false, "image_paths": [], "timestamp": "2026-03-12T17:03:12.376107+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 22, "has_images": false, "image_paths": [], "timestamp": "2026-03-12T17:04:40.725334+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 22, "has_images": false, "image_paths": [], "timestamp": "2026-03-12T17:05:17.809771+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "resume_start", "action": "approve", "has_feedback": true, "timestamp": "2026-03-12T17:05:17.824955+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-13T10:01:05.181216+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 5, "timestamp": "2026-03-13T10:01:05.218644+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-13T10:01:05.290666+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 21, "timestamp": "2026-03-13T10:01:05.291687+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-13T10:01:05.315396+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-13T10:01:05.398376+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 6, "has_images": false, "image_paths": [], "timestamp": "2026-03-13T10:01:05.408029+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-13T10:01:05.419071+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 22, "has_images": false, "image_paths": [], "timestamp": "2026-03-13T10:01:05.426885+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "resume_start", "action": "approve", "has_feedback": true, "timestamp": "2026-03-13T10:01:05.434725+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-13T10:58:56.218465+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 5, "timestamp": "2026-03-13T10:58:56.226711+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-13T10:58:56.233756+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 21, "timestamp": "2026-03-13T10:58:56.234762+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-13T10:58:56.251888+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-13T10:58:56.270816+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 6, "has_images": false, "image_paths": [], "timestamp": "2026-03-13T10:58:56.278582+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-13T10:58:56.289480+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 22, "has_images": false, "image_paths": [], "timestamp": "2026-03-13T10:58:56.298404+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "resume_start", "action": "approve", "has_feedback": true, "timestamp": "2026-03-13T10:58:56.309879+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T15:07:02.751018+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 5, "timestamp": "2026-03-16T15:07:02.761131+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T15:07:02.768884+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 21, "timestamp": "2026-03-16T15:07:02.770143+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T15:07:02.781763+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-16T15:07:02.793395+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 6, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T15:07:02.800925+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-16T15:07:02.807964+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 22, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T15:07:02.815437+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T15:10:02.094447+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 5, "timestamp": "2026-03-16T15:10:02.102691+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T15:10:02.111552+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 21, "timestamp": "2026-03-16T15:10:02.113540+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T15:10:02.121881+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-16T15:10:02.129277+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 6, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T15:10:02.133843+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-16T15:10:02.138265+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 22, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T15:10:02.145725+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "resume_start", "action": "approve", "has_feedback": true, "timestamp": "2026-03-16T15:10:02.156519+09:00"}
+{"session_id": "valid_id", "user_id": "anonymous_user", "event_type": "resume_start", "action": "feedback", "has_feedback": true, "timestamp": "2026-03-16T15:10:29.699267+09:00"}
+{"session_id": "disconnect_thread", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T15:26:11.719323+09:00"}
+{"session_id": "disconnect_thread", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T15:26:46.889135+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T15:33:36.071995+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 5, "timestamp": "2026-03-16T15:33:36.078924+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T15:33:36.085110+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 21, "timestamp": "2026-03-16T15:33:36.086008+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T15:33:36.093778+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-16T15:33:36.098735+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 6, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T15:33:36.103369+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-16T15:33:36.109033+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 22, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T15:33:36.114477+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "resume_start", "action": "approve", "has_feedback": true, "timestamp": "2026-03-16T15:33:36.121187+09:00"}
+{"session_id": "disconnect_thread", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T15:33:36.126710+09:00"}
+{"session_id": "valid_id", "user_id": "anonymous_user", "event_type": "resume_start", "action": "feedback", "has_feedback": true, "timestamp": "2026-03-16T15:33:36.144106+09:00"}
+{"session_id": "999", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 7, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T15:33:36.942970+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T15:37:31.802796+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 5, "timestamp": "2026-03-16T15:37:31.814198+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T15:37:31.821653+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 21, "timestamp": "2026-03-16T15:37:31.822984+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T15:37:31.854296+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-16T15:37:31.866167+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 6, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T15:37:31.877464+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-16T15:37:31.893640+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 22, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T15:37:31.901110+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "resume_start", "action": "approve", "has_feedback": true, "timestamp": "2026-03-16T15:37:31.918987+09:00"}
+{"session_id": "disconnect_thread", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T15:37:31.934862+09:00"}
+{"session_id": "valid_id", "user_id": "anonymous_user", "event_type": "resume_start", "action": "feedback", "has_feedback": true, "timestamp": "2026-03-16T15:37:32.018935+09:00"}
+{"session_id": "999", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 7, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T15:37:34.539065+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T15:37:36.927004+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 5, "timestamp": "2026-03-16T15:37:36.965103+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T15:37:36.997415+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 21, "timestamp": "2026-03-16T15:37:36.998756+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T15:37:37.052546+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-16T15:37:37.109749+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 6, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T15:37:37.234813+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-16T15:37:37.268800+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 22, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T15:37:37.374983+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "resume_start", "action": "approve", "has_feedback": true, "timestamp": "2026-03-16T15:37:37.474690+09:00"}
+{"session_id": "disconnect_thread", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T15:37:37.604028+09:00"}
+{"session_id": "valid_id", "user_id": "anonymous_user", "event_type": "resume_start", "action": "feedback", "has_feedback": true, "timestamp": "2026-03-16T15:37:37.772069+09:00"}
+{"session_id": "999", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 7, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T15:37:40.423731+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T16:11:13.677573+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 5, "timestamp": "2026-03-16T16:11:13.693285+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T16:11:13.703251+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 21, "timestamp": "2026-03-16T16:11:13.704126+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T16:11:13.712573+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-16T16:11:13.719795+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 6, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T16:11:13.727005+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-16T16:11:13.742068+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 22, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T16:11:13.751206+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "resume_start", "action": "approve", "has_feedback": true, "timestamp": "2026-03-16T16:11:13.758814+09:00"}
+{"session_id": "disconnect_thread", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T16:11:13.765665+09:00"}
+{"session_id": "valid_id", "user_id": "anonymous_user", "event_type": "resume_start", "action": "feedback", "has_feedback": true, "timestamp": "2026-03-16T16:11:13.785997+09:00"}
+{"session_id": "999", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 7, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T16:11:15.653779+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T16:52:00.967786+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 5, "timestamp": "2026-03-16T16:52:00.979413+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T16:52:00.988023+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 21, "timestamp": "2026-03-16T16:52:00.989463+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T16:52:01.001805+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-16T16:52:01.009829+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 6, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T16:52:01.014229+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-16T16:52:01.019047+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 22, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T16:52:01.025120+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "resume_start", "action": "approve", "has_feedback": true, "timestamp": "2026-03-16T16:52:01.033146+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T16:52:19.219255+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 5, "timestamp": "2026-03-16T16:52:19.230344+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T16:52:19.243056+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 21, "timestamp": "2026-03-16T16:52:19.245074+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T16:52:19.258090+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-16T16:52:19.267012+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 6, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T16:52:19.272512+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-16T16:52:19.283005+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 22, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T16:52:19.294048+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "resume_start", "action": "approve", "has_feedback": true, "timestamp": "2026-03-16T16:52:19.302373+09:00"}
+{"session_id": "disconnect_thread", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T16:52:19.308670+09:00"}
+{"session_id": "valid_id", "user_id": "anonymous_user", "event_type": "resume_start", "action": "feedback", "has_feedback": true, "timestamp": "2026-03-16T16:52:19.331874+09:00"}
+{"session_id": "999", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 7, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T16:52:20.489864+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T17:13:06.067460+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 5, "timestamp": "2026-03-16T17:13:06.075101+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T17:13:06.083380+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 21, "timestamp": "2026-03-16T17:13:06.085924+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T17:13:06.097504+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-16T17:13:06.103515+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 6, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T17:13:06.108794+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-16T17:13:06.113905+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 22, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T17:13:06.120374+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "resume_start", "action": "approve", "has_feedback": true, "timestamp": "2026-03-16T17:13:06.130805+09:00"}
+{"session_id": "disconnect_thread", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T17:13:06.136586+09:00"}
+{"session_id": "valid_id", "user_id": "anonymous_user", "event_type": "resume_start", "action": "feedback", "has_feedback": true, "timestamp": "2026-03-16T17:13:06.154562+09:00"}
+{"session_id": "999", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 7, "has_images": false, "image_paths": [], "timestamp": "2026-03-16T17:13:06.753830+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T11:10:40.758367+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 5, "timestamp": "2026-03-18T11:10:40.788202+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T11:10:40.827629+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 21, "timestamp": "2026-03-18T11:10:40.828709+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T11:10:40.858679+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-18T11:10:40.908508+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 6, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T11:10:40.924552+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-18T11:10:40.933688+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 22, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T11:10:40.944185+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "resume_start", "action": "approve", "has_feedback": true, "timestamp": "2026-03-18T11:10:40.954310+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T11:13:37.373595+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 5, "timestamp": "2026-03-18T11:13:37.387851+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T11:13:37.394187+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 21, "timestamp": "2026-03-18T11:13:37.395079+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T11:13:37.409804+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-18T11:13:37.573650+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 6, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T11:13:37.586479+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-18T11:13:37.593452+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 22, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T11:13:37.601791+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "resume_start", "action": "approve", "has_feedback": true, "timestamp": "2026-03-18T11:13:37.609168+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T11:18:47.456194+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 5, "timestamp": "2026-03-18T11:18:47.484206+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T11:18:47.513378+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 21, "timestamp": "2026-03-18T11:18:47.515136+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T11:18:47.531753+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-18T11:18:47.552155+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 6, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T11:18:47.566108+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-18T11:18:47.582156+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 22, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T11:18:47.599070+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "resume_start", "action": "approve", "has_feedback": true, "timestamp": "2026-03-18T11:18:47.610146+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T12:35:41.613929+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 5, "timestamp": "2026-03-18T12:35:41.621520+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T12:35:41.629040+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 21, "timestamp": "2026-03-18T12:35:41.629819+09:00"}
+{"session_id": "structured_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T12:35:41.634627+09:00"}
+{"session_id": "structured_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 21, "timestamp": "2026-03-18T12:35:41.638980+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T12:35:41.646146+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-18T12:35:41.656233+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 6, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T12:35:41.660363+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-18T12:35:41.665536+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 22, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T12:35:41.671216+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "resume_start", "action": "approve", "has_feedback": true, "timestamp": "2026-03-18T12:35:41.679414+09:00"}
+{"session_id": "disconnect_thread", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T12:35:41.684499+09:00"}
+{"session_id": "999", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 7, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T12:35:41.689431+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:10:59.096417+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 5, "timestamp": "2026-03-18T13:10:59.105819+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:10:59.125214+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 21, "timestamp": "2026-03-18T13:10:59.126731+09:00"}
+{"session_id": "structured_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:10:59.138227+09:00"}
+{"session_id": "structured_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 21, "timestamp": "2026-03-18T13:10:59.139808+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:10:59.153530+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-18T13:10:59.170479+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 6, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:10:59.174450+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-18T13:10:59.182274+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 22, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:10:59.187708+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "resume_start", "action": "approve", "has_feedback": true, "timestamp": "2026-03-18T13:10:59.195823+09:00"}
+{"session_id": "disconnect_thread", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:10:59.222452+09:00"}
+{"session_id": "999", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 7, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:10:59.229281+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:17:51.024534+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 5, "timestamp": "2026-03-18T13:17:51.033128+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:17:51.045029+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 21, "timestamp": "2026-03-18T13:17:51.048179+09:00"}
+{"session_id": "structured_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:17:51.054513+09:00"}
+{"session_id": "structured_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 21, "timestamp": "2026-03-18T13:17:51.055335+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:17:51.064270+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-18T13:17:51.074184+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 6, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:17:51.082116+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-18T13:17:51.098112+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 22, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:17:51.107682+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "resume_start", "action": "approve", "has_feedback": true, "timestamp": "2026-03-18T13:17:51.119645+09:00"}
+{"session_id": "disconnect_thread", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:17:51.140297+09:00"}
+{"session_id": "999", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 7, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:17:51.155150+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:42:49.142377+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:42:49.322783+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 21, "timestamp": "2026-03-18T13:42:49.323800+09:00"}
+{"session_id": "structured_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:42:49.331358+09:00"}
+{"session_id": "structured_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 21, "timestamp": "2026-03-18T13:42:49.332833+09:00"}
+{"session_id": "worker_suppressed", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:42:49.337593+09:00"}
+{"session_id": "worker_suppressed", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 12, "timestamp": "2026-03-18T13:42:49.338425+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:42:49.347423+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-18T13:42:49.357424+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 6, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:42:49.364437+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-18T13:42:49.369528+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 22, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:42:49.375195+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "resume_start", "action": "approve", "has_feedback": true, "timestamp": "2026-03-18T13:42:49.383613+09:00"}
+{"session_id": "disconnect_thread", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:42:49.408110+09:00"}
+{"session_id": "999", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 7, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:42:49.422107+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:43:18.735361+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:43:18.749908+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 21, "timestamp": "2026-03-18T13:43:18.750850+09:00"}
+{"session_id": "structured_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:43:18.756077+09:00"}
+{"session_id": "structured_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 21, "timestamp": "2026-03-18T13:43:18.757020+09:00"}
+{"session_id": "worker_suppressed", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:43:18.765772+09:00"}
+{"session_id": "worker_suppressed", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 12, "timestamp": "2026-03-18T13:43:18.768240+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:43:18.778677+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-18T13:43:18.788186+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 6, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:43:18.792253+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-18T13:43:18.803081+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 22, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:43:18.810692+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "resume_start", "action": "approve", "has_feedback": true, "timestamp": "2026-03-18T13:43:18.817472+09:00"}
+{"session_id": "disconnect_thread", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:43:18.836940+09:00"}
+{"session_id": "999", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 7, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:43:18.841420+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:50:57.020925+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:50:57.036248+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 21, "timestamp": "2026-03-18T13:50:57.037135+09:00"}
+{"session_id": "structured_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:50:57.042655+09:00"}
+{"session_id": "structured_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 21, "timestamp": "2026-03-18T13:50:57.045330+09:00"}
+{"session_id": "worker_suppressed", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:50:57.050967+09:00"}
+{"session_id": "worker_suppressed", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 12, "timestamp": "2026-03-18T13:50:57.051835+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:50:57.060571+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-18T13:50:57.071287+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 6, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:50:57.075911+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-18T13:50:57.082669+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 22, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:50:57.088550+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "resume_start", "action": "approve", "has_feedback": true, "timestamp": "2026-03-18T13:50:57.097365+09:00"}
+{"session_id": "disconnect_thread", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:50:57.116525+09:00"}
+{"session_id": "999", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 7, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T13:50:57.121447+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T14:15:44.509399+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T14:15:44.541974+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 21, "timestamp": "2026-03-18T14:15:44.543348+09:00"}
+{"session_id": "structured_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T14:15:44.552448+09:00"}
+{"session_id": "structured_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 21, "timestamp": "2026-03-18T14:15:44.554778+09:00"}
+{"session_id": "worker_suppressed", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T14:15:44.581425+09:00"}
+{"session_id": "worker_suppressed", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 12, "timestamp": "2026-03-18T14:15:44.583012+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T14:15:44.602421+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-18T14:15:44.617788+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 6, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T14:15:44.628848+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-18T14:15:44.641627+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 22, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T14:15:44.652409+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "resume_start", "action": "approve", "has_feedback": true, "timestamp": "2026-03-18T14:15:44.683122+09:00"}
+{"session_id": "disconnect_thread", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T14:15:45.047509+09:00"}
+{"session_id": "999", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 7, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T14:15:45.053665+09:00"}
+{"session_id": "test_123", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T14:16:08.556631+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T14:16:08.571296+09:00"}
+{"session_id": "direct_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 21, "timestamp": "2026-03-18T14:16:08.572116+09:00"}
+{"session_id": "structured_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T14:16:08.578574+09:00"}
+{"session_id": "structured_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 21, "timestamp": "2026-03-18T14:16:08.580836+09:00"}
+{"session_id": "worker_suppressed", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T14:16:08.585745+09:00"}
+{"session_id": "worker_suppressed", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 12, "timestamp": "2026-03-18T14:16:08.586596+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T14:16:08.594192+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-18T14:16:08.608746+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 6, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T14:16:08.616480+09:00"}
+{"session_id": "resume_1", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 6, "timestamp": "2026-03-18T14:16:08.622699+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 22, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T14:16:08.631561+09:00"}
+{"session_id": "interrupt_1", "user_id": "anonymous_user", "event_type": "resume_start", "action": "approve", "has_feedback": true, "timestamp": "2026-03-18T14:16:08.638729+09:00"}
+{"session_id": "disconnect_thread", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 5, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T14:16:08.683022+09:00"}
+{"session_id": "999", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 7, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T14:16:08.687796+09:00"}
+{"session_id": "thread_1773812820314", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 42, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T14:47:00.489742+09:00"}
+{"session_id": "observe_writer_phase", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 42, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T14:49:16.074436+09:00"}
+{"session_id": "thread_1773813105775", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 42, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T14:51:45.919722+09:00"}
+{"session_id": "thread_1773813105775", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 781, "timestamp": "2026-03-18T14:52:58.299751+09:00"}
+{"session_id": "thread_1773813355382", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 42, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T14:55:55.678096+09:00"}
+{"session_id": "thread_1773813588498", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 42, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T14:59:48.653828+09:00"}
+{"session_id": "thread_1773813854393", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 42, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T15:04:14.562600+09:00"}
+{"session_id": "thread_1773814160689", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 6, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T15:09:20.794041+09:00"}
+{"session_id": "thread_1773814160689", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 18, "timestamp": "2026-03-18T15:09:24.067347+09:00"}
+{"session_id": "thread_1773814192527", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 38, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T15:09:52.577860+09:00"}
+{"session_id": "thread_1773814192527", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 884, "timestamp": "2026-03-18T15:11:00.482265+09:00"}
+{"session_id": "count_tool_calls_now", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 38, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T15:24:01.586541+09:00"}
+{"session_id": "thread_1773815211358", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 38, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T15:26:51.432040+09:00"}
+{"session_id": "thread_1773815211358", "user_id": "anonymous_user", "event_type": "turn_end", "response_length": 810, "timestamp": "2026-03-18T15:27:57.983169+09:00"}
+{"session_id": "count_tool_calls_repro", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 38, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T15:28:14.362979+09:00"}
+{"session_id": "count_tool_calls_repro2", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 38, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T15:31:57.032382+09:00"}
+{"session_id": "count_tool_calls_repro3", "user_id": "anonymous_user", "event_type": "turn_start", "message_length": 38, "has_images": false, "image_paths": [], "timestamp": "2026-03-18T15:33:39.754339+09:00"}
