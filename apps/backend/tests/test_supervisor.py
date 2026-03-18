@@ -164,6 +164,76 @@ async def test_head_supervisor_uses_task_plan_stage_progression():
 
 
 @pytest.mark.asyncio
+async def test_head_supervisor_robust_task_plan_regex():
+    fake_llm = FakeRouterLLM("research_team")
+    supervisor_func = make_supervisor_node(
+        fake_llm,  # type: ignore
+        ["research_team", "writing_team", "vision_team"],
+        layer="head",
+        final_node_name="finalizer",
+    )
+
+    # Test with variations in task plan formatting
+    state = cast(
+        BaseAgentState,
+        {
+            "messages": [HumanMessage(content="Robust test")],
+            "next": "",
+            "task_plan": "Step 1: [ Research Team ]\nStep 2: [writing_team]",
+            "route_history": [],
+        },
+    )
+    command = await supervisor_func(state)
+
+    # Should match [ Research Team ] and normalize it to research_team
+    assert command.goto == "research_team"
+    assert command.update["active_team"] == "research"
+
+
+@pytest.mark.asyncio
+async def test_head_supervisor_clears_content_on_finish_override():
+    # LLM wants to answer, but plan says we are done
+    class ContentLLM:
+        def with_structured_output(self, schema):
+            return self
+
+        async def ainvoke(self, messages):
+            return {
+                "next": "research_team",
+                "content": "I should not say this",
+                "reasoning": "Looping?",
+            }
+
+    supervisor_func = make_supervisor_node(
+        ContentLLM(),  # type: ignore
+        ["research_team", "writing_team"],
+        layer="head",
+        final_node_name="finalizer",
+        max_team_dispatches=5,
+    )
+
+    state = cast(
+        BaseAgentState,
+        {
+            "messages": [HumanMessage(content="Done test")],
+            "next": "",
+            "task_plan": "1. [research_team] Done.",
+            "route_history": [
+                build_route_entry(
+                    layer="team", node="supervisor", next_node="FINISH", team="research"
+                )
+            ],
+        },
+    )
+    command = await supervisor_func(state)
+
+    # All planned stages are complete -> should override to FINISH (then finalizer)
+    assert command.goto == "finalizer"
+    # Content should be cleared! In supervisor.py, update_data['messages'] is only set if content is truthy.
+    assert "messages" not in command.update or not command.update["messages"]
+
+
+@pytest.mark.asyncio
 async def test_research_team_supervisor_stops_after_dispatch_limit():
     fake_llm = FakeRouterLLM("search_agent")
     supervisor_func = make_supervisor_node(
