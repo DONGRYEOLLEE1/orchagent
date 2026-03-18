@@ -48,12 +48,17 @@ graph TD
     API -->|Orchestrate| Head[Head Supervisor]
     Head -.->|Interrupts for Approval| User
 
+    %% Final Synthesis Path
+    Head --> Finalizer[Finalizer / Synthesizer]
+    Finalizer -->|Final Answer| API
+
     subgraph Vision Team
         Head --> VS[Vision Supervisor]
         VS --> VAnalyst[Vision Analyst]
         VAnalyst --> VTools[Metadata/Resize Tools]
         VAnalyst -.->|Validates Output| VValidator[Vision Validator]
         VValidator -.->|Self-Correction| VS
+        VS -.->|FINISH| Head
     end
 
     subgraph Research Team
@@ -63,6 +68,7 @@ graph TD
         Search -.->|Validates Output| RValidator[Research Validator]
         Scraper -.-> RValidator
         RValidator -.->|Self-Correction| RS
+        RS -.->|FINISH| Head
     end
 
     subgraph Writing Team
@@ -72,6 +78,7 @@ graph TD
         WS --> Chart[Chart Generator]
         Writer -.->|Validates Output| WValidator[Writing Validator]
         WValidator -.->|Self-Correction| WS
+        WS -.->|FINISH| Head
     end
 
     API -->|SSE Stream| UI[Next.js Frontend]

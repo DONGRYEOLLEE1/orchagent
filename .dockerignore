@@ -1,0 +1,47 @@
+# Node.js
+**/node_modules
+**/.next
+**/out
+**/build
+.npm
+npm-debug.log
+
+# Python
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+**/.ipynb_checkpoints
+*.pyc
+*.pyo
+*.pyd
+
+# Git
+.git
+.gitignore
+.github
+
+# Logs
+**/logs/*.jsonl
+**/logs/*.log
+
+# IDEs
+.vscode
+.idea
+*.swp
+*.swo
+
+# Docker
+infra/docker/*.Dockerfile
+infra/compose/docker-compose.yml
+
+# Project specific
+.env
+.python-version
+uv.lock
+pyproject.toml
+README.md
+GEMINI.md
+plans/
+docs/
