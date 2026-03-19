@@ -106,3 +106,87 @@ def test_chat_stream_client_disconnect_saves_traces(monkeypatch):
 
     assert any(trace.payload.get("status") == "running" for trace in status_traces)
     assert summary_traces == []
+
+
+def test_chat_stream_client_disconnect_closes_fresh_sessions(monkeypatch):
+    class MockSaver:
+        async def setup(self):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def aget_tuple(self, config):
+            return None
+
+    monkeypatch.setattr(AsyncPostgresSaver, "from_conn_string", lambda x: MockSaver())
+
+    class DisconnectGraph:
+        async def astream_events(self, *args, **kwargs):
+            yield {
+                "event": "on_chain_start",
+                "name": "planner",
+                "data": {},
+            }
+            raise asyncio.CancelledError()
+
+        async def aget_state(self, config, subgraphs=False):
+            return type(
+                "Snapshot",
+                (),
+                {"config": {}, "values": {}, "next": (), "created_at": ""},
+            )()
+
+    monkeypatch.setattr(
+        "api.routes.chat.get_orchagent_graph",
+        lambda: type(
+            "B", (), {"compile": lambda self, checkpointer: DisconnectGraph()}
+        )(),
+    )
+
+    exit_markers: list[str] = []
+
+    class TrackingSession:
+        async def __aenter__(self):
+            exit_markers.append("enter")
+            return self
+
+        async def __aexit__(self, *args):
+            exit_markers.append("exit")
+            return False
+
+    class TrackingFactory:
+        def __call__(self):
+            return TrackingSession()
+
+    monkeypatch.setattr("api.routes.chat.AsyncSessionLocal", TrackingFactory())
+
+    from services.logging_service import LoggingService
+
+    async def mock_log(*args, **kwargs):
+        pass
+
+    monkeypatch.setattr(LoggingService, "log_message", mock_log)
+
+    async def mock_create_events(*args, **kwargs):
+        return []
+
+    monkeypatch.setattr(TraceService, "create_events", mock_create_events)
+
+    try:
+        with client.stream(
+            "POST",
+            "/api/chat",
+            json={"message": "hello", "thread_id": "disconnect_close_thread"},
+        ) as response:
+            for _ in response.iter_lines():
+                pass
+    except Exception:
+        pass
+
+    # One session for the initial user log, one for the trace flush in finally.
+    assert exit_markers.count("enter") >= 2
+    assert exit_markers.count("exit") >= 2

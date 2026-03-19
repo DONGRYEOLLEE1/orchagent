@@ -15,7 +15,7 @@ from langgraph.errors import GraphInterrupt
 
 from schemas.chat import ChatRequest, ResumeRequest
 from workflow.main_graph import get_orchagent_graph
-from core.database import get_db
+from core.database import AsyncSessionLocal, get_db
 from core.config import settings
 from services.trace_service import TraceService
 from services.logging_service import LoggingService
@@ -325,8 +325,68 @@ async def _build_checkpoint_payload(graph: Any, config: dict[str, Any], thread_i
     }
 
 
+async def _log_message_with_fresh_session(
+    thread_id: str, *, role: str, content: str
+) -> None:
+    async with AsyncSessionLocal() as db:
+        await LoggingService.log_message(db, thread_id, role=role, content=content)
+
+
+async def _persist_trace_events_with_fresh_session(trace_events: list[Any]) -> None:
+    if not trace_events:
+        return
+
+    async with AsyncSessionLocal() as db:
+        await TraceService.create_events(db, trace_events)
+
+
+def _append_summary_trace_events(
+    thread_id: str,
+    trace_events: list[Any],
+    reasoning_chunks: list[str],
+    final_answer_chunks: list[str],
+) -> None:
+    if reasoning_chunks:
+        trace_events.append(
+            _trace_event(
+                thread_id,
+                {
+                    "event_type": "reasoning_summary",
+                    "node": "assistant",
+                    "content": "".join(reasoning_chunks),
+                    "timestamp": _utc_timestamp(),
+                },
+            )
+        )
+    if final_answer_chunks:
+        trace_events.append(
+            _trace_event(
+                thread_id,
+                {
+                    "event_type": "text_summary",
+                    "node": "assistant",
+                    "content": "".join(final_answer_chunks),
+                    "timestamp": _utc_timestamp(),
+                },
+            )
+        )
+
+
+async def _run_cleanup_task(label: str, operation: Any) -> None:
+    try:
+        await asyncio.shield(operation)
+    except asyncio.CancelledError:
+        print(
+            f"[Chat] Cancelled while waiting for {label}; background cleanup may still continue.",
+            file=sys.stderr,
+            flush=True,
+        )
+    except Exception as exc:
+        print(f"[Chat] Failed during {label}: {exc}", file=sys.stderr, flush=True)
+
+
 @router.post("/chat")
-async def chat_stream(request: ChatRequest, db: AsyncSession = Depends(get_db)):
+async def chat_stream(request: ChatRequest):
     """Streaming endpoint for chat with persistence and tracing."""
     print(
         f"[Chat] Endpoint called! thread_id={request.thread_id}",
@@ -343,8 +403,8 @@ async def chat_stream(request: ChatRequest, db: AsyncSession = Depends(get_db)):
         image_paths = [StorageService.save_base64_image(img) for img in request.images]
 
     # 1. DB Logging
-    await LoggingService.log_message(
-        db, request.thread_id, role="user", content=request.message
+    await _log_message_with_fresh_session(
+        request.thread_id, role="user", content=request.message
     )
 
     # 2. File Logging (Session start/turn)
@@ -590,8 +650,13 @@ async def chat_stream(request: ChatRequest, db: AsyncSession = Depends(get_db)):
 
                 final_answer = "".join(final_answer_chunks)
                 if final_answer:
-                    await LoggingService.log_message(
-                        db, request.thread_id, role="assistant", content=final_answer
+                    await _run_cleanup_task(
+                        "assistant message persist",
+                        _log_message_with_fresh_session(
+                            request.thread_id,
+                            role="assistant",
+                            content=final_answer,
+                        ),
                     )
 
                     JsonLogger.log_session(
@@ -643,48 +708,23 @@ async def chat_stream(request: ChatRequest, db: AsyncSession = Depends(get_db)):
                 }
             )
         finally:
-            if reasoning_chunks:
-                trace_events.append(
-                    _trace_event(
-                        request.thread_id,
-                        {
-                            "event_type": "reasoning_summary",
-                            "node": "assistant",
-                            "content": "".join(reasoning_chunks),
-                            "timestamp": _utc_timestamp(),
-                        },
-                    )
-                )
-            if final_answer_chunks:
-                trace_events.append(
-                    _trace_event(
-                        request.thread_id,
-                        {
-                            "event_type": "text_summary",
-                            "node": "assistant",
-                            "content": "".join(final_answer_chunks),
-                            "timestamp": _utc_timestamp(),
-                        },
-                    )
-                )
-
+            _append_summary_trace_events(
+                request.thread_id,
+                trace_events,
+                reasoning_chunks,
+                final_answer_chunks,
+            )
             if trace_events:
-                try:
-                    await TraceService.create_events(db, trace_events)
-                except Exception as trace_error:
-                    print(
-                        f"[Chat] Failed to persist trace batch: {trace_error}",
-                        file=sys.stderr,
-                        flush=True,
-                    )
+                await _run_cleanup_task(
+                    "trace batch persist",
+                    _persist_trace_events_with_fresh_session(trace_events),
+                )
 
     return EventSourceResponse(event_generator())
 
 
 @router.post("/chat/resume")
-async def chat_resume_stream(
-    request: ResumeRequest, db: AsyncSession = Depends(get_db)
-):
+async def chat_resume_stream(request: ResumeRequest):
     """Streaming endpoint to resume an interrupted graph."""
     print(
         f"[Chat] Resume Endpoint called! thread_id={request.thread_id}, action={request.action}",
@@ -721,8 +761,8 @@ async def chat_resume_stream(
     if request.feedback:
         resume_message += f"\nFeedback: {request.feedback}"
 
-    await LoggingService.log_message(
-        db, request.thread_id, role="user", content=resume_message
+    await _log_message_with_fresh_session(
+        request.thread_id, role="user", content=resume_message
     )
 
     JsonLogger.log_session(
@@ -957,8 +997,13 @@ async def chat_resume_stream(
 
                 final_answer = "".join(final_answer_chunks)
                 if final_answer:
-                    await LoggingService.log_message(
-                        db, request.thread_id, role="assistant", content=final_answer
+                    await _run_cleanup_task(
+                        "assistant message persist",
+                        _log_message_with_fresh_session(
+                            request.thread_id,
+                            role="assistant",
+                            content=final_answer,
+                        ),
                     )
 
                     JsonLogger.log_session(
@@ -1005,40 +1050,17 @@ async def chat_resume_stream(
                 }
             )
         finally:
-            if reasoning_chunks:
-                trace_events.append(
-                    _trace_event(
-                        request.thread_id,
-                        {
-                            "event_type": "reasoning_summary",
-                            "node": "assistant",
-                            "content": "".join(reasoning_chunks),
-                            "timestamp": _utc_timestamp(),
-                        },
-                    )
-                )
-            if final_answer_chunks:
-                trace_events.append(
-                    _trace_event(
-                        request.thread_id,
-                        {
-                            "event_type": "text_summary",
-                            "node": "assistant",
-                            "content": "".join(final_answer_chunks),
-                            "timestamp": _utc_timestamp(),
-                        },
-                    )
-                )
-
+            _append_summary_trace_events(
+                request.thread_id,
+                trace_events,
+                reasoning_chunks,
+                final_answer_chunks,
+            )
             if trace_events:
-                try:
-                    await TraceService.create_events(db, trace_events)
-                except Exception as trace_error:
-                    print(
-                        f"[Chat] Failed to persist trace batch: {trace_error}",
-                        file=sys.stderr,
-                        flush=True,
-                    )
+                await _run_cleanup_task(
+                    "trace batch persist",
+                    _persist_trace_events_with_fresh_session(trace_events),
+                )
 
     return EventSourceResponse(event_generator())
 
