@@ -1,4 +1,4 @@
-from workflow.main_graph import get_orchagent_graph
+from workflow.main_graph import DEFAULT_LLM_MODEL, get_orchagent_graph
 
 
 def test_graph_compilation_success():
@@ -8,7 +8,7 @@ def test_graph_compilation_success():
 
     Graph compilation parses the schema without making actual LLM API calls.
     """
-    builder = get_orchagent_graph(llm_model="gpt-5.4-2026-03-05")
+    builder = get_orchagent_graph(llm_model=DEFAULT_LLM_MODEL)
     graph = builder.compile()
 
     # Verify core nodes exist

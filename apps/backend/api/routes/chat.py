@@ -14,7 +14,7 @@ from langgraph.types import Command
 from langgraph.errors import GraphInterrupt
 
 from schemas.chat import ChatRequest, ResumeRequest
-from workflow.main_graph import get_orchagent_graph
+from workflow.main_graph import DEFAULT_LLM_MODEL, get_orchagent_graph
 from core.database import AsyncSessionLocal, get_db
 from core.config import settings
 from services.trace_service import TraceService
@@ -667,7 +667,7 @@ async def chat_stream(request: ChatRequest):
                     )
                     JsonLogger.log_usage(
                         user_id=user_id,
-                        model="gpt-5.4-2026-03-05",
+                        model=DEFAULT_LLM_MODEL,
                         prompt_tokens=len(request.message) // 4,
                         completion_tokens=len(final_answer) // 4,
                     )

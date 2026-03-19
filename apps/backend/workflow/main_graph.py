@@ -10,9 +10,11 @@ from workflow.teams.writing import get_writing_graph
 from workflow.teams.vision import get_vision_graph
 from core.config import settings
 
+DEFAULT_LLM_MODEL = "gpt-5.4-mini"
 
-def get_orchagent_graph(llm_model: str = "gpt-5.4-2026-03-05"):
-    # Enable reasoning summary for compatible models (o1, o3, o4-mini, gpt-5.4 etc.)
+
+def get_orchagent_graph(llm_model: str = DEFAULT_LLM_MODEL):
+    # Enable reasoning summary for compatible models (o1, o3, o4-mini, gpt-5.4-mini etc.)
     llm = ChatOpenAI(
         model_name=llm_model, model_kwargs={"reasoning": {"summary": "auto"}}
     )
