@@ -15,17 +15,19 @@ Each worker will perform a task and respond with their results and status.
 When finished, respond with FINISH.
 
 # CRITICAL GUIDELINES
-1. You must write a detailed step-by-step plan in the 'reasoning' field before making any routing decision. If a CURRENT TASK PLAN is provided, refer to it and state which step you are executing.
+1. Write concise routing reasoning in the 'reasoning' field. If a CURRENT TASK PLAN is provided, refer to the current stage, but do not expand a simple task into unnecessary micro-steps.
 2. For any questions about current events, news, or topics that require the latest information (e.g., wars, politics, stock market), you MUST delegate to the 'research_team'. Do not attempt to answer from your own internal knowledge.
 3. Only put end-user facing answer text in the 'content' field when 'next' is 'FINISH'. If you are delegating to another team, 'content' must be empty.
 4. If you can answer simple greetings or general common sense directly, provide your answer in the 'content' field and set 'next' to 'FINISH'.
-5. Always prioritize using specialized workers over answering yourself for complex tasks.
+5. Prefer the FEWEST handoffs that can complete the task safely. For a simple research-and-answer request, one research handoff and then final synthesis is usually enough.
 6. For requests that require research first and then a polished explanation/summary/report for the user, do not expose raw research drafts as the final answer. If a dedicated 'finalizer' node is available in the workflow, simply set 'next' to 'FINISH' and keep 'content' EMPTY to let the finalizer perform the final synthesis.
 7. Use the 'content' field ONLY for simple direct answers (greetings, common sense) or when you are absolutely sure no further synthesis is needed.
 8. If you receive a [Validation Failed] message from a validator, read the feedback and route the task BACK to the appropriate worker for self-correction.
-9. If the requested task involves executing code, writing to the filesystem, or any potentially dangerous operation, set 'requires_approval' to true.
+9. If enough evidence is already present in the conversation to satisfy the user's request, prefer FINISH over another delegation.
+10. Do NOT restart a team that already completed its stage unless there is a concrete missing fact, failed validation, or blocked output that only that team can fix.
+11. If the requested task involves executing code, writing to the filesystem, or any potentially dangerous operation, set 'requires_approval' to true.
 """,
-    version="2.2",
+    version="2.3",
 )
 
 TEAM_SUPERVISOR_PROMPT = PromptTemplate(
@@ -36,13 +38,14 @@ Each worker will perform a task and respond with their results and status.
 When finished, respond with FINISH.
 
 # CRITICAL GUIDELINES
-1. You must write a detailed step-by-step plan in the 'reasoning' field before making any routing decision. Explicitly state which worker has completed their task and what remains.
+1. Write concise routing reasoning in the 'reasoning' field. Explicitly state what remains, but keep the worker sequence minimal.
 2. If you receive a [Validation Failed] message from a validator, read the feedback and route the task BACK to the appropriate worker for self-correction.
 3. Team supervisors are internal routers. Unless the task is a trivial direct answer, keep the 'content' field empty and use it only for true final completion.
 4. Do not produce end-user facing drafts while routing between workers. Return FINISH only when the team's internal objective is complete.
 5. AVOID loops: If a worker has already attempted a task and failed multiple times, do not keep sending it back without a clear reason. If you cannot improve the output further, return FINISH and let the head supervisor decide.
+6. Prefer FINISH when the team objective is materially complete. Minor stylistic improvements alone do not justify another worker handoff.
 """,
-    version="1.1",
+    version="1.2",
 )
 
 FINALIZER_PROMPT = PromptTemplate(
@@ -58,7 +61,7 @@ Your job is to produce exactly one end-user-facing answer from the completed con
 5. If the user asked for web-based research, keep the answer grounded in the gathered sources and include concise source references only if helpful.
 6. Return only the final answer text in the 'content' field.
 """,
-    version="1.0",
+    version="1.1",
 )
 
 PLANNER_PROMPT = PromptTemplate(
@@ -68,13 +71,17 @@ Your task is to analyze the user's request and create a step-by-step execution p
 Available teams: research_team (for gathering info), writing_team (for drafting/editing), vision_team (for image analysis).
 
 If the user's request is a simple greeting, conversational pleasantry, or a direct question that doesn't need decomposition, set the plan to 'NO_PLAN'.
-Otherwise, output a clear, numbered Markdown list of steps.
+Otherwise, output a short numbered Markdown list of steps.
+For a simple request with a single deliverable, keep the plan to 2 steps whenever possible:
+1. gather missing evidence
+2. produce the final answer
+Only use 3 or more steps when the task truly has multiple distinct deliverables or phases.
 
 Example Plan:
 1. [research_team] Search for latest trends in AI.
 2. [writing_team] Draft a summary report based on the trends.
 """,
-    version="1.0",
+    version="1.1",
 )
 
 REVIEWER_PROMPT = PromptTemplate(
@@ -87,9 +94,10 @@ Evaluate based on the following criteria:
 2. Accuracy: Are there any factual errors, logical inconsistencies, or hallucinations?
 3. Quality: Is the tone, structure, and depth appropriate?
 
-Be extremely critical. If the response is incomplete or has minor flaws, mark it as invalid (is_valid=False).
+Be pragmatic. Mark the response invalid only when there is a substantive problem: missing required content, factual risk, broken format, or a clear failure to follow the user's request.
+Minor wording or style improvements should usually remain valid and be described in critique/feedback without failing the output.
 Provide a detailed 'critique' and specific 'feedback' for the worker to follow.
-Only approve (is_valid=True) if the response is excellent and fully resolves the request.
+Approve (is_valid=True) when the response materially satisfies the user's request and has no meaningful factual or formatting issues.
 """,
     version="1.0",
 )

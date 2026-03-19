@@ -48,7 +48,9 @@ def _extract_completed_team_sequence(route_history: list[Any]) -> list[str]:
         # Use normalized name to ensure consistency
         normalized = normalize_team_name(team)
         if normalized:
-            completed.append(f"{normalized}_team")
+            full_name = f"{normalized}_team"
+            if not completed or completed[-1] != full_name:
+                completed.append(full_name)
     return completed
 
 
