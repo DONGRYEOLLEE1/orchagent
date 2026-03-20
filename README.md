@@ -21,7 +21,7 @@
 - **💎 Agentic UI**:
     - Real-time SSE streaming for `status`, `route`, `reasoning`, `tool`, `text`, and `checkpoint` events.
     - A workspace UI that shows internal progress instead of only the final answer.
-    - Resume controls for human-in-the-loop actions.
+    - Resume controls for HITL actions.
 - **⏱️ Trace & Session Logging**:
     - SQL-backed trace events for execution replay and inspection.
     - Separate `.jsonl` session and usage logs for lightweight telemetry.
