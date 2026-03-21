@@ -1,4 +1,4 @@
-from langchain_openai import ChatOpenAI
+from langchain.chat_models import init_chat_model
 from langgraph.graph import StateGraph, START
 
 from agent_core.state import BaseAgentState
@@ -15,8 +15,10 @@ DEFAULT_LLM_MODEL = "gpt-5.4-mini"
 
 def get_orchagent_graph(llm_model: str = DEFAULT_LLM_MODEL):
     # Enable reasoning summary for compatible models (o1, o3, o4-mini, gpt-5.4-mini etc.)
-    llm = ChatOpenAI(
-        model_name=llm_model, model_kwargs={"reasoning": {"summary": "auto"}}
+    llm = init_chat_model(
+        model=llm_model,
+        model_provider="openai",
+        reasoning={"summary": "auto"},
     )
 
     # 1. Subgraphs

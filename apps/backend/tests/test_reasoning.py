@@ -1,15 +1,17 @@
 import pytest
 from unittest.mock import MagicMock
-from langchain_openai import ChatOpenAI
+from langchain.chat_models import init_chat_model
 from workflow.main_graph import DEFAULT_LLM_MODEL
 
 
 def test_reasoning_config_in_graph():
     """Verify that the graph is initialized with reasoning summaries enabled."""
-    llm = ChatOpenAI(
-        model_name=DEFAULT_LLM_MODEL, model_kwargs={"reasoning": {"summary": "auto"}}
+    llm = init_chat_model(
+        model=DEFAULT_LLM_MODEL,
+        model_provider="openai",
+        reasoning={"summary": "auto"},
     )
-    # LangChain/OpenAI class promotes 'reasoning' to a top-level field if supported
+
     assert hasattr(llm, "reasoning")
     assert llm.reasoning == {"summary": "auto"}
 
