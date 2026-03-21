@@ -6,6 +6,7 @@ from agent_tools.file_io import (
     edit_document,
     python_repl_tool,
 )
+from core.config import settings
 from prompt_kit.prompts import (
     DOC_WRITER_PROMPT,
     NOTE_TAKER_PROMPT,
@@ -35,4 +36,7 @@ class WritingTeamBuilder(TeamBuilder):
 def get_writing_graph(llm):
     return WritingTeamBuilder(
         llm, "WritingTeam", ["doc_writer", "note_taker", "chart_generator"]
-    ).build(with_validator=True, max_team_dispatches=5)
+    ).build(
+        with_validator=True,
+        max_team_dispatches=settings.WRITING_TEAM_MAX_DISPATCHES,
+    )

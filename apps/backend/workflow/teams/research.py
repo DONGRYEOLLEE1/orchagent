@@ -1,5 +1,6 @@
 from agent_core.builder import TeamBuilder
 from agent_tools.web import tavily_tool, scrape_webpages
+from core.config import settings
 from prompt_kit.prompts import RESEARCHER_PROMPT
 
 
@@ -20,5 +21,5 @@ class ResearchTeamBuilder(TeamBuilder):
 def get_research_graph(llm):
     return ResearchTeamBuilder(llm, "ResearchTeam", ["search", "web_scraper"]).build(
         with_validator=True,
-        max_team_dispatches=5,
+        max_team_dispatches=settings.RESEARCH_TEAM_MAX_DISPATCHES,
     )

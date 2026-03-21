@@ -4,6 +4,8 @@ import pytest
 
 from agent_core.builder import TeamBuilder
 from agent_core.state import BaseAgentState
+from workflow.teams.research import get_research_graph
+from workflow.teams.writing import get_writing_graph
 
 
 class DummyTeamBuilder(TeamBuilder):
@@ -58,3 +60,40 @@ def test_team_modules_use_add_worker_without_blocking_wrappers(
     assert ".invoke(state)" not in source
     assert "HumanMessage(" not in source
     assert "create_agent(" not in source
+
+
+@pytest.mark.parametrize(
+    ("builder_path", "settings_path", "configured_limit", "factory"),
+    [
+        (
+            "workflow.teams.research.ResearchTeamBuilder.build",
+            "workflow.teams.research.settings.RESEARCH_TEAM_MAX_DISPATCHES",
+            7,
+            get_research_graph,
+        ),
+        (
+            "workflow.teams.writing.WritingTeamBuilder.build",
+            "workflow.teams.writing.settings.WRITING_TEAM_MAX_DISPATCHES",
+            11,
+            get_writing_graph,
+        ),
+    ],
+)
+def test_team_graphs_use_configured_dispatch_limits(
+    monkeypatch, builder_path: str, settings_path: str, configured_limit: int, factory
+):
+    captured: dict[str, object] = {}
+
+    def fake_build(self, with_validator=False, max_team_dispatches=None):
+        captured["with_validator"] = with_validator
+        captured["max_team_dispatches"] = max_team_dispatches
+        return "compiled-graph"
+
+    monkeypatch.setattr(builder_path, fake_build)
+    monkeypatch.setattr(settings_path, configured_limit)
+
+    assert factory(object()) == "compiled-graph"
+    assert captured == {
+        "with_validator": True,
+        "max_team_dispatches": configured_limit,
+    }
