@@ -37,6 +37,9 @@ def stub_chat_async_session_local(monkeypatch):
         def add_all(self, *args, **kwargs):
             pass
 
+        async def flush(self):
+            pass
+
         async def commit(self):
             pass
 

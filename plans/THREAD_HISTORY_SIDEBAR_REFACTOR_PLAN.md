@@ -87,24 +87,24 @@
 
 ### Phase 0. 설계 고정
 
-- [ ] thread 목록의 source of truth를 `chat_sessions` / `chat_messages` DB로 확정한다.
-- [ ] `title`은 첫 user 메시지 기반 파생값으로 시작하고, 별도 컬럼 추가는 보류한다.
-- [ ] `preview`는 최신 assistant 메시지 우선, 없으면 최신 user 메시지로 파생한다.
-- [ ] `last_activity_at`은 메시지 기준으로 계산하고, 동시에 `ChatSession.updated_at`도 함께 갱신하도록 보정한다.
-- [ ] v1 thread switching 정책을 확정한다.
+- [x] thread 목록의 source of truth를 `chat_sessions` / `chat_messages` DB로 확정한다.
+- [x] `title`은 첫 user 메시지 기반 파생값으로 시작하고, 별도 컬럼 추가는 보류한다.
+- [x] `preview`는 최신 assistant 메시지 우선, 없으면 최신 user 메시지로 파생한다.
+- [x] `last_activity_at`은 메시지 기준으로 계산하고, 동시에 `ChatSession.updated_at`도 함께 갱신하도록 보정한다.
+- [x] v1 thread switching 정책을 확정한다.
   - 권장: `loading` 또는 `isInterrupted` 중에는 다른 thread 선택 비활성화
 
 ### Phase 1. 백엔드 도메인/조회 계층 정리
 
-- [ ] `services/logging_service.py`에 session touch 로직 추가
+- [x] `services/logging_service.py`에 session touch 로직 추가
   - 메시지 저장 시 `ChatSession.updated_at`을 현재 시각으로 갱신
-- [ ] thread summary 조회용 쿼리 로직을 별도 서비스로 분리
+- [x] thread summary 조회용 쿼리 로직을 별도 서비스로 분리
   - 권장 파일: `apps/backend/services/thread_service.py`
-- [ ] 목록 조회 시 N+1 없이 동작하도록 aggregate/subquery 기반으로 설계
-- [ ] 첫 user 메시지, 최신 메시지, 메시지 수, 마지막 활동 시각을 효율적으로 뽑는 쿼리 작성
-- [ ] interrupted/completed/errored 상태를 어떻게 계산할지 규칙 정의
+- [x] 목록 조회 시 N+1 없이 동작하도록 aggregate/subquery 기반으로 설계
+- [x] 첫 user 메시지, 최신 메시지, 메시지 수, 마지막 활동 시각을 효율적으로 뽑는 쿼리 작성
+- [x] interrupted/completed/errored 상태를 어떻게 계산할지 규칙 정의
   - 권장: 최신 `status` trace 또는 최신 checkpoint/summary trace 기준
-- [ ] 이미지가 있는 과거 대화는 현재 텍스트만 복원된다는 제한을 API 설계에 반영
+- [x] 이미지가 있는 과거 대화는 현재 텍스트만 복원된다는 제한을 API 설계에 반영
 
 ### Phase 2. 백엔드 API 추가
 
