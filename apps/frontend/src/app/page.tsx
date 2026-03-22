@@ -1,24 +1,32 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Terminal, Loader2, Bot, User, CheckCircle2, Activity, Image as ImageIcon, X, ChevronDown } from 'lucide-react';
+import { Send, Terminal, Loader2, Bot, User, Activity, Image as ImageIcon, X, ChevronDown, Menu } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import NextImage from 'next/image';
 import { ChatMessage, StreamEvent, ToolExecution } from '@/types/agent';
+import type { ActionSpaceState, ActiveThreadState, StreamSessionState, ThreadCollectionState } from '@/types/thread';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { fetchThreads, resumeChatStream, sendChatStream } from '@/lib/api';
 import { appendAssistantText, parseSseBlock, pushUniqueHistory, splitSseBlocks } from '@/lib/chat-stream';
+import {
+  createInitialActionSpaceState,
+  createInitialActiveThreadState,
+  createInitialStreamSessionState,
+  createInitialThreadCollectionState,
+} from '@/lib/workspace-state';
 import { HITLPanel } from '@/components/HITLPanel';
+import { AgentTimeline } from '@/components/sidebar/AgentTimeline';
+import { SessionStatusCard } from '@/components/sidebar/SessionStatusCard';
+import { ThreadListSidebar } from '@/components/sidebar/ThreadListSidebar';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
-
-const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8002').replace(/\/$/, '');
-
 // --- Markdown Renderer ---
 const MarkdownContent = ({ content }: { content: string }) => {
   return (
@@ -144,34 +152,6 @@ const ToolCard = ({ tool }: { tool: ToolExecution }) => {
   );
 };
 
-const AgentTimeline = ({ history, currentNode, loading }: { history: string[], currentNode: string, loading: boolean }) => (
-  <div className="flex flex-col gap-2 p-4 bg-slate-900/50 border border-slate-800 rounded-lg overflow-y-auto max-h-[300px]">
-    <h3 className="text-sm font-semibold text-slate-400 flex items-center gap-2">
-      <Activity size={16} /> Agent Timeline
-    </h3>
-    <div className="flex flex-col gap-3">
-      {history.map((node, i) => (
-        <div key={i} className="flex items-center gap-3 text-sm text-slate-300">
-          <CheckCircle2 size={14} className="text-emerald-500" />
-          <span>{node}</span>
-        </div>
-      ))}
-      {currentNode && loading && (
-        <div className="flex items-center gap-3 text-sm font-medium text-blue-400 animate-pulse">
-          <Loader2 size={14} className="animate-spin" />
-          <span>{currentNode} (Running...)</span>
-        </div>
-      )}
-      {currentNode && !loading && (
-        <div className="flex items-center gap-3 text-sm text-slate-300">
-          <CheckCircle2 size={14} className="text-emerald-500" />
-          <span>{currentNode}</span>
-        </div>
-      )}
-    </div>
-  </div>
-);
-
 const AgentThought = ({ content, isThinking }: { content: string, isThinking: boolean }) => {
   if (!content && !isThinking) return null;
 
@@ -220,17 +200,12 @@ const ToolPanel = ({ toolExecutions }: { toolExecutions: ToolExecution[] }) => (
 
 export default function ChatWorkspace() {
   const [input, setInput] = useState('');
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [currentNode, setCurrentNode] = useState('');
-  const [history, setHistory] = useState<string[]>([]);
-  const [toolExecutions, setToolExecutions] = useState<ToolExecution[]>([]);
-  const [reasoning, setReasoning] = useState('');
   const [selectedImages, setSelectedImages] = useState<File[]>([]);
-  const [currentThreadId, setCurrentThreadId] = useState('');
-  const [checkpointId, setCheckpointId] = useState('');
-  const [streamError, setStreamError] = useState('');
-  const [isInterrupted, setIsInterrupted] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [threadCollectionState, setThreadCollectionState] = useState<ThreadCollectionState>(() => createInitialThreadCollectionState());
+  const [activeThreadState, setActiveThreadState] = useState<ActiveThreadState>(() => createInitialActiveThreadState());
+  const [streamSessionState, setStreamSessionState] = useState<StreamSessionState>(() => createInitialStreamSessionState());
+  const [actionSpaceState, setActionSpaceState] = useState<ActionSpaceState>(() => createInitialActionSpaceState());
   const fileInputRef = useRef<HTMLInputElement>(null);
   const toolIdCounterRef = useRef(0);
 
@@ -241,13 +216,54 @@ export default function ChatWorkspace() {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, currentNode, reasoning]);
+  }, [activeThreadState.messages, streamSessionState.currentNode, actionSpaceState.reasoning]);
 
   useEffect(() => {
     if (actionSpaceRef.current) {
       actionSpaceRef.current.scrollTop = actionSpaceRef.current.scrollHeight;
     }
-  }, [toolExecutions, reasoning]);
+  }, [actionSpaceState.toolExecutions, actionSpaceState.reasoning]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadThreads = async () => {
+      setThreadCollectionState(prev => ({
+        ...prev,
+        loadState: 'loading',
+        error: '',
+      }));
+
+      try {
+        const threads = await fetchThreads();
+        if (cancelled) {
+          return;
+        }
+
+        setThreadCollectionState({
+          threads,
+          loadState: 'success',
+          error: '',
+        });
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        setThreadCollectionState(prev => ({
+          ...prev,
+          loadState: 'error',
+          error: error instanceof Error ? error.message : 'Unknown error',
+        }));
+      }
+    };
+
+    void loadThreads();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -259,40 +275,76 @@ export default function ChatWorkspace() {
     setSelectedImages(prev => prev.filter((_, i) => i !== index));
   };
 
-  const [rawTraces, setRawTraces] = useState<StreamEvent[]>([]);
-  const [showDebug, setShowDebug] = useState(false);
+  const handleStartNewChat = () => {
+    if (streamSessionState.loading || streamSessionState.isInterrupted) {
+      return;
+    }
+
+    setInput('');
+    setSelectedImages([]);
+    setActiveThreadState(createInitialActiveThreadState());
+    setStreamSessionState(createInitialStreamSessionState());
+    setActionSpaceState(createInitialActionSpaceState());
+    setMobileSidebarOpen(false);
+  };
 
   const handleStreamEvent = (payload: StreamEvent, assistantMsgId: string) => {
     // Collect all events for debug panel
-    setRawTraces(prev => [...prev, payload]);
+    setActionSpaceState(prev => ({ ...prev, rawTraces: [...prev.rawTraces, payload] }));
     if (payload.event_type === 'status') {
-      setLoading(payload.status === 'running');
+      setStreamSessionState(prev => {
+        const nextState: StreamSessionState = {
+          ...prev,
+          loading: payload.status === 'running',
+        };
 
-      if (payload.status === 'completed') {
-        setCurrentNode('Completed');
-        setIsInterrupted(false);
-      } else if (payload.status === 'errored') {
-        setCurrentNode('Errored');
-        setIsInterrupted(false);
-        if (payload.message) {
-          setStreamError(payload.message);
+        if (payload.status === 'completed') {
+          return {
+            ...nextState,
+            currentNode: 'Completed',
+            isInterrupted: false,
+          };
         }
-      } else if (payload.status === 'interrupted') {
-        setCurrentNode('Requires User Action');
-        setIsInterrupted(true);
-        setLoading(false); // Stop standard loading spinner while waiting for user
-      } else if (payload.display_name) {
-        setCurrentNode(payload.display_name);
-        setIsInterrupted(false);
-      }
+
+        if (payload.status === 'errored') {
+          return {
+            ...nextState,
+            currentNode: 'Errored',
+            isInterrupted: false,
+            streamError: payload.message || prev.streamError,
+          };
+        }
+
+        if (payload.status === 'interrupted') {
+          return {
+            ...nextState,
+            currentNode: 'Requires User Action',
+            isInterrupted: true,
+            loading: false,
+          };
+        }
+
+        if (payload.display_name) {
+          return {
+            ...nextState,
+            currentNode: payload.display_name,
+            isInterrupted: false,
+          };
+        }
+
+        return nextState;
+      });
       return;
     }
 
     if (payload.event_type === 'route') {
       const nextDisplay = payload.display_name || payload.target || '';
       if (nextDisplay && payload.target !== 'FINISH') {
-        setCurrentNode(nextDisplay);
-        setHistory(prev => pushUniqueHistory(prev, nextDisplay));
+        setStreamSessionState(prev => ({
+          ...prev,
+          currentNode: nextDisplay,
+          history: pushUniqueHistory(prev.history, nextDisplay),
+        }));
       }
       return;
     }
@@ -306,14 +358,17 @@ export default function ChatWorkspace() {
         input: payload.input,
         startTime: Date.now(),
       };
-      setToolExecutions(prev => [...prev, newTool]);
+      setActionSpaceState(prev => ({
+        ...prev,
+        toolExecutions: [...prev.toolExecutions, newTool],
+      }));
       return;
     }
 
     if (payload.event_type === 'tool_end') {
       const targetName = payload.display_name || payload.tool_name || payload.node || 'Tool';
-      setToolExecutions(prev => {
-        const next = [...prev];
+      setActionSpaceState(prev => {
+        const next = [...prev.toolExecutions];
         let targetIndex = -1;
 
         if (payload.run_id) {
@@ -343,15 +398,18 @@ export default function ChatWorkspace() {
           };
         }
 
-        return next;
+        return {
+          ...prev,
+          toolExecutions: next,
+        };
       });
       return;
     }
 
     if (payload.event_type === 'tool_error') {
       const targetName = payload.display_name || payload.tool_name || payload.node || 'Tool';
-      setToolExecutions(prev => {
-        const next = [...prev];
+      setActionSpaceState(prev => {
+        const next = [...prev.toolExecutions];
         let targetIndex = -1;
 
         if (payload.run_id) {
@@ -381,37 +439,59 @@ export default function ChatWorkspace() {
           };
         }
 
-        return next;
+        return {
+          ...prev,
+          toolExecutions: next,
+        };
       });
       return;
     }
 
     if (payload.event_type === 'reasoning') {
-      setReasoning(prev => prev + payload.content);
+      setActionSpaceState(prev => ({
+        ...prev,
+        reasoning: prev.reasoning + payload.content,
+      }));
       return;
     }
 
     if (payload.event_type === 'text') {
-      setMessages(prev => appendAssistantText(prev, assistantMsgId, payload.content));
+      setActiveThreadState(prev => ({
+        ...prev,
+        messages: appendAssistantText(prev.messages, assistantMsgId, payload.content),
+      }));
       return;
     }
 
     if (payload.event_type === 'checkpoint') {
-      setCheckpointId(payload.checkpoint_id || '');
+      setActiveThreadState(prev => ({
+        ...prev,
+        checkpointId: payload.checkpoint_id || '',
+      }));
       return;
     }
 
     if (payload.event_type === 'error') {
-      setLoading(false);
-      setCurrentNode('Errored');
-      setStreamError(payload.message);
-      setMessages(prev => appendAssistantText(prev, `${assistantMsgId}_error`, `Error: ${payload.message}`));
+      setStreamSessionState(prev => ({
+        ...prev,
+        loading: false,
+        currentNode: 'Errored',
+        streamError: payload.message,
+      }));
+      setActiveThreadState(prev => ({
+        ...prev,
+        messages: appendAssistantText(
+          prev.messages,
+          `${assistantMsgId}_error`,
+          `Error: ${payload.message}`
+        ),
+      }));
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if ((!input.trim() && selectedImages.length === 0) || loading) return;
+    if ((!input.trim() && selectedImages.length === 0) || streamSessionState.loading) return;
 
     const submittedInput = input;
     const thread_id = `thread_${Date.now()}`;
@@ -420,39 +500,29 @@ export default function ChatWorkspace() {
     // Convert images to base64
     const base64Images = await Promise.all(selectedImages.map(fileToBase64));
 
-    setMessages(prev => [...prev, userMessage]);
+    setActiveThreadState(prev => ({
+      ...prev,
+      threadId: thread_id,
+      checkpointId: '',
+      messages: [...prev.messages, userMessage],
+    }));
     setInput('');
     setSelectedImages([]);
-    setLoading(true);
-    setCurrentNode('');
-    setHistory([]);
-    setToolExecutions([]);
-    setReasoning('');
-    setCurrentThreadId(thread_id);
-    setCheckpointId('');
-    setStreamError('');
-    setIsInterrupted(false);
+    setMobileSidebarOpen(false);
+    setStreamSessionState({
+      ...createInitialStreamSessionState(),
+      loading: true,
+    });
+    setActionSpaceState(createInitialActionSpaceState());
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: submittedInput,
-          thread_id,
-          images: base64Images.length > 0 ? base64Images : undefined
-        }),
+      const stream = await sendChatStream({
+        message: submittedInput,
+        threadId: thread_id,
+        images: base64Images,
       });
 
-      if (!response.ok) {
-        throw new Error(`Request failed with status ${response.status}`);
-      }
-
-      if (!response.body) {
-        throw new Error('No response body received.');
-      }
-
-      const reader = response.body.getReader();
+      const reader = stream.getReader();
       const decoder = new TextDecoder();
       const assistantMsgId = Date.now().toString() + "_ai";
       let buffer = '';
@@ -478,51 +548,52 @@ export default function ChatWorkspace() {
               handleStreamEvent(finalPayload, assistantMsgId);
             }
           }
-          setLoading(false);
+          setStreamSessionState(prev => ({
+            ...prev,
+            loading: false,
+          }));
           break;
         }
       }
     } catch (err) {
       console.error(err);
-      setLoading(false);
-      setCurrentNode('Errored');
-      setStreamError(err instanceof Error ? err.message : 'Unknown error');
-      setMessages(prev => appendAssistantText(
-        prev,
-        `${thread_id}_request_error`,
-        `Error: ${err instanceof Error ? err.message : 'Unknown error'}`
-      ));
+      setStreamSessionState(prev => ({
+        ...prev,
+        loading: false,
+        currentNode: 'Errored',
+        streamError: err instanceof Error ? err.message : 'Unknown error',
+      }));
+      setActiveThreadState(prev => ({
+        ...prev,
+        messages: appendAssistantText(
+          prev.messages,
+          `${thread_id}_request_error`,
+          `Error: ${err instanceof Error ? err.message : 'Unknown error'}`
+        ),
+      }));
     }
   };
 
   const handleResume = async (action: string, feedback: string) => {
-    if (!currentThreadId) return;
+    if (!activeThreadState.threadId) return;
 
-    setIsInterrupted(false);
-    setLoading(true);
-    setCurrentNode('Resuming...');
-    setStreamError('');
+    setMobileSidebarOpen(false);
+    setStreamSessionState(prev => ({
+      ...prev,
+      isInterrupted: false,
+      loading: true,
+      currentNode: 'Resuming...',
+      streamError: '',
+    }));
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/chat/resume`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          thread_id: currentThreadId,
-          action,
-          feedback: feedback || undefined,
-        }),
+      const stream = await resumeChatStream({
+        threadId: activeThreadState.threadId,
+        action,
+        feedback,
       });
 
-      if (!response.ok) {
-        throw new Error(`Resume failed with status ${response.status}`);
-      }
-
-      if (!response.body) {
-        throw new Error('No response body received.');
-      }
-
-      const reader = response.body.getReader();
+      const reader = stream.getReader();
       const decoder = new TextDecoder();
       const assistantMsgId = Date.now().toString() + "_ai_resume";
       let buffer = '';
@@ -548,22 +619,60 @@ export default function ChatWorkspace() {
               handleStreamEvent(finalPayload, assistantMsgId);
             }
           }
-          setLoading(false);
+          setStreamSessionState(prev => ({
+            ...prev,
+            loading: false,
+          }));
           break;
         }
       }
     } catch (err) {
       console.error(err);
-      setLoading(false);
-      setCurrentNode('Errored');
-      setStreamError(err instanceof Error ? err.message : 'Unknown error');
-      setMessages(prev => appendAssistantText(
-        prev,
-        `${currentThreadId}_resume_error`,
-        `Error: ${err instanceof Error ? err.message : 'Unknown error'}`
-      ));
+      setStreamSessionState(prev => ({
+        ...prev,
+        loading: false,
+        currentNode: 'Errored',
+        streamError: err instanceof Error ? err.message : 'Unknown error',
+      }));
+      setActiveThreadState(prev => ({
+        ...prev,
+        messages: appendAssistantText(
+          prev.messages,
+          `${activeThreadState.threadId}_resume_error`,
+          `Error: ${err instanceof Error ? err.message : 'Unknown error'}`
+        ),
+      }));
     }
   };
+
+  const sidebarContent = (
+    <>
+      <div className="flex flex-col gap-4">
+        <AgentTimeline
+          history={streamSessionState.history}
+          currentNode={streamSessionState.currentNode}
+          loading={streamSessionState.loading}
+        />
+
+        <SessionStatusCard
+          loading={streamSessionState.loading}
+          checkpointId={activeThreadState.checkpointId}
+          activeThreadId={activeThreadState.threadId}
+          threadCount={threadCollectionState.threads.length}
+          threadLoadState={threadCollectionState.loadState}
+        />
+      </div>
+
+      <ThreadListSidebar
+        threads={threadCollectionState.threads}
+        loadState={threadCollectionState.loadState}
+        error={threadCollectionState.error}
+        selectedThreadId={activeThreadState.threadId}
+        disabled={streamSessionState.loading || streamSessionState.isInterrupted}
+        onNewChat={handleStartNewChat}
+      />
+    </>
+  );
 
   return (
     <main className="flex h-screen bg-slate-950 text-slate-100 overflow-hidden font-sans relative">
@@ -572,43 +681,68 @@ export default function ChatWorkspace() {
       <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-600/10 blur-[120px] rounded-full pointer-events-none" />
 
       {/* Left Sidebar: Session Info & History */}
-      <aside className="w-20 lg:w-64 border-r border-slate-800/50 flex flex-col gap-4 p-4 shrink-0 bg-slate-950/50 backdrop-blur-xl z-10">
+      <aside className="hidden lg:flex lg:w-80 flex-col gap-4 border-r border-slate-800/50 bg-slate-950/50 p-4 backdrop-blur-xl z-10">
         <div className="flex items-center gap-3 mb-4 justify-center lg:justify-start">
           <div className="p-2 bg-blue-600 rounded-lg shadow-lg shadow-blue-500/20">
             <Bot className="text-white" />
           </div>
-          <h1 className="text-xl font-bold tracking-tight hidden lg:block text-slate-200">OrchAgent</h1>
+          <h1 className="text-xl font-bold tracking-tight text-slate-200">OrchAgent</h1>
         </div>
 
-        <div className="hidden lg:flex flex-col gap-4">
-          <AgentTimeline history={history} currentNode={currentNode} loading={loading} />
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
+          {sidebarContent}
+        </div>
+      </aside>
 
-          <div className="p-4 bg-slate-900/30 border border-slate-800/50 rounded-xl">
-            <p className="text-xs text-slate-500 mb-1 font-mono uppercase tracking-wider">Session Status</p>
-            <div className="flex justify-between text-sm">
-              <span className="text-slate-400">Engine:</span>
-              <span className={cn(loading ? "text-blue-400 animate-pulse" : "text-emerald-400 font-medium")}>
-                {loading ? "Active" : "Idle"}
-              </span>
+      {mobileSidebarOpen ? (
+        <div className="fixed inset-0 z-30 lg:hidden">
+          <button
+            type="button"
+            aria-label="Close thread sidebar"
+            onClick={() => setMobileSidebarOpen(false)}
+            className="absolute inset-0 bg-slate-950/75 backdrop-blur-sm"
+          />
+
+          <div className="absolute inset-y-0 left-0 flex w-[min(24rem,92vw)] flex-col border-r border-slate-800/70 bg-slate-950/95 p-4 shadow-2xl shadow-black/50">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="rounded-lg bg-blue-600 p-2 shadow-lg shadow-blue-500/20">
+                  <Bot className="text-white" />
+                </div>
+                <h1 className="text-lg font-bold tracking-tight text-slate-200">OrchAgent</h1>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setMobileSidebarOpen(false)}
+                className="rounded-xl border border-slate-800 bg-slate-900/60 p-2 text-slate-400 transition-colors hover:border-slate-700 hover:text-slate-200"
+              >
+                <X size={16} />
+              </button>
             </div>
-            <div className="flex justify-between text-sm mt-2">
-              <span className="text-slate-400">Checkpoint:</span>
-              <span className="text-slate-500 font-mono text-xs truncate max-w-[110px]">
-                {checkpointId || '-'}
-              </span>
+
+            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
+              {sidebarContent}
             </div>
           </div>
         </div>
-      </aside>
+      ) : null}
 
       {/* Center Content: Chat Workspace */}
       <section className="flex-1 flex flex-col relative z-10 bg-transparent">
         <header className="h-16 border-b border-slate-800/50 flex items-center px-8 bg-slate-950/20 backdrop-blur-sm">
-          <div className="flex items-center gap-2 text-sm font-medium text-slate-400">
+          <div className="flex items-center gap-3 text-sm font-medium text-slate-400">
+            <button
+              type="button"
+              onClick={() => setMobileSidebarOpen(true)}
+              className="inline-flex rounded-xl border border-slate-800 bg-slate-900/60 p-2 text-slate-400 transition-colors hover:border-slate-700 hover:text-slate-200 lg:hidden"
+            >
+              <Menu size={16} />
+            </button>
             <span>Thread</span>
             <span className="text-slate-600">/</span>
             <span className="text-blue-400 font-mono text-xs bg-blue-400/10 px-2 py-0.5 rounded border border-blue-400/20">
-              {currentThreadId || 'current_session'}
+              {activeThreadState.threadId || 'current_session'}
             </span>
           </div>
         </header>
@@ -617,7 +751,7 @@ export default function ChatWorkspace() {
           ref={scrollRef}
           className="flex-1 overflow-y-auto p-8 space-y-6 scrollbar-thin scrollbar-thumb-slate-800"
         >
-          {messages.length === 0 && (
+          {activeThreadState.messages.length === 0 && (
             <div className="h-full flex flex-col items-center justify-center text-center max-w-md mx-auto opacity-50">
               <div className="w-20 h-20 bg-slate-900 border border-slate-800 rounded-3xl flex items-center justify-center mb-6 shadow-xl">
                 <Bot size={40} className="text-slate-400" />
@@ -629,7 +763,7 @@ export default function ChatWorkspace() {
             </div>
           )}
 
-          {messages.map((m) => (
+          {activeThreadState.messages.map((m) => (
             <div key={m.id} className={cn(
               "flex gap-4 max-w-3xl animate-in fade-in slide-in-from-bottom-2 duration-300",
               m.role === 'user' ? "ml-auto flex-row-reverse" : ""
@@ -650,35 +784,35 @@ export default function ChatWorkspace() {
               </div>            </div>
           ))}
 
-          {loading && (
+          {streamSessionState.loading && (
             <div className="flex gap-4 max-w-3xl animate-pulse">
               <div className="w-8 h-8 rounded-full bg-blue-600/50 flex items-center justify-center shrink-0">
                 <Bot size={16} />
               </div>
               <div className="p-4 rounded-2xl bg-slate-900/50 border border-slate-800 text-slate-400 text-sm italic">
-                {currentNode || 'Coordinating team...'}
+                {streamSessionState.currentNode || 'Coordinating team...'}
               </div>
             </div>
           )}
 
-          {isInterrupted && (
+          {streamSessionState.isInterrupted && (
             <div className="flex gap-4 max-w-3xl">
               <div className="w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
                 <Bot size={16} />
               </div>
               <div className="w-full">
-                <HITLPanel onAction={handleResume} loading={loading} />
+                <HITLPanel onAction={handleResume} loading={streamSessionState.loading} />
               </div>
             </div>
           )}
 
-          {!!streamError && !loading && (
+          {!!streamSessionState.streamError && !streamSessionState.loading && (
             <div className="flex gap-4 max-w-3xl">
               <div className="w-8 h-8 rounded-full bg-red-500/20 text-red-300 flex items-center justify-center shrink-0">
                 <Bot size={16} />
               </div>
               <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-200 text-sm">
-                {streamError}
+                {streamSessionState.streamError}
               </div>
             </div>
           )}
@@ -721,12 +855,12 @@ export default function ChatWorkspace() {
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Message OrchAgent..."
                 className="w-full bg-slate-900/50 border border-slate-800/50 rounded-2xl py-4 pl-14 pr-14 text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-600/30 transition-all placeholder:text-slate-600 backdrop-blur-md"
-                disabled={loading}
+                disabled={streamSessionState.loading}
               />
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                disabled={loading}
+                disabled={streamSessionState.loading}
                 className="absolute left-3 top-1/2 -translate-y-1/2 p-2 text-slate-500 hover:text-blue-400 disabled:text-slate-800 transition-colors"
               >
                 <ImageIcon size={20} />
@@ -741,10 +875,10 @@ export default function ChatWorkspace() {
               />
               <button
                 type="submit"
-                disabled={loading || (!input.trim() && selectedImages.length === 0)}
+                disabled={streamSessionState.loading || (!input.trim() && selectedImages.length === 0)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 p-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-600 text-white rounded-xl transition-colors shadow-lg shadow-blue-600/20"
               >
-                {loading ? <Loader2 className="animate-spin" size={20} /> : <Send size={20} />}
+                {streamSessionState.loading ? <Loader2 className="animate-spin" size={20} /> : <Send size={20} />}
               </button>
             </div>
           </form>
@@ -754,7 +888,7 @@ export default function ChatWorkspace() {
       {/* Right Sidebar: Agent Action Space (Action Space) */}
       <aside
         ref={actionSpaceRef}
-        className="w-96 border-l border-slate-800/50 bg-slate-950/30 backdrop-blur-2xl flex flex-col p-6 overflow-y-auto z-10 scrollbar-none"
+        className="hidden xl:flex w-96 border-l border-slate-800/50 bg-slate-950/30 backdrop-blur-2xl flex-col p-6 overflow-y-auto z-10 scrollbar-none"
       >
         <div className="flex items-center gap-2 mb-6">
           <Terminal size={18} className="text-blue-400" />
@@ -762,29 +896,29 @@ export default function ChatWorkspace() {
         </div>
 
         <div className="space-y-6">
-          <AgentThought content={reasoning} isThinking={loading} />
+          <AgentThought content={actionSpaceState.reasoning} isThinking={streamSessionState.loading} />
 
-          <ToolPanel toolExecutions={toolExecutions} />
+          <ToolPanel toolExecutions={actionSpaceState.toolExecutions} />
 
           {/* Debug Panel Toggle */}
           <div className="mt-8 border-t border-slate-800/30 pt-4">
             <button
-              onClick={() => setShowDebug(!showDebug)}
+              onClick={() => setActionSpaceState(prev => ({ ...prev, showDebug: !prev.showDebug }))}
               className="flex items-center justify-between w-full px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-500 hover:text-slate-300 transition-colors group"
             >
               <span className="flex items-center gap-2">
                 <Terminal size={14} className="group-hover:text-blue-400" />
-                Raw Events ({rawTraces.length})
+                Raw Events ({actionSpaceState.rawTraces.length})
               </span>
-              <ChevronDown size={14} className={cn("transition-transform duration-300", showDebug ? "rotate-180" : "")} />
+              <ChevronDown size={14} className={cn("transition-transform duration-300", actionSpaceState.showDebug ? "rotate-180" : "")} />
             </button>
 
-            {showDebug && (
+            {actionSpaceState.showDebug && (
               <div className="mt-3 bg-black/40 rounded-xl border border-slate-800/50 p-3 max-h-96 overflow-y-auto font-mono text-[9px] text-slate-400 space-y-2 scrollbar-none animate-in fade-in slide-in-from-top-2">
-                {rawTraces.length === 0 ? (
+                {actionSpaceState.rawTraces.length === 0 ? (
                   <div className="text-center py-4 text-slate-600 italic">No events recorded yet.</div>
                 ) : (
-                  [...rawTraces].reverse().map((trace, i) => (
+                  [...actionSpaceState.rawTraces].reverse().map((trace, i) => (
                     <div key={i} className="border-b border-slate-800/30 pb-2 last:border-0 last:pb-0">
                       <div className="flex justify-between items-center mb-1">
                         <span className={cn(
