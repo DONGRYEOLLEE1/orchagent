@@ -123,49 +123,49 @@
 
 ### Phase 3. 백엔드 테스트
 
-- [ ] `LoggingService.log_message()`가 `updated_at`을 실제로 갱신하는 테스트 추가
-- [ ] thread 목록 API 테스트 추가
-  - [ ] 빈 목록
-  - [ ] 최신순 정렬
-  - [ ] preview/title 파생
-  - [ ] message_count 계산
-- [ ] thread 상세 API 테스트 추가
-  - [ ] 메시지 순서 보장
-  - [ ] 잘못된 `thread_id` 404
-  - [ ] user만 있고 assistant가 아직 없는 thread
-  - [ ] resume 이후 메시지가 이어진 thread
-- [ ] trace/status 기반 최신 상태 계산 로직 테스트 추가
-- [ ] 기존 `/api/chat`, `/api/chat/resume` 테스트가 회귀하지 않는지 확인
+- [x] `LoggingService.log_message()`가 `updated_at`을 실제로 갱신하는 테스트 추가
+- [x] thread 목록 API 테스트 추가
+  - [x] 빈 목록
+  - [x] 최신순 정렬
+  - [x] preview/title 파생
+  - [x] message_count 계산
+- [x] thread 상세 API 테스트 추가
+  - [x] 메시지 순서 보장
+  - [x] 잘못된 `thread_id` 404
+  - [x] user만 있고 assistant가 아직 없는 thread
+  - [x] resume 이후 메시지가 이어진 thread
+- [x] trace/status 기반 최신 상태 계산 로직 테스트 추가
+- [x] 기존 `/api/chat`, `/api/chat/resume` 테스트가 회귀하지 않는지 확인
 
 ### Phase 4. 프론트 타입/상태 계층 분리
 
-- [ ] `apps/frontend/src/types/agent.ts` 또는 별도 `thread.ts`에 다음 타입 추가
-  - [ ] `ThreadSummary`
-  - [ ] `ThreadDetail`
-  - [ ] `ThreadMessage`
-  - [ ] `ThreadLoadState`
-- [ ] API 호출 코드를 page 파일에서 분리
+- [x] `apps/frontend/src/types/agent.ts` 또는 별도 `thread.ts`에 다음 타입 추가
+  - [x] `ThreadSummary`
+  - [x] `ThreadDetail`
+  - [x] `ThreadMessage`
+  - [x] `ThreadLoadState`
+- [x] API 호출 코드를 page 파일에서 분리
   - 권장 파일: `apps/frontend/src/lib/api.ts`
-- [ ] thread 목록/상세 fetch 로직을 재사용 가능한 함수로 분리
-- [ ] `page.tsx`의 monolithic 상태를 다음 계층으로 정리
-  - [ ] thread collection state
-  - [ ] active thread state
-  - [ ] stream session state
-  - [ ] action space state
+- [x] thread 목록/상세 fetch 로직을 재사용 가능한 함수로 분리
+- [x] `page.tsx`의 monolithic 상태를 다음 계층으로 정리
+  - [x] thread collection state
+  - [x] active thread state
+  - [x] stream session state
+  - [x] action space state
 
 ### Phase 5. 프론트 UI 리팩토링
 
-- [ ] 좌측 패널 width 재설계
+- [x] 좌측 패널 width 재설계
   - 현재 `lg:w-64`는 thread preview가 좁으므로 `lg:w-80` 또는 유사 폭으로 조정 검토
-- [ ] `ThreadListSidebar` 컴포넌트 분리
-- [ ] `ThreadListItem` 컴포넌트 분리
-- [ ] `SessionStatusCard` 컴포넌트 분리
-- [ ] `AgentTimeline`을 left sidebar 안에서 독립 컴포넌트로 유지
-- [ ] `New Chat` 버튼 추가
-- [ ] 빈 thread 목록 상태(empty state) 디자인 추가
-- [ ] 현재 선택된 thread 강조 스타일 추가
-- [ ] 왼쪽 패널 스크롤 영역을 `timeline/status`와 `threads`로 분리해 overflow 충돌 방지
-- [ ] 모바일/좁은 화면에서는 thread drawer 또는 collapsible section 처리 방안 반영
+- [x] `ThreadListSidebar` 컴포넌트 분리
+- [x] `ThreadListItem` 컴포넌트 분리
+- [x] `SessionStatusCard` 컴포넌트 분리
+- [x] `AgentTimeline`을 left sidebar 안에서 독립 컴포넌트로 유지
+- [x] `New Chat` 버튼 추가
+- [x] 빈 thread 목록 상태(empty state) 디자인 추가
+- [x] 현재 선택된 thread 강조 스타일 추가
+- [x] 왼쪽 패널 스크롤 영역을 `timeline/status`와 `threads`로 분리해 overflow 충돌 방지
+- [x] 모바일/좁은 화면에서는 thread drawer 또는 collapsible section 처리 방안 반영
 
 ### Phase 6. 프론트 상호작용/복원 로직
 
