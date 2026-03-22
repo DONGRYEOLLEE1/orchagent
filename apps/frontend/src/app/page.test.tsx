@@ -1,0 +1,251 @@
+/* eslint-disable @next/next/no-img-element */
+
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import React from 'react';
+import { expect, test, vi } from 'vitest';
+
+import ChatWorkspace from '@/app/page';
+
+vi.mock('next/image', () => ({
+  default: (props: React.ImgHTMLAttributes<HTMLImageElement>) => <img {...props} alt={props.alt || ''} />,
+}));
+
+vi.mock('react-markdown', () => ({
+  default: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+
+vi.mock('remark-gfm', () => ({
+  default: () => null,
+}));
+
+vi.mock('react-syntax-highlighter', () => ({
+  Prism: ({ children }: { children: React.ReactNode }) => <pre>{children}</pre>,
+}));
+
+vi.mock('react-syntax-highlighter/dist/esm/styles/prism', () => ({
+  atomDark: {},
+}));
+
+function jsonResponse(payload: unknown, status = 200): Response {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+function deferredSseResponse() {
+  const encoder = new TextEncoder();
+  let controllerRef: ReadableStreamDefaultController<Uint8Array> | null = null;
+  const response = new Response(
+    new ReadableStream({
+      start(controller) {
+        controllerRef = controller;
+      },
+    }),
+    {
+      status: 200,
+      headers: { 'Content-Type': 'text/event-stream' },
+    }
+  );
+
+  return {
+    response,
+    complete(payloads: unknown[]) {
+      const body = payloads.map((payload) => `data: ${JSON.stringify(payload)}\n\n`).join('');
+      controllerRef?.enqueue(encoder.encode(body));
+      controllerRef?.close();
+    },
+  };
+}
+
+test('hydrates a selected thread and resets to a draft with New Chat', async () => {
+  const user = userEvent.setup();
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+
+    if (url.includes('/api/threads?limit=50')) {
+      return jsonResponse({
+        threads: [
+          {
+            thread_id: 'thread-1',
+            title: 'Existing thread',
+            preview: 'Saved assistant answer',
+            created_at: '2026-03-22T10:00:00Z',
+            last_activity_at: '2026-03-22T10:15:00Z',
+            message_count: 2,
+            latest_status: 'completed',
+            checkpoint_id: 'cp-1',
+          },
+        ],
+      });
+    }
+
+    if (url.includes('/api/threads/thread-1')) {
+      return jsonResponse({
+        thread: {
+          thread_id: 'thread-1',
+          title: 'Existing thread',
+          preview: 'Saved assistant answer',
+          created_at: '2026-03-22T10:00:00Z',
+          last_activity_at: '2026-03-22T10:15:00Z',
+          message_count: 2,
+          latest_status: 'completed',
+          checkpoint_id: 'cp-1',
+        },
+        messages: [
+          {
+            id: 'm-1',
+            role: 'user',
+            content: 'Saved user question',
+            created_at: '2026-03-22T10:00:00Z',
+          },
+          {
+            id: 'm-2',
+            role: 'assistant',
+            content: 'Saved assistant answer',
+            created_at: '2026-03-22T10:01:00Z',
+          },
+        ],
+      });
+    }
+
+    throw new Error(`Unhandled fetch: ${url}`);
+  });
+
+  vi.stubGlobal('fetch', fetchMock);
+
+  render(<ChatWorkspace />);
+
+  await user.click(await screen.findByRole('button', { name: /open thread existing thread/i }));
+
+  expect(await screen.findByText('Saved user question')).toBeInTheDocument();
+  expect(screen.getAllByText('Saved assistant answer').length).toBeGreaterThan(0);
+  expect(screen.getByText(/history snapshot/i)).toBeInTheDocument();
+  expect(screen.getByText(/historical timeline replay is not restored in v1/i)).toBeInTheDocument();
+
+  await user.click(screen.getByRole('button', { name: /new chat/i }));
+
+  expect(await screen.findByText('System Ready')).toBeInTheDocument();
+  expect(screen.getAllByText('draft_session').length).toBeGreaterThan(0);
+});
+
+test('reuses the selected thread id for follow-up sends and disables switching while streaming', async () => {
+  const user = userEvent.setup();
+  const deferred = deferredSseResponse();
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+
+    if (url.includes('/api/threads?limit=50')) {
+      return jsonResponse({
+        threads: [
+          {
+            thread_id: 'thread-1',
+            title: 'Primary thread',
+            preview: 'Existing answer',
+            created_at: '2026-03-22T10:00:00Z',
+            last_activity_at: '2026-03-22T10:15:00Z',
+            message_count: 2,
+            latest_status: 'completed',
+            checkpoint_id: 'cp-1',
+          },
+          {
+            thread_id: 'thread-2',
+            title: 'Secondary thread',
+            preview: 'Another answer',
+            created_at: '2026-03-22T09:00:00Z',
+            last_activity_at: '2026-03-22T09:15:00Z',
+            message_count: 1,
+            latest_status: 'completed',
+            checkpoint_id: 'cp-2',
+          },
+        ],
+      });
+    }
+
+    if (url.includes('/api/threads/thread-1')) {
+      return jsonResponse({
+        thread: {
+          thread_id: 'thread-1',
+          title: 'Primary thread',
+          preview: 'Existing answer',
+          created_at: '2026-03-22T10:00:00Z',
+          last_activity_at: '2026-03-22T10:15:00Z',
+          message_count: 2,
+          latest_status: 'completed',
+          checkpoint_id: 'cp-1',
+        },
+        messages: [
+          {
+            id: 'm-1',
+            role: 'user',
+            content: 'Original question',
+            created_at: '2026-03-22T10:00:00Z',
+          },
+          {
+            id: 'm-2',
+            role: 'assistant',
+            content: 'Existing answer',
+            created_at: '2026-03-22T10:01:00Z',
+          },
+        ],
+      });
+    }
+
+    if (url.endsWith('/api/chat')) {
+      const body = JSON.parse(String(init?.body || '{}'));
+      expect(body.thread_id).toBe('thread-1');
+      return deferred.response;
+    }
+
+    throw new Error(`Unhandled fetch: ${url}`);
+  });
+
+  vi.stubGlobal('fetch', fetchMock);
+
+  render(<ChatWorkspace />);
+
+  await user.click(await screen.findByRole('button', { name: /open thread primary thread/i }));
+  expect(await screen.findByText('Original question')).toBeInTheDocument();
+
+  await user.type(screen.getByPlaceholderText(/message orchagent/i), 'Follow up request');
+  await user.click(screen.getByRole('button', { name: /send message/i }));
+
+  expect(screen.getByRole('button', { name: /open thread secondary thread/i })).toBeDisabled();
+  expect(screen.getByRole('button', { name: /new chat/i })).toBeDisabled();
+
+  deferred.complete([
+    {
+      event_type: 'status',
+      status: 'running',
+      thread_id: 'thread-1',
+      node: 'head_supervisor',
+      display_name: 'Head Supervisor',
+      timestamp: '2026-03-22T10:20:00Z',
+    },
+    {
+      event_type: 'text',
+      node: 'assistant',
+      content: 'Follow up answer',
+      timestamp: '2026-03-22T10:20:01Z',
+    },
+    {
+      event_type: 'checkpoint',
+      thread_id: 'thread-1',
+      checkpoint_id: 'cp-3',
+      timestamp: '2026-03-22T10:20:02Z',
+    },
+    {
+      event_type: 'status',
+      status: 'completed',
+      thread_id: 'thread-1',
+      node: 'assistant',
+      display_name: 'Completed',
+      timestamp: '2026-03-22T10:20:03Z',
+    },
+  ]);
+
+  await waitFor(() => {
+    expect(screen.getByText('Follow up answer')).toBeInTheDocument();
+  });
+});

@@ -185,29 +185,29 @@
 
 ### Phase 7. 과거 thread의 상태 패널 복원 범위 결정
 
-- [ ] `Session State` 카드에 어떤 정보를 historical thread에서도 보여줄지 확정
-  - [ ] latest status
-  - [ ] latest checkpoint id
-  - [ ] last activity time
-- [ ] `AgentTimeline`을 historical thread에서도 보여줄지 결정
+- [x] `Session State` 카드에 어떤 정보를 historical thread에서도 보여줄지 확정
+  - [x] latest status
+  - [x] latest checkpoint id
+  - [x] last activity time
+- [x] `AgentTimeline`을 historical thread에서도 보여줄지 결정
   - 권장 v1: 현재 세션용 live timeline만 유지
   - 후속: trace API로 historical timeline 복원
-- [ ] `Action Space`의 reasoning/tool/raw events를 historical thread에 대해 hydrate할지 결정
+- [x] `Action Space`의 reasoning/tool/raw events를 historical thread에 대해 hydrate할지 결정
   - 권장 v1: hydrate 미지원
 
 ### Phase 8. 프론트 테스트 체계 보강
 
-- [ ] 현재 프론트 테스트는 `node:test` 기반의 순수 helper 테스트만 있으므로, UI 상호작용 검증 도구를 보강한다.
-- [ ] 선택지 결정
-  - [ ] `Vitest + @testing-library/react + jsdom` 도입
-  - [ ] 또는 최소한 thread state reducer/helper를 분리해 순수 로직 테스트부터 확보
-- [ ] 필수 테스트 시나리오
-  - [ ] thread 목록 렌더링
-  - [ ] thread 클릭 시 detail hydrate
-  - [ ] new chat 전환
-  - [ ] 같은 thread에서 연속 메시지 전송 시 `thread_id` 유지
-  - [ ] active stream 중 thread switching 비활성화
-  - [ ] empty/error loading state
+- [x] 현재 프론트 테스트는 `node:test` 기반의 순수 helper 테스트만 있으므로, UI 상호작용 검증 도구를 보강한다.
+- [x] 선택지 결정
+  - [x] `Vitest + @testing-library/react + jsdom` 도입
+  - [x] 또는 최소한 thread state reducer/helper를 분리해 순수 로직 테스트부터 확보
+- [x] 필수 테스트 시나리오
+  - [x] thread 목록 렌더링
+  - [x] thread 클릭 시 detail hydrate
+  - [x] new chat 전환
+  - [x] 같은 thread에서 연속 메시지 전송 시 `thread_id` 유지
+  - [x] active stream 중 thread switching 비활성화
+  - [x] empty/error loading state
 
 ### Phase 9. 통합 검증
 
