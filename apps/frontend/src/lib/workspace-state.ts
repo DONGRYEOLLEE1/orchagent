@@ -3,8 +3,10 @@ import type {
   ActionSpaceState,
   ActiveThreadState,
   StreamSessionState,
+  ThreadDetail,
   ThreadCollectionState,
   ThreadMessage,
+  ThreadSummary,
 } from '@/types/thread';
 
 export function createInitialThreadCollectionState(): ThreadCollectionState {
@@ -18,8 +20,10 @@ export function createInitialThreadCollectionState(): ThreadCollectionState {
 export function createInitialActiveThreadState(): ActiveThreadState {
   return {
     threadId: '',
+    title: '',
     checkpointId: '',
     messages: [],
+    detailLoadState: 'idle',
   };
 }
 
@@ -48,4 +52,101 @@ export function toChatMessages(messages: ThreadMessage[]): ChatMessage[] {
     role: message.role,
     content: message.content,
   }));
+}
+
+function truncateText(content: string, limit: number): string {
+  const collapsed = content.trim().replace(/\s+/g, ' ');
+  if (collapsed.length <= limit) {
+    return collapsed;
+  }
+
+  return `${collapsed.slice(0, Math.max(limit - 3, 1)).trimEnd()}...`;
+}
+
+export function createOptimisticThreadSummary(params: {
+  threadId: string;
+  content: string;
+  existingThread?: ThreadSummary;
+}): ThreadSummary {
+  const { threadId, content, existingThread } = params;
+  const timestamp = new Date().toISOString();
+  const title = existingThread?.title || truncateText(content, 80) || 'Untitled chat';
+  const preview = truncateText(content, 140);
+
+  return {
+    thread_id: threadId,
+    title,
+    preview,
+    created_at: existingThread?.created_at || timestamp,
+    last_activity_at: timestamp,
+    message_count: existingThread ? existingThread.message_count + 1 : 1,
+    latest_status: 'running',
+    checkpoint_id: existingThread?.checkpoint_id || null,
+  };
+}
+
+export function upsertThreadSummary(
+  threads: ThreadSummary[],
+  summary: ThreadSummary
+): ThreadSummary[] {
+  return [summary, ...threads.filter((thread) => thread.thread_id !== summary.thread_id)];
+}
+
+export function patchThreadSummary(
+  threads: ThreadSummary[],
+  threadId: string,
+  patch: Partial<ThreadSummary>
+): ThreadSummary[] {
+  return threads.map((thread) =>
+    thread.thread_id === threadId ? { ...thread, ...patch } : thread
+  );
+}
+
+export function createActiveThreadStateFromDetail(
+  detail: ThreadDetail
+): ActiveThreadState {
+  return {
+    threadId: detail.thread.thread_id,
+    title: detail.thread.title,
+    checkpointId: detail.thread.checkpoint_id || '',
+    messages: toChatMessages(detail.messages),
+    detailLoadState: 'success',
+  };
+}
+
+export function createHistoricalStreamSessionState(
+  latestStatus: string | null
+): StreamSessionState {
+  const baseState = createInitialStreamSessionState();
+
+  if (latestStatus === 'interrupted') {
+    return {
+      ...baseState,
+      currentNode: 'Requires User Action',
+      isInterrupted: true,
+    };
+  }
+
+  if (latestStatus === 'completed') {
+    return {
+      ...baseState,
+      currentNode: 'Completed',
+    };
+  }
+
+  if (latestStatus === 'errored') {
+    return {
+      ...baseState,
+      currentNode: 'Errored',
+    };
+  }
+
+  if (latestStatus === 'running') {
+    return {
+      ...baseState,
+      currentNode: 'In Progress',
+    };
+  }
+
+  return baseState;
 }

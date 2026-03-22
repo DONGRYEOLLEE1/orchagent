@@ -11,13 +11,18 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { fetchThreads, resumeChatStream, sendChatStream } from '@/lib/api';
+import { fetchThreadDetail, fetchThreads, resumeChatStream, sendChatStream } from '@/lib/api';
 import { appendAssistantText, parseSseBlock, pushUniqueHistory, splitSseBlocks } from '@/lib/chat-stream';
 import {
+  createActiveThreadStateFromDetail,
   createInitialActionSpaceState,
   createInitialActiveThreadState,
+  createHistoricalStreamSessionState,
+  createOptimisticThreadSummary,
+  patchThreadSummary,
   createInitialStreamSessionState,
   createInitialThreadCollectionState,
+  upsertThreadSummary,
 } from '@/lib/workspace-state';
 import { HITLPanel } from '@/components/HITLPanel';
 import { AgentTimeline } from '@/components/sidebar/AgentTimeline';
@@ -211,6 +216,10 @@ export default function ChatWorkspace() {
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const actionSpaceRef = useRef<HTMLDivElement>(null);
+  const isInteractionLocked =
+    streamSessionState.loading ||
+    streamSessionState.isInterrupted ||
+    activeThreadState.detailLoadState === 'loading';
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -275,8 +284,24 @@ export default function ChatWorkspace() {
     setSelectedImages(prev => prev.filter((_, i) => i !== index));
   };
 
+  const refreshThreadsSilently = async () => {
+    try {
+      const threads = await fetchThreads();
+      setThreadCollectionState({
+        threads,
+        loadState: 'success',
+        error: '',
+      });
+    } catch (error) {
+      setThreadCollectionState(prev => ({
+        ...prev,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }));
+    }
+  };
+
   const handleStartNewChat = () => {
-    if (streamSessionState.loading || streamSessionState.isInterrupted) {
+    if (isInteractionLocked) {
       return;
     }
 
@@ -288,10 +313,22 @@ export default function ChatWorkspace() {
     setMobileSidebarOpen(false);
   };
 
-  const handleStreamEvent = (payload: StreamEvent, assistantMsgId: string) => {
+  const handleStreamEvent = (
+    payload: StreamEvent,
+    assistantMsgId: string,
+    threadId: string
+  ) => {
     // Collect all events for debug panel
     setActionSpaceState(prev => ({ ...prev, rawTraces: [...prev.rawTraces, payload] }));
     if (payload.event_type === 'status') {
+      setThreadCollectionState(prev => ({
+        ...prev,
+        threads: patchThreadSummary(prev.threads, threadId, {
+          latest_status: payload.status,
+          last_activity_at: payload.timestamp,
+        }),
+      }));
+
       setStreamSessionState(prev => {
         const nextState: StreamSessionState = {
           ...prev,
@@ -456,6 +493,13 @@ export default function ChatWorkspace() {
     }
 
     if (payload.event_type === 'text') {
+      setThreadCollectionState(prev => ({
+        ...prev,
+        threads: patchThreadSummary(prev.threads, threadId, {
+          preview: payload.content.trim() || undefined,
+          last_activity_at: payload.timestamp,
+        }),
+      }));
       setActiveThreadState(prev => ({
         ...prev,
         messages: appendAssistantText(prev.messages, assistantMsgId, payload.content),
@@ -464,6 +508,12 @@ export default function ChatWorkspace() {
     }
 
     if (payload.event_type === 'checkpoint') {
+      setThreadCollectionState(prev => ({
+        ...prev,
+        threads: patchThreadSummary(prev.threads, threadId, {
+          checkpoint_id: payload.checkpoint_id || null,
+        }),
+      }));
       setActiveThreadState(prev => ({
         ...prev,
         checkpointId: payload.checkpoint_id || '',
@@ -489,22 +539,81 @@ export default function ChatWorkspace() {
     }
   };
 
+  const handleSelectThread = async (threadId: string) => {
+    if (isInteractionLocked) {
+      return;
+    }
+
+    if (threadId === activeThreadState.threadId && activeThreadState.messages.length > 0) {
+      setMobileSidebarOpen(false);
+      return;
+    }
+
+    setThreadCollectionState(prev => ({
+      ...prev,
+      error: '',
+    }));
+    setActiveThreadState(prev => ({
+      ...prev,
+      detailLoadState: 'loading',
+    }));
+
+    try {
+      const detail = await fetchThreadDetail(threadId);
+      setActiveThreadState(createActiveThreadStateFromDetail(detail));
+      setStreamSessionState(createHistoricalStreamSessionState(detail.thread.latest_status));
+      setActionSpaceState(createInitialActionSpaceState());
+      setThreadCollectionState(prev => ({
+        ...prev,
+        threads: upsertThreadSummary(prev.threads, detail.thread),
+        error: '',
+      }));
+      setInput('');
+      setSelectedImages([]);
+      setMobileSidebarOpen(false);
+    } catch (error) {
+      setActiveThreadState(prev => ({
+        ...prev,
+        detailLoadState: 'error',
+      }));
+      setThreadCollectionState(prev => ({
+        ...prev,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }));
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if ((!input.trim() && selectedImages.length === 0) || streamSessionState.loading) return;
+    if ((!input.trim() && selectedImages.length === 0) || isInteractionLocked) return;
 
     const submittedInput = input;
-    const thread_id = `thread_${Date.now()}`;
+    const thread_id = activeThreadState.threadId || `thread_${Date.now()}`;
     const userMessage: ChatMessage = { role: 'user', content: submittedInput, id: Date.now().toString() };
 
     // Convert images to base64
     const base64Images = await Promise.all(selectedImages.map(fileToBase64));
+    const existingThread = threadCollectionState.threads.find(
+      (thread) => thread.thread_id === thread_id
+    );
+    const optimisticThread = createOptimisticThreadSummary({
+      threadId: thread_id,
+      content: submittedInput,
+      existingThread,
+    });
 
     setActiveThreadState(prev => ({
       ...prev,
       threadId: thread_id,
+      title: prev.title || optimisticThread.title,
       checkpointId: '',
       messages: [...prev.messages, userMessage],
+      detailLoadState: 'success',
+    }));
+    setThreadCollectionState(prev => ({
+      ...prev,
+      threads: upsertThreadSummary(prev.threads, optimisticThread),
+      error: '',
     }));
     setInput('');
     setSelectedImages([]);
@@ -537,7 +646,7 @@ export default function ChatWorkspace() {
         for (const block of blocks) {
           const payload = parseSseBlock(block) as StreamEvent | null;
           if (payload) {
-            handleStreamEvent(payload, assistantMsgId);
+            handleStreamEvent(payload, assistantMsgId, thread_id);
           }
         }
 
@@ -545,13 +654,14 @@ export default function ChatWorkspace() {
           if (buffer.trim()) {
             const finalPayload = parseSseBlock(buffer) as StreamEvent | null;
             if (finalPayload) {
-              handleStreamEvent(finalPayload, assistantMsgId);
+              handleStreamEvent(finalPayload, assistantMsgId, thread_id);
             }
           }
           setStreamSessionState(prev => ({
             ...prev,
             loading: false,
           }));
+          await refreshThreadsSilently();
           break;
         }
       }
@@ -577,7 +687,31 @@ export default function ChatWorkspace() {
   const handleResume = async (action: string, feedback: string) => {
     if (!activeThreadState.threadId) return;
 
+    const resumeText = `[User Action]: ${action}${feedback ? `\nFeedback: ${feedback}` : ''}`;
+    const resumeMessage: ChatMessage = {
+      role: 'user',
+      content: resumeText,
+      id: `${Date.now()}_resume_user`,
+    };
+    const existingThread = threadCollectionState.threads.find(
+      (thread) => thread.thread_id === activeThreadState.threadId
+    );
+    const optimisticThread = createOptimisticThreadSummary({
+      threadId: activeThreadState.threadId,
+      content: resumeText,
+      existingThread,
+    });
+
     setMobileSidebarOpen(false);
+    setThreadCollectionState(prev => ({
+      ...prev,
+      threads: upsertThreadSummary(prev.threads, optimisticThread),
+      error: '',
+    }));
+    setActiveThreadState(prev => ({
+      ...prev,
+      messages: [...prev.messages, resumeMessage],
+    }));
     setStreamSessionState(prev => ({
       ...prev,
       isInterrupted: false,
@@ -608,7 +742,7 @@ export default function ChatWorkspace() {
         for (const block of blocks) {
           const payload = parseSseBlock(block) as StreamEvent | null;
           if (payload) {
-            handleStreamEvent(payload, assistantMsgId);
+            handleStreamEvent(payload, assistantMsgId, activeThreadState.threadId);
           }
         }
 
@@ -616,13 +750,14 @@ export default function ChatWorkspace() {
           if (buffer.trim()) {
             const finalPayload = parseSseBlock(buffer) as StreamEvent | null;
             if (finalPayload) {
-              handleStreamEvent(finalPayload, assistantMsgId);
+              handleStreamEvent(finalPayload, assistantMsgId, activeThreadState.threadId);
             }
           }
           setStreamSessionState(prev => ({
             ...prev,
             loading: false,
           }));
+          await refreshThreadsSilently();
           break;
         }
       }
@@ -668,8 +803,9 @@ export default function ChatWorkspace() {
         loadState={threadCollectionState.loadState}
         error={threadCollectionState.error}
         selectedThreadId={activeThreadState.threadId}
-        disabled={streamSessionState.loading || streamSessionState.isInterrupted}
+        disabled={isInteractionLocked}
         onNewChat={handleStartNewChat}
+        onSelectThread={handleSelectThread}
       />
     </>
   );
@@ -741,8 +877,12 @@ export default function ChatWorkspace() {
             </button>
             <span>Thread</span>
             <span className="text-slate-600">/</span>
+            <span className="hidden text-slate-300 sm:inline">
+              {activeThreadState.title || 'New Chat'}
+            </span>
+            <span className="hidden text-slate-600 sm:inline">/</span>
             <span className="text-blue-400 font-mono text-xs bg-blue-400/10 px-2 py-0.5 rounded border border-blue-400/20">
-              {activeThreadState.threadId || 'current_session'}
+              {activeThreadState.threadId || 'draft_session'}
             </span>
           </div>
         </header>
@@ -751,7 +891,18 @@ export default function ChatWorkspace() {
           ref={scrollRef}
           className="flex-1 overflow-y-auto p-8 space-y-6 scrollbar-thin scrollbar-thumb-slate-800"
         >
-          {activeThreadState.messages.length === 0 && (
+          {activeThreadState.detailLoadState === 'loading' && (
+            <div className="flex h-full min-h-[16rem] items-center justify-center">
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/60 px-6 py-5 text-sm text-slate-300 shadow-xl">
+                <div className="flex items-center gap-3">
+                  <Loader2 size={18} className="animate-spin text-blue-400" />
+                  <span>Loading thread history...</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeThreadState.detailLoadState !== 'loading' && activeThreadState.messages.length === 0 && (
             <div className="h-full flex flex-col items-center justify-center text-center max-w-md mx-auto opacity-50">
               <div className="w-20 h-20 bg-slate-900 border border-slate-800 rounded-3xl flex items-center justify-center mb-6 shadow-xl">
                 <Bot size={40} className="text-slate-400" />
@@ -763,7 +914,7 @@ export default function ChatWorkspace() {
             </div>
           )}
 
-          {activeThreadState.messages.map((m) => (
+          {activeThreadState.detailLoadState !== 'loading' && activeThreadState.messages.map((m) => (
             <div key={m.id} className={cn(
               "flex gap-4 max-w-3xl animate-in fade-in slide-in-from-bottom-2 duration-300",
               m.role === 'user' ? "ml-auto flex-row-reverse" : ""
@@ -855,12 +1006,12 @@ export default function ChatWorkspace() {
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Message OrchAgent..."
                 className="w-full bg-slate-900/50 border border-slate-800/50 rounded-2xl py-4 pl-14 pr-14 text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-600/30 transition-all placeholder:text-slate-600 backdrop-blur-md"
-                disabled={streamSessionState.loading}
+                disabled={isInteractionLocked}
               />
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                disabled={streamSessionState.loading}
+                disabled={isInteractionLocked}
                 className="absolute left-3 top-1/2 -translate-y-1/2 p-2 text-slate-500 hover:text-blue-400 disabled:text-slate-800 transition-colors"
               >
                 <ImageIcon size={20} />
@@ -875,7 +1026,7 @@ export default function ChatWorkspace() {
               />
               <button
                 type="submit"
-                disabled={streamSessionState.loading || (!input.trim() && selectedImages.length === 0)}
+                disabled={isInteractionLocked || (!input.trim() && selectedImages.length === 0)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 p-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-600 text-white rounded-xl transition-colors shadow-lg shadow-blue-600/20"
               >
                 {streamSessionState.loading ? <Loader2 className="animate-spin" size={20} /> : <Send size={20} />}

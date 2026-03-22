@@ -33,8 +33,10 @@ export interface ThreadCollectionState {
 
 export interface ActiveThreadState {
   threadId: string;
+  title: string;
   checkpointId: string;
   messages: ChatMessage[];
+  detailLoadState: ThreadLoadState;
 }
 
 export interface StreamSessionState {

@@ -41,7 +41,7 @@ export function ThreadListSidebar({
         </div>
 
         <p className="text-xs leading-5 text-slate-500">
-          Recent sessions live here. Restore behavior will be wired in the next interaction phase.
+          Recent sessions live here. Pick a thread to restore it or start a fresh draft.
         </p>
 
         {error ? (

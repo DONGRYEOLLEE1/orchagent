@@ -169,19 +169,19 @@
 
 ### Phase 6. 프론트 상호작용/복원 로직
 
-- [ ] 앱 초기 진입 시 최근 thread 목록 fetch
-- [ ] thread 클릭 시 detail fetch 후 중앙 채팅 영역 hydrate
-- [ ] thread 변경 시 중앙 헤더의 thread 표시도 동기화
-- [ ] 새 대화 시작 시 빈 draft 상태로 전환
-- [ ] 메시지 전송 시 규칙 변경
-  - [ ] draft 상태면 새 `thread_id` 생성
-  - [ ] 기존 thread 선택 상태면 해당 `thread_id` 재사용
-- [ ] 첫 메시지 전송 시 thread row를 optimistic insert
-- [ ] assistant 응답 완료 시 preview / last_activity_at 갱신
-- [ ] resume도 동일 thread summary를 갱신
-- [ ] thread 선택 시 `history`, `checkpointId`, `isInterrupted`, `streamError`, `toolExecutions`, `reasoning`, `rawTraces`를 어떻게 처리할지 명시
+- [x] 앱 초기 진입 시 최근 thread 목록 fetch
+- [x] thread 클릭 시 detail fetch 후 중앙 채팅 영역 hydrate
+- [x] thread 변경 시 중앙 헤더의 thread 표시도 동기화
+- [x] 새 대화 시작 시 빈 draft 상태로 전환
+- [x] 메시지 전송 시 규칙 변경
+  - [x] draft 상태면 새 `thread_id` 생성
+  - [x] 기존 thread 선택 상태면 해당 `thread_id` 재사용
+- [x] 첫 메시지 전송 시 thread row를 optimistic insert
+- [x] assistant 응답 완료 시 preview / last_activity_at 갱신
+- [x] resume도 동일 thread summary를 갱신
+- [x] thread 선택 시 `history`, `checkpointId`, `isInterrupted`, `streamError`, `toolExecutions`, `reasoning`, `rawTraces`를 어떻게 처리할지 명시
   - 권장 v1: 메시지만 복원, action-space 상태는 clear
-- [ ] thread 전환 중 active stream 차단 또는 경고 UX 적용
+- [x] thread 전환 중 active stream 차단 또는 경고 UX 적용
 
 ### Phase 7. 과거 thread의 상태 패널 복원 범위 결정
 
