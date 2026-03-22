@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from core.config import settings
 from core.database import engine, Base
-from api.routes import chat, health
+from api.routes import chat, health, threads
 
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
@@ -75,6 +75,7 @@ app.add_middleware(
 )
 
 app.include_router(chat.router, prefix=settings.API_V1_STR, tags=["chat"])
+app.include_router(threads.router, prefix=settings.API_V1_STR, tags=["threads"])
 app.include_router(health.router, prefix=settings.API_V1_STR, tags=["health"])
 
 if __name__ == "__main__":

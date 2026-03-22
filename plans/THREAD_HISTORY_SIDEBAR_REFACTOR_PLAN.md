@@ -108,18 +108,18 @@
 
 ### Phase 2. 백엔드 API 추가
 
-- [ ] thread 목록 응답용 schema 추가
+- [x] thread 목록 응답용 schema 추가
   - 권장 파일: `apps/backend/schemas/thread.py`
-- [ ] thread 상세 응답용 schema 추가
-- [ ] `GET /api/threads` 엔드포인트 구현
+- [x] thread 상세 응답용 schema 추가
+- [x] `GET /api/threads` 엔드포인트 구현
   - pagination 또는 `limit` 지원
   - 최신순 정렬
-- [ ] `GET /api/threads/{thread_id}` 엔드포인트 구현
+- [x] `GET /api/threads/{thread_id}` 엔드포인트 구현
   - 메시지 생성 시각 오름차순 정렬
   - 존재하지 않는 thread는 404
-- [ ] 필요 시 `GET /api/threads/{thread_id}/summary` 없이 detail 응답에 세션 요약 포함
-- [ ] `main.py`에 새 router 연결 또는 기존 `chat.py`에 임시 추가
-- [ ] 응답 timestamp 포맷을 일관된 ISO 문자열로 고정
+- [x] 필요 시 `GET /api/threads/{thread_id}/summary` 없이 detail 응답에 세션 요약 포함
+- [x] `main.py`에 새 router 연결 또는 기존 `chat.py`에 임시 추가
+- [x] 응답 timestamp 포맷을 일관된 ISO 문자열로 고정
 
 ### Phase 3. 백엔드 테스트
 

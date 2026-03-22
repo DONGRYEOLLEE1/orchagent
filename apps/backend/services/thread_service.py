@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
+from uuid import UUID
 
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +22,20 @@ class ThreadSummary:
     message_count: int
     latest_status: str | None
     checkpoint_id: str | None
+
+
+@dataclass(slots=True)
+class ThreadMessage:
+    id: UUID
+    role: str
+    content: str
+    created_at: datetime | None
+
+
+@dataclass(slots=True)
+class ThreadDetail:
+    thread: ThreadSummary
+    messages: list[ThreadMessage]
 
 
 class ThreadService:
@@ -61,7 +77,7 @@ class ThreadService:
         return latest_status or checkpoint_status
 
     @staticmethod
-    def _build_summary(row: dict) -> ThreadSummary:
+    def _build_summary(row: dict[str, Any]) -> ThreadSummary:
         return ThreadSummary(
             thread_id=row["thread_id"],
             title=ThreadService._derive_title(row.get("first_user_content")),
@@ -78,9 +94,7 @@ class ThreadService:
         )
 
     @staticmethod
-    async def list_thread_summaries(
-        db: AsyncSession, *, limit: int = DEFAULT_LIMIT
-    ) -> list[ThreadSummary]:
+    def _thread_summary_stmt(*, thread_id: str | None = None, limit: int | None = None):
         last_message_at = (
             select(func.max(ChatMessageLog.created_at))
             .where(ChatMessageLog.session_id == ChatSession.id)
@@ -177,11 +191,70 @@ class ThreadService:
                 latest_checkpoint_status.label("checkpoint_status"),
             )
             .order_by(desc(last_activity_at), ChatSession.created_at.desc())
-            .limit(limit)
         )
+
+        if thread_id is not None:
+            stmt = stmt.where(ChatSession.id == thread_id)
+        if limit is not None:
+            stmt = stmt.limit(limit)
+
+        return stmt
+
+    @staticmethod
+    async def list_thread_summaries(
+        db: AsyncSession, *, limit: int = DEFAULT_LIMIT
+    ) -> list[ThreadSummary]:
+        stmt = ThreadService._thread_summary_stmt(limit=limit)
 
         result = await db.execute(stmt)
         return [
             ThreadService._build_summary(dict(row))
             for row in result.mappings().all()
         ]
+
+    @staticmethod
+    async def get_thread_summary(
+        db: AsyncSession, thread_id: str
+    ) -> ThreadSummary | None:
+        stmt = ThreadService._thread_summary_stmt(thread_id=thread_id, limit=1)
+        result = await db.execute(stmt)
+        row = result.mappings().first()
+        if row is None:
+            return None
+        return ThreadService._build_summary(dict(row))
+
+    @staticmethod
+    async def get_thread_messages(
+        db: AsyncSession, thread_id: str
+    ) -> list[ThreadMessage]:
+        stmt = (
+            select(
+                ChatMessageLog.id.label("id"),
+                ChatMessageLog.role.label("role"),
+                ChatMessageLog.content.label("content"),
+                ChatMessageLog.created_at.label("created_at"),
+            )
+            .where(ChatMessageLog.session_id == thread_id)
+            .order_by(ChatMessageLog.created_at.asc(), ChatMessageLog.id.asc())
+        )
+        result = await db.execute(stmt)
+        return [
+            ThreadMessage(
+                id=row["id"],
+                role=row["role"],
+                content=row["content"],
+                created_at=row["created_at"],
+            )
+            for row in result.mappings().all()
+        ]
+
+    @staticmethod
+    async def get_thread_detail(
+        db: AsyncSession, thread_id: str
+    ) -> ThreadDetail | None:
+        thread = await ThreadService.get_thread_summary(db, thread_id)
+        if thread is None:
+            return None
+
+        messages = await ThreadService.get_thread_messages(db, thread_id)
+        return ThreadDetail(thread=thread, messages=messages)
