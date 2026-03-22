@@ -80,7 +80,7 @@ export function ThreadListSidebar({
                 key={thread.thread_id}
                 thread={thread}
                 selected={selectedThreadId === thread.thread_id}
-                disabled={disabled || !onSelectThread}
+                disabled={disabled}
                 onSelect={onSelectThread}
               />
             ))}

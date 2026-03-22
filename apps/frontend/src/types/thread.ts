@@ -24,6 +24,7 @@ export interface ThreadDetail {
 }
 
 export type ThreadLoadState = 'idle' | 'loading' | 'success' | 'error';
+export type ActiveThreadViewMode = 'draft' | 'live' | 'historical';
 
 export interface ThreadCollectionState {
   threads: ThreadSummary[];
@@ -37,6 +38,9 @@ export interface ActiveThreadState {
   checkpointId: string;
   messages: ChatMessage[];
   detailLoadState: ThreadLoadState;
+  latestStatus: string | null;
+  lastActivityAt: string | null;
+  viewMode: ActiveThreadViewMode;
 }
 
 export interface StreamSessionState {

@@ -4,11 +4,29 @@ export function AgentTimeline({
   history,
   currentNode,
   loading,
+  historicalView,
 }: {
   history: string[];
   currentNode: string;
   loading: boolean;
+  historicalView: boolean;
 }) {
+  if (historicalView) {
+    return (
+      <section className="rounded-2xl border border-slate-800/70 bg-slate-900/40 p-4">
+        <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-300">
+          <Activity size={16} className="text-blue-400" />
+          <span>Agent Timeline</span>
+        </div>
+
+        <div className="rounded-xl border border-dashed border-slate-800 bg-black/10 px-3 py-4 text-xs leading-5 text-slate-500">
+          Historical timeline replay is not restored in v1. The session card still shows
+          the latest status, checkpoint, and last activity time for this thread.
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="rounded-2xl border border-slate-800/70 bg-slate-900/40 p-4">
       <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-300">

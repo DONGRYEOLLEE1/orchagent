@@ -2,6 +2,33 @@ import { Activity, Hash, Layers3 } from 'lucide-react';
 
 import type { ThreadLoadState } from '@/types/thread';
 
+function formatStatus(value: string | null): string {
+  if (!value) {
+    return 'Draft';
+  }
+
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function formatLastActivity(value: string | null): string {
+  if (!value) {
+    return '-';
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '-';
+  }
+
+  return date.toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+}
+
 function StatusRow({
   label,
   value,
@@ -25,12 +52,18 @@ export function SessionStatusCard({
   activeThreadId,
   threadCount,
   threadLoadState,
+  latestStatus,
+  lastActivityAt,
+  historicalView,
 }: {
   loading: boolean;
   checkpointId: string;
   activeThreadId: string;
   threadCount: number;
   threadLoadState: ThreadLoadState;
+  latestStatus: string | null;
+  lastActivityAt: string | null;
+  historicalView: boolean;
 }) {
   return (
     <section className="rounded-2xl border border-slate-800/70 bg-slate-900/30 p-4">
@@ -51,6 +84,18 @@ export function SessionStatusCard({
         />
 
         <StatusRow
+          label="Status"
+          value={formatStatus(latestStatus)}
+          valueClassName="font-medium text-slate-300"
+        />
+
+        <StatusRow
+          label="Last Active"
+          value={formatLastActivity(lastActivityAt)}
+          valueClassName="font-mono text-xs text-slate-500"
+        />
+
+        <StatusRow
           label="Checkpoint"
           value={checkpointId || '-'}
           valueClassName="max-w-[12rem] truncate font-mono text-xs text-slate-500"
@@ -65,7 +110,7 @@ export function SessionStatusCard({
         <div className="rounded-xl border border-slate-800/60 bg-black/10 px-3 py-2.5">
           <div className="mb-1 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
             <Layers3 size={12} />
-            <span>Current Thread</span>
+            <span>{historicalView ? 'History Snapshot' : 'Current Thread'}</span>
           </div>
           <div className="flex items-center gap-2 text-xs text-slate-300">
             <Hash size={12} className="shrink-0 text-slate-500" />

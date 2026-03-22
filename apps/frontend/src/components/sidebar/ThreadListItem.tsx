@@ -65,13 +65,13 @@ export function ThreadListItem({
   disabled: boolean;
   onSelect?: (threadId: string) => void;
 }) {
-  const interactive = Boolean(onSelect) && !disabled;
+  const interactive = Boolean(onSelect);
   const baseClassName = [
     'w-full rounded-2xl border p-3 text-left transition-all duration-200',
     selected
       ? 'border-blue-500/50 bg-blue-500/10 shadow-[0_0_20px_rgba(59,130,246,0.12)]'
       : 'border-slate-800/70 bg-slate-900/30 hover:border-slate-700 hover:bg-slate-900/50',
-    !interactive ? 'cursor-default opacity-80' : '',
+    disabled ? 'cursor-not-allowed opacity-80' : '',
   ]
     .filter(Boolean)
     .join(' ');
@@ -116,7 +116,9 @@ export function ThreadListItem({
   return (
     <button
       type="button"
+      disabled={disabled}
       onClick={() => onSelect?.(thread.thread_id)}
+      aria-label={`Open thread ${thread.title}`}
       className={baseClassName}
     >
       {content}

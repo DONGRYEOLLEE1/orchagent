@@ -24,6 +24,9 @@ export function createInitialActiveThreadState(): ActiveThreadState {
     checkpointId: '',
     messages: [],
     detailLoadState: 'idle',
+    latestStatus: null,
+    lastActivityAt: null,
+    viewMode: 'draft',
   };
 }
 
@@ -111,6 +114,22 @@ export function createActiveThreadStateFromDetail(
     checkpointId: detail.thread.checkpoint_id || '',
     messages: toChatMessages(detail.messages),
     detailLoadState: 'success',
+    latestStatus: detail.thread.latest_status,
+    lastActivityAt: detail.thread.last_activity_at,
+    viewMode: 'historical',
+  };
+}
+
+export function applyThreadSummaryToActiveThread(
+  activeThread: ActiveThreadState,
+  summary: ThreadSummary
+): ActiveThreadState {
+  return {
+    ...activeThread,
+    title: summary.title,
+    checkpointId: summary.checkpoint_id || activeThread.checkpointId,
+    latestStatus: summary.latest_status,
+    lastActivityAt: summary.last_activity_at,
   };
 }
 

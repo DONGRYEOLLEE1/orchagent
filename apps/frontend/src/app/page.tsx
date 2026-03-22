@@ -14,6 +14,7 @@ import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { fetchThreadDetail, fetchThreads, resumeChatStream, sendChatStream } from '@/lib/api';
 import { appendAssistantText, parseSseBlock, pushUniqueHistory, splitSseBlocks } from '@/lib/chat-stream';
 import {
+  applyThreadSummaryToActiveThread,
   createActiveThreadStateFromDetail,
   createInitialActionSpaceState,
   createInitialActiveThreadState,
@@ -176,7 +177,13 @@ const AgentThought = ({ content, isThinking }: { content: string, isThinking: bo
   );
 };
 
-const ToolPanel = ({ toolExecutions }: { toolExecutions: ToolExecution[] }) => (
+const ToolPanel = ({
+  toolExecutions,
+  emptyMessage = 'Waiting for tool execution...',
+}: {
+  toolExecutions: ToolExecution[];
+  emptyMessage?: string;
+}) => (
   <div className="flex flex-col gap-4">
     <div className="flex items-center justify-between">
       <h3 className="text-sm font-semibold text-slate-400 flex items-center gap-2">
@@ -190,7 +197,7 @@ const ToolPanel = ({ toolExecutions }: { toolExecutions: ToolExecution[] }) => (
       {toolExecutions.length === 0 ? (
         <div className="p-8 border border-dashed border-slate-800 rounded-2xl flex flex-col items-center justify-center text-center opacity-30">
           <Terminal size={24} className="mb-2" />
-          <span className="text-xs italic tracking-tighter text-slate-400">Waiting for tool execution...</span>
+          <span className="text-xs italic tracking-tighter text-slate-400">{emptyMessage}</span>
         </div>
       ) : (
         [...toolExecutions].reverse().map((tool) => (
@@ -220,6 +227,7 @@ export default function ChatWorkspace() {
     streamSessionState.loading ||
     streamSessionState.isInterrupted ||
     activeThreadState.detailLoadState === 'loading';
+  const isHistoricalView = activeThreadState.viewMode === 'historical';
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -291,6 +299,14 @@ export default function ChatWorkspace() {
         threads,
         loadState: 'success',
         error: '',
+      });
+      setActiveThreadState((prev) => {
+        const summary = threads.find((thread) => thread.thread_id === prev.threadId);
+        if (!summary) {
+          return prev;
+        }
+
+        return applyThreadSummaryToActiveThread(prev, summary);
       });
     } catch (error) {
       setThreadCollectionState(prev => ({
@@ -371,6 +387,11 @@ export default function ChatWorkspace() {
 
         return nextState;
       });
+      setActiveThreadState((prev) => ({
+        ...prev,
+        latestStatus: payload.status,
+        lastActivityAt: payload.timestamp,
+      }));
       return;
     }
 
@@ -503,6 +524,7 @@ export default function ChatWorkspace() {
       setActiveThreadState(prev => ({
         ...prev,
         messages: appendAssistantText(prev.messages, assistantMsgId, payload.content),
+        lastActivityAt: payload.timestamp,
       }));
       return;
     }
@@ -535,6 +557,7 @@ export default function ChatWorkspace() {
           `${assistantMsgId}_error`,
           `Error: ${payload.message}`
         ),
+        latestStatus: 'errored',
       }));
     }
   };
@@ -609,6 +632,9 @@ export default function ChatWorkspace() {
       checkpointId: '',
       messages: [...prev.messages, userMessage],
       detailLoadState: 'success',
+      latestStatus: 'running',
+      lastActivityAt: optimisticThread.last_activity_at,
+      viewMode: 'live',
     }));
     setThreadCollectionState(prev => ({
       ...prev,
@@ -711,6 +737,9 @@ export default function ChatWorkspace() {
     setActiveThreadState(prev => ({
       ...prev,
       messages: [...prev.messages, resumeMessage],
+      latestStatus: 'running',
+      lastActivityAt: optimisticThread.last_activity_at,
+      viewMode: 'live',
     }));
     setStreamSessionState(prev => ({
       ...prev,
@@ -787,6 +816,7 @@ export default function ChatWorkspace() {
           history={streamSessionState.history}
           currentNode={streamSessionState.currentNode}
           loading={streamSessionState.loading}
+          historicalView={isHistoricalView}
         />
 
         <SessionStatusCard
@@ -795,6 +825,9 @@ export default function ChatWorkspace() {
           activeThreadId={activeThreadState.threadId}
           threadCount={threadCollectionState.threads.length}
           threadLoadState={threadCollectionState.loadState}
+          latestStatus={activeThreadState.latestStatus}
+          lastActivityAt={activeThreadState.lastActivityAt}
+          historicalView={isHistoricalView}
         />
       </div>
 
@@ -1010,6 +1043,7 @@ export default function ChatWorkspace() {
               />
               <button
                 type="button"
+                aria-label="Attach image"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isInteractionLocked}
                 className="absolute left-3 top-1/2 -translate-y-1/2 p-2 text-slate-500 hover:text-blue-400 disabled:text-slate-800 transition-colors"
@@ -1026,6 +1060,7 @@ export default function ChatWorkspace() {
               />
               <button
                 type="submit"
+                aria-label="Send message"
                 disabled={isInteractionLocked || (!input.trim() && selectedImages.length === 0)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 p-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-600 text-white rounded-xl transition-colors shadow-lg shadow-blue-600/20"
               >
@@ -1047,9 +1082,22 @@ export default function ChatWorkspace() {
         </div>
 
         <div className="space-y-6">
+          {isHistoricalView ? (
+            <div className="rounded-2xl border border-amber-500/20 bg-amber-500/8 px-4 py-4 text-sm text-amber-100/90">
+              Historical thread selected. Tool activity, reasoning, and raw events are not hydrated in v1.
+            </div>
+          ) : null}
+
           <AgentThought content={actionSpaceState.reasoning} isThinking={streamSessionState.loading} />
 
-          <ToolPanel toolExecutions={actionSpaceState.toolExecutions} />
+          <ToolPanel
+            toolExecutions={actionSpaceState.toolExecutions}
+            emptyMessage={
+              isHistoricalView
+                ? 'Historical tool activity is not restored in v1.'
+                : 'Waiting for tool execution...'
+            }
+          />
 
           {/* Debug Panel Toggle */}
           <div className="mt-8 border-t border-slate-800/30 pt-4">
