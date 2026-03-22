@@ -57,6 +57,72 @@ def test_list_threads_returns_thread_summaries(monkeypatch):
     }
 
 
+def test_list_threads_returns_empty_list(monkeypatch):
+    async def mock_list_thread_summaries(db, *, limit):
+        assert limit == 50
+        return []
+
+    from services.thread_service import ThreadService
+
+    app.dependency_overrides[get_db] = _override_get_db
+    monkeypatch.setattr(ThreadService, "list_thread_summaries", mock_list_thread_summaries)
+    try:
+        response = client.get("/api/threads")
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+    assert response.status_code == 200
+    assert response.json() == {"threads": []}
+
+
+def test_list_threads_preserves_service_order_and_summary_fields(monkeypatch):
+    base_time = datetime(2026, 3, 22, 10, 0, 0, tzinfo=timezone.utc)
+    summaries = [
+        ThreadSummary(
+            thread_id="thread-new",
+            title="newest prompt",
+            preview="newest answer",
+            created_at=base_time,
+            last_activity_at=base_time,
+            message_count=4,
+            latest_status="completed",
+            checkpoint_id="cp-new",
+        ),
+        ThreadSummary(
+            thread_id="thread-old",
+            title="older prompt",
+            preview="older preview",
+            created_at=base_time,
+            last_activity_at=base_time,
+            message_count=1,
+            latest_status="interrupted",
+            checkpoint_id="cp-old",
+        ),
+    ]
+
+    async def mock_list_thread_summaries(db, *, limit):
+        assert limit == 20
+        return summaries
+
+    from services.thread_service import ThreadService
+
+    app.dependency_overrides[get_db] = _override_get_db
+    monkeypatch.setattr(ThreadService, "list_thread_summaries", mock_list_thread_summaries)
+    try:
+        response = client.get("/api/threads?limit=20")
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [thread["thread_id"] for thread in body["threads"]] == [
+        "thread-new",
+        "thread-old",
+    ]
+    assert body["threads"][0]["message_count"] == 4
+    assert body["threads"][1]["latest_status"] == "interrupted"
+
+
 def test_get_thread_returns_detail(monkeypatch):
     created_at = datetime(2026, 3, 22, 10, 0, 0, tzinfo=timezone.utc)
     message_id = uuid4()
@@ -111,6 +177,117 @@ def test_get_thread_returns_detail(monkeypatch):
         "created_at": "2026-03-22T10:00:00Z",
     }
     assert body["messages"][1]["role"] == "assistant"
+
+
+def test_get_thread_returns_user_only_detail(monkeypatch):
+    created_at = datetime(2026, 3, 22, 11, 0, 0, tzinfo=timezone.utc)
+    message_id = uuid4()
+    detail = ThreadDetail(
+        thread=ThreadSummary(
+            thread_id="thread-user-only",
+            title="Single prompt",
+            preview="Single prompt",
+            created_at=created_at,
+            last_activity_at=created_at,
+            message_count=1,
+            latest_status="running",
+            checkpoint_id="cp-user-only",
+        ),
+        messages=[
+            ThreadMessage(
+                id=message_id,
+                role="user",
+                content="only user message",
+                created_at=created_at,
+            )
+        ],
+    )
+
+    async def mock_get_thread_detail(db, thread_id):
+        assert thread_id == "thread-user-only"
+        return detail
+
+    from services.thread_service import ThreadService
+
+    app.dependency_overrides[get_db] = _override_get_db
+    monkeypatch.setattr(ThreadService, "get_thread_detail", mock_get_thread_detail)
+    try:
+        response = client.get("/api/threads/thread-user-only")
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+    assert response.status_code == 200
+    assert response.json()["messages"] == [
+        {
+            "id": str(message_id),
+            "role": "user",
+            "content": "only user message",
+            "created_at": "2026-03-22T11:00:00Z",
+        }
+    ]
+
+
+def test_get_thread_returns_resume_messages_in_existing_order(monkeypatch):
+    created_at = datetime(2026, 3, 22, 12, 0, 0, tzinfo=timezone.utc)
+    detail = ThreadDetail(
+        thread=ThreadSummary(
+            thread_id="thread-resume",
+            title="Resume thread",
+            preview="approved answer",
+            created_at=created_at,
+            last_activity_at=created_at,
+            message_count=4,
+            latest_status="completed",
+            checkpoint_id="cp-resume",
+        ),
+        messages=[
+            ThreadMessage(
+                id=uuid4(),
+                role="user",
+                content="first request",
+                created_at=created_at,
+            ),
+            ThreadMessage(
+                id=uuid4(),
+                role="assistant",
+                content="needs approval",
+                created_at=created_at,
+            ),
+            ThreadMessage(
+                id=uuid4(),
+                role="user",
+                content="approved",
+                created_at=created_at,
+            ),
+            ThreadMessage(
+                id=uuid4(),
+                role="assistant",
+                content="final answer",
+                created_at=created_at,
+            ),
+        ],
+    )
+
+    async def mock_get_thread_detail(db, thread_id):
+        assert thread_id == "thread-resume"
+        return detail
+
+    from services.thread_service import ThreadService
+
+    app.dependency_overrides[get_db] = _override_get_db
+    monkeypatch.setattr(ThreadService, "get_thread_detail", mock_get_thread_detail)
+    try:
+        response = client.get("/api/threads/thread-resume")
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+    assert response.status_code == 200
+    assert [message["content"] for message in response.json()["messages"]] == [
+        "first request",
+        "needs approval",
+        "approved",
+        "final answer",
+    ]
 
 
 def test_get_thread_returns_404_for_missing_thread(monkeypatch):

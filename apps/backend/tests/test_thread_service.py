@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
+from uuid import uuid4
 
 import pytest
 
@@ -63,6 +64,12 @@ def test_build_summary_uses_phase_zero_derivation_rules():
     assert summary.checkpoint_id == "cp-9"
 
 
+def test_derive_status_prefers_status_trace_over_checkpoint_status():
+    assert ThreadService._derive_status("errored", "completed") == "errored"
+    assert ThreadService._derive_status(None, "interrupted") == "interrupted"
+    assert ThreadService._derive_status(None, None) is None
+
+
 @pytest.mark.asyncio
 async def test_list_thread_summaries_executes_single_query_and_maps_rows():
     created_at = datetime(2026, 3, 21, 9, 0, 0)
@@ -96,3 +103,90 @@ async def test_list_thread_summaries_executes_single_query_and_maps_rows():
     assert summaries[0].last_activity_at == created_at
     assert summaries[0].latest_status == "interrupted"
     db.execute.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_list_thread_summaries_preserves_latest_first_order_and_counts():
+    created_at = datetime(2026, 3, 21, 9, 0, 0)
+    rows = [
+        {
+            "thread_id": "thread-newer",
+            "first_user_content": "latest question",
+            "latest_assistant_content": "latest answer",
+            "latest_user_content": "latest question",
+            "created_at": created_at + timedelta(hours=1),
+            "last_activity_at": created_at + timedelta(hours=2),
+            "message_count": 4,
+            "latest_status": "completed",
+            "checkpoint_status": "running",
+            "checkpoint_id": "cp-newer",
+        },
+        {
+            "thread_id": "thread-older",
+            "first_user_content": "older question",
+            "latest_assistant_content": None,
+            "latest_user_content": "older question follow-up",
+            "created_at": created_at,
+            "last_activity_at": created_at + timedelta(minutes=15),
+            "message_count": 2,
+            "latest_status": None,
+            "checkpoint_status": "interrupted",
+            "checkpoint_id": "cp-older",
+        },
+    ]
+
+    result = SimpleNamespace(mappings=lambda: SimpleNamespace(all=lambda: rows))
+    db = AsyncMock()
+    db.execute = AsyncMock(return_value=result)
+
+    summaries = await ThreadService.list_thread_summaries(db, limit=5)
+
+    assert [summary.thread_id for summary in summaries] == [
+        "thread-newer",
+        "thread-older",
+    ]
+    assert summaries[0].message_count == 4
+    assert summaries[1].preview == "older question follow-up"
+    assert summaries[1].latest_status == "interrupted"
+
+
+@pytest.mark.asyncio
+async def test_get_thread_messages_maps_rows_in_created_order():
+    first_id = uuid4()
+    second_id = uuid4()
+    rows = [
+        {
+            "id": first_id,
+            "role": "user",
+            "content": "first",
+            "created_at": datetime(2026, 3, 21, 9, 0, 0),
+        },
+        {
+            "id": second_id,
+            "role": "assistant",
+            "content": "second",
+            "created_at": datetime(2026, 3, 21, 9, 1, 0),
+        },
+    ]
+    result = SimpleNamespace(mappings=lambda: SimpleNamespace(all=lambda: rows))
+    db = AsyncMock()
+    db.execute = AsyncMock(return_value=result)
+
+    messages = await ThreadService.get_thread_messages(db, "thread-a")
+
+    assert [message.id for message in messages] == [first_id, second_id]
+    assert [message.role for message in messages] == ["user", "assistant"]
+
+
+@pytest.mark.asyncio
+async def test_get_thread_detail_returns_none_when_summary_is_missing():
+    db = AsyncMock()
+
+    original_get_thread_summary = ThreadService.get_thread_summary
+    ThreadService.get_thread_summary = AsyncMock(return_value=None)
+    try:
+        detail = await ThreadService.get_thread_detail(db, "missing-thread")
+    finally:
+        ThreadService.get_thread_summary = original_get_thread_summary
+
+    assert detail is None
