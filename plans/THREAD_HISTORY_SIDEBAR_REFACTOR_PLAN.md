@@ -5,11 +5,11 @@
 
 ## 1. 목표
 
-- [ ] 왼쪽 패널에 최근 대화 스레드 목록을 표시한다.
-- [ ] 스레드 클릭 시 해당 스레드의 메시지 히스토리를 중앙 채팅 영역에 복원한다.
-- [ ] 기존 `/api/chat` 및 `/api/chat/resume` 스트리밍 흐름과 충돌 없이 같은 `thread_id`를 이어서 사용할 수 있게 만든다.
-- [ ] 현재 단일 파일 중심 프론트 상태를 thread-aware 구조로 재정리한다.
-- [ ] 이후 검색, 삭제, 제목 변경, pinned threads 같은 기능을 붙일 수 있도록 API/상태 모델을 정돈한다.
+- [x] 왼쪽 패널에 최근 대화 스레드 목록을 표시한다.
+- [x] 스레드 클릭 시 해당 스레드의 메시지 히스토리를 중앙 채팅 영역에 복원한다.
+- [x] 기존 `/api/chat` 및 `/api/chat/resume` 스트리밍 흐름과 충돌 없이 같은 `thread_id`를 이어서 사용할 수 있게 만든다.
+- [x] 현재 단일 파일 중심 프론트 상태를 thread-aware 구조로 재정리한다.
+- [x] 이후 검색, 삭제, 제목 변경, pinned threads 같은 기능을 붙일 수 있도록 API/상태 모델을 정돈한다.
 
 ## 2. 현재 코드베이스 진단
 
@@ -39,22 +39,22 @@
 
 ### 3.1 이번 리팩토링의 권장 범위
 
-- [ ] 왼쪽 패널 구성: `Agent Timeline` -> `Session State` -> `Threads` 순서 유지
-- [ ] `Threads` 섹션 상단에 `New Chat` 버튼 추가
-- [ ] 각 thread row는 최소한 다음 정보를 표시
-  - [ ] 제목: 첫 번째 user 메시지 앞부분을 잘라서 사용
-  - [ ] preview: 가장 최근 메시지 일부
-  - [ ] 최근 활동 시각
-  - [ ] 선택 상태
-- [ ] thread 클릭 시 중앙 채팅 영역의 `messages`를 교체해 과거 대화 복원
-- [ ] 선택된 thread에서 새 메시지를 보내면 기존 `thread_id`로 이어서 전송
-- [ ] 새 대화 시작 시에만 새 `thread_id`를 발급
+- [x] 왼쪽 패널 구성: `Agent Timeline` -> `Session State` -> `Threads` 순서 유지
+- [x] `Threads` 섹션 상단에 `New Chat` 버튼 추가
+- [x] 각 thread row는 최소한 다음 정보를 표시
+  - [x] 제목: 첫 번째 user 메시지 앞부분을 잘라서 사용
+  - [x] preview: 가장 최근 메시지 일부
+  - [x] 최근 활동 시각
+  - [x] 선택 상태
+- [x] thread 클릭 시 중앙 채팅 영역의 `messages`를 교체해 과거 대화 복원
+- [x] 선택된 thread에서 새 메시지를 보내면 기존 `thread_id`로 이어서 전송
+- [x] 새 대화 시작 시에만 새 `thread_id`를 발급
 
 ### 3.2 이번 리팩토링에서 의도적으로 단순화할 부분
 
-- [ ] v1에서는 과거 thread 선택 시 `Tool Activity`, `Internal Reasoning`, `Raw Events`는 비우거나 read-only placeholder로 처리 가능
-- [ ] v1에서는 thread 전환 중 active stream이 있으면 전환을 막거나 비활성화하는 정책을 우선 적용
-- [ ] v1에서는 과거 이미지 첨부 복원은 제외하고, 텍스트 메시지 복원에 집중
+- [x] v1에서는 과거 thread 선택 시 `Tool Activity`, `Internal Reasoning`, `Raw Events`는 비우거나 read-only placeholder로 처리 가능
+- [x] v1에서는 thread 전환 중 active stream이 있으면 전환을 막거나 비활성화하는 정책을 우선 적용
+- [x] v1에서는 과거 이미지 첨부 복원은 제외하고, 텍스트 메시지 복원에 집중
 
 ### 3.3 후속 확장 후보
 
@@ -67,21 +67,21 @@
 
 ### 4.1 백엔드 API 권장안
 
-- [ ] `GET /api/threads`
+- [x] `GET /api/threads`
   - 최근 thread 목록 반환
   - 응답 필드: `thread_id`, `title`, `preview`, `created_at`, `last_activity_at`, `message_count`, `latest_status`, `checkpoint_id`
-- [ ] `GET /api/threads/{thread_id}`
+- [x] `GET /api/threads/{thread_id}`
   - 선택한 thread의 메시지 히스토리와 세션 요약 반환
   - 응답 필드: `thread`, `messages`
-- [ ] 기존 `GET /api/thread/{thread_id}/trace`는 유지하되, 추후 `threads` 리소스 구조와 이름을 맞출지 검토
+- [x] 기존 `GET /api/thread/{thread_id}/trace`는 유지하되, 추후 `threads` 리소스 구조와 이름을 맞출지 검토
 
 ### 4.2 프론트 상태 권장안
 
-- [ ] `thread list state`와 `active chat state`를 분리
-- [ ] `selectedThreadId | null` 개념 도입
-- [ ] `draft/new chat` 상태를 별도로 두어, 빈 화면과 실제 저장된 thread를 구분
-- [ ] SSE 스트리밍 상태는 선택된 thread에 귀속되도록 정리
-- [ ] thread 전환 시 `messages`, `history`, `checkpointId`, `streamError`, `isInterrupted` 초기화 규칙을 명시
+- [x] `thread list state`와 `active chat state`를 분리
+- [x] `selectedThreadId | null` 개념 도입
+- [x] `draft/new chat` 상태를 별도로 두어, 빈 화면과 실제 저장된 thread를 구분
+- [x] SSE 스트리밍 상태는 선택된 thread에 귀속되도록 정리
+- [x] thread 전환 시 `messages`, `history`, `checkpointId`, `streamError`, `isInterrupted` 초기화 규칙을 명시
 
 ## 5. 상세 작업 체크리스트
 
@@ -235,8 +235,8 @@
 
 ## 8. 완료 기준
 
-- [ ] 왼쪽 패널 `SESSION STATE` 아래에 thread 목록이 렌더링된다.
-- [ ] 과거 thread 클릭 시 중앙 채팅창에 해당 메시지 히스토리가 표시된다.
-- [ ] 동일 thread에서 추가 메시지를 보내면 thread가 이어지고 새 thread가 남발되지 않는다.
-- [ ] 최근 활동한 thread가 목록 상단으로 정렬된다.
-- [ ] 기존 chat/resume/trace 흐름이 회귀하지 않는다.
+- [x] 왼쪽 패널 `SESSION STATE` 아래에 thread 목록이 렌더링된다.
+- [x] 과거 thread 클릭 시 중앙 채팅창에 해당 메시지 히스토리가 표시된다.
+- [x] 동일 thread에서 추가 메시지를 보내면 thread가 이어지고 새 thread가 남발되지 않는다.
+- [x] 최근 활동한 thread가 목록 상단으로 정렬된다.
+- [x] 기존 chat/resume/trace 흐름이 회귀하지 않는다.

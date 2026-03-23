@@ -249,3 +249,155 @@ test('reuses the selected thread id for follow-up sends and disables switching w
     expect(screen.getByText('Follow up answer')).toBeInTheDocument();
   });
 });
+
+test('marks a thread as errored when a send request fails before streaming starts', async () => {
+  const user = userEvent.setup();
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+
+    if (url.includes('/api/threads?limit=50')) {
+      return jsonResponse({
+        threads: [
+          {
+            thread_id: 'thread-1',
+            title: 'Primary thread',
+            preview: 'Existing answer',
+            created_at: '2026-03-22T10:00:00Z',
+            last_activity_at: '2026-03-22T10:15:00Z',
+            message_count: 2,
+            latest_status: 'completed',
+            checkpoint_id: 'cp-1',
+          },
+        ],
+      });
+    }
+
+    if (url.includes('/api/threads/thread-1')) {
+      return jsonResponse({
+        thread: {
+          thread_id: 'thread-1',
+          title: 'Primary thread',
+          preview: 'Existing answer',
+          created_at: '2026-03-22T10:00:00Z',
+          last_activity_at: '2026-03-22T10:15:00Z',
+          message_count: 2,
+          latest_status: 'completed',
+          checkpoint_id: 'cp-1',
+        },
+        messages: [
+          {
+            id: 'm-1',
+            role: 'user',
+            content: 'Original question',
+            created_at: '2026-03-22T10:00:00Z',
+          },
+          {
+            id: 'm-2',
+            role: 'assistant',
+            content: 'Existing answer',
+            created_at: '2026-03-22T10:01:00Z',
+          },
+        ],
+      });
+    }
+
+    if (url.endsWith('/api/chat')) {
+      const body = JSON.parse(String(init?.body || '{}'));
+      expect(body.thread_id).toBe('thread-1');
+      return jsonResponse({ detail: 'Backend exploded' }, 500);
+    }
+
+    throw new Error(`Unhandled fetch: ${url}`);
+  });
+
+  vi.stubGlobal('fetch', fetchMock);
+
+  render(<ChatWorkspace />);
+
+  await user.click(await screen.findByRole('button', { name: /open thread primary thread/i }));
+  await user.type(screen.getByPlaceholderText(/message orchagent/i), 'Failing follow up');
+  await user.click(screen.getByRole('button', { name: /send message/i }));
+
+  await waitFor(() => {
+    expect(screen.getByText('Backend exploded')).toBeInTheDocument();
+  });
+
+  expect(screen.getAllByText('Errored').length).toBeGreaterThan(0);
+  expect(screen.getByRole('button', { name: /open thread primary thread/i })).toBeEnabled();
+});
+
+test('restores interrupted resume state when resume fails before streaming starts', async () => {
+  const user = userEvent.setup();
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+
+    if (url.includes('/api/threads?limit=50')) {
+      return jsonResponse({
+        threads: [
+          {
+            thread_id: 'thread-1',
+            title: 'Interrupted thread',
+            preview: 'Awaiting approval',
+            created_at: '2026-03-22T10:00:00Z',
+            last_activity_at: '2026-03-22T10:15:00Z',
+            message_count: 2,
+            latest_status: 'interrupted',
+            checkpoint_id: 'cp-1',
+          },
+        ],
+      });
+    }
+
+    if (url.includes('/api/threads/thread-1')) {
+      return jsonResponse({
+        thread: {
+          thread_id: 'thread-1',
+          title: 'Interrupted thread',
+          preview: 'Awaiting approval',
+          created_at: '2026-03-22T10:00:00Z',
+          last_activity_at: '2026-03-22T10:15:00Z',
+          message_count: 2,
+          latest_status: 'interrupted',
+          checkpoint_id: 'cp-1',
+        },
+        messages: [
+          {
+            id: 'm-1',
+            role: 'user',
+            content: 'Do the risky thing',
+            created_at: '2026-03-22T10:00:00Z',
+          },
+          {
+            id: 'm-2',
+            role: 'assistant',
+            content: 'Awaiting approval',
+            created_at: '2026-03-22T10:01:00Z',
+          },
+        ],
+      });
+    }
+
+    if (url.endsWith('/api/chat/resume')) {
+      return jsonResponse({ detail: 'Resume failed' }, 500);
+    }
+
+    throw new Error(`Unhandled fetch: ${url}`);
+  });
+
+  vi.stubGlobal('fetch', fetchMock);
+
+  render(<ChatWorkspace />);
+
+  await user.click(await screen.findByRole('button', { name: /open thread interrupted thread/i }));
+  expect(await screen.findByText(/action required/i)).toBeInTheDocument();
+
+  await user.click(screen.getByRole('button', { name: /approve & continue/i }));
+
+  await waitFor(() => {
+    expect(screen.getByText('Resume failed')).toBeInTheDocument();
+  });
+
+  expect(screen.getByText(/action required/i)).toBeInTheDocument();
+  expect(screen.queryByText(/\[User Action\]: approve/i)).not.toBeInTheDocument();
+  expect(screen.getByText('Interrupted')).toBeInTheDocument();
+});

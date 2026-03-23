@@ -752,6 +752,16 @@ async def chat_resume_stream(request: ResumeRequest):
             saved_state, "tasks", getattr(saved_state, "pending_sends", [])
         )
         if not has_tasks:
+            try:
+                builder = get_orchagent_graph()
+                graph = builder.compile(checkpointer=checkpointer)
+                snapshot = await graph.aget_state(check_config, subgraphs=True)
+            except TypeError:
+                snapshot = None
+
+            has_tasks = bool(getattr(snapshot, "next", ()))
+
+        if not has_tasks:
             raise HTTPException(
                 status_code=400, detail="Graph is not in an interrupted state"
             )

@@ -693,18 +693,29 @@ export default function ChatWorkspace() {
       }
     } catch (err) {
       console.error(err);
+      const failureTimestamp = new Date().toISOString();
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       setStreamSessionState(prev => ({
         ...prev,
         loading: false,
         currentNode: 'Errored',
-        streamError: err instanceof Error ? err.message : 'Unknown error',
+        streamError: errorMessage,
+      }));
+      setThreadCollectionState(prev => ({
+        ...prev,
+        threads: patchThreadSummary(prev.threads, thread_id, {
+          latest_status: 'errored',
+          last_activity_at: failureTimestamp,
+        }),
       }));
       setActiveThreadState(prev => ({
         ...prev,
+        latestStatus: 'errored',
+        lastActivityAt: failureTimestamp,
         messages: appendAssistantText(
           prev.messages,
           `${thread_id}_request_error`,
-          `Error: ${err instanceof Error ? err.message : 'Unknown error'}`
+          `Error: ${errorMessage}`
         ),
       }));
     }
@@ -727,6 +738,13 @@ export default function ChatWorkspace() {
       content: resumeText,
       existingThread,
     });
+    const previousMessages = activeThreadState.messages;
+    const previousLatestStatus = activeThreadState.latestStatus;
+    const previousLastActivityAt = activeThreadState.lastActivityAt;
+    const previousCheckpointId = activeThreadState.checkpointId;
+    const previousViewMode = activeThreadState.viewMode;
+    const previouslyInterrupted =
+      streamSessionState.isInterrupted || activeThreadState.latestStatus === 'interrupted';
 
     setMobileSidebarOpen(false);
     setThreadCollectionState(prev => ({
@@ -748,6 +766,7 @@ export default function ChatWorkspace() {
       currentNode: 'Resuming...',
       streamError: '',
     }));
+    let receivedStreamEvent = false;
 
     try {
       const stream = await resumeChatStream({
@@ -771,6 +790,7 @@ export default function ChatWorkspace() {
         for (const block of blocks) {
           const payload = parseSseBlock(block) as StreamEvent | null;
           if (payload) {
+            receivedStreamEvent = true;
             handleStreamEvent(payload, assistantMsgId, activeThreadState.threadId);
           }
         }
@@ -779,6 +799,7 @@ export default function ChatWorkspace() {
           if (buffer.trim()) {
             const finalPayload = parseSseBlock(buffer) as StreamEvent | null;
             if (finalPayload) {
+              receivedStreamEvent = true;
               handleStreamEvent(finalPayload, assistantMsgId, activeThreadState.threadId);
             }
           }
@@ -792,19 +813,40 @@ export default function ChatWorkspace() {
       }
     } catch (err) {
       console.error(err);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      const failureTimestamp = new Date().toISOString();
+      const shouldRestoreInterruptedState = !receivedStreamEvent && previouslyInterrupted;
+
       setStreamSessionState(prev => ({
         ...prev,
         loading: false,
-        currentNode: 'Errored',
-        streamError: err instanceof Error ? err.message : 'Unknown error',
+        currentNode: shouldRestoreInterruptedState ? 'Requires User Action' : 'Errored',
+        streamError: errorMessage,
+        isInterrupted: shouldRestoreInterruptedState,
+      }));
+      setThreadCollectionState(prev => ({
+        ...prev,
+        threads:
+          shouldRestoreInterruptedState && existingThread
+            ? upsertThreadSummary(prev.threads, existingThread)
+            : patchThreadSummary(prev.threads, activeThreadState.threadId, {
+                latest_status: 'errored',
+                last_activity_at: failureTimestamp,
+              }),
       }));
       setActiveThreadState(prev => ({
         ...prev,
-        messages: appendAssistantText(
-          prev.messages,
-          `${activeThreadState.threadId}_resume_error`,
-          `Error: ${err instanceof Error ? err.message : 'Unknown error'}`
-        ),
+        checkpointId: shouldRestoreInterruptedState ? previousCheckpointId : prev.checkpointId,
+        latestStatus: shouldRestoreInterruptedState ? previousLatestStatus : 'errored',
+        lastActivityAt: shouldRestoreInterruptedState ? previousLastActivityAt : failureTimestamp,
+        viewMode: shouldRestoreInterruptedState ? previousViewMode : prev.viewMode,
+        messages: shouldRestoreInterruptedState
+          ? previousMessages
+          : appendAssistantText(
+              prev.messages,
+              `${activeThreadState.threadId}_resume_error`,
+              `Error: ${errorMessage}`
+            ),
       }));
     }
   };
