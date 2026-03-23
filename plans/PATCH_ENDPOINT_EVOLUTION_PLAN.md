@@ -291,10 +291,10 @@
 
 ### Phase 3. 백엔드 라우터
 
-- [ ] `PATCH /api/threads/{thread_id}` 구현
-- [ ] `PATCH /api/users/me` 구현
-- [ ] `PATCH /api/users/{user_id}` 구현
-- [ ] 필요 시 `POST /api/auth/change-password` 유지 사유를 API 문서에 명시
+- [x] `PATCH /api/threads/{thread_id}` 구현
+- [x] `PATCH /api/users/me` 구현
+- [x] `PATCH /api/users/{user_id}` 구현
+- [x] 필요 시 `POST /api/auth/change-password` 유지 사유를 API 문서에 명시
 
 ### Phase 4. 프론트 thread 연동
 

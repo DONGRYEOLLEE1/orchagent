@@ -2,13 +2,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
-from services.security_service import get_current_user
+from schemas.thread_patch import ThreadPatchRequest
+from services.security_service import get_current_user, require_csrf
 from schemas.thread import (
     ThreadDetailResponse,
     ThreadListResponse,
     ThreadMessageResponse,
     ThreadSummaryResponse,
 )
+from services.thread_profile_service import ThreadProfileService
 from services.thread_service import ThreadService
 
 router = APIRouter()
@@ -48,3 +50,29 @@ async def get_thread(
             for message in detail.messages
         ],
     )
+
+
+@router.patch("/threads/{thread_id}", response_model=ThreadSummaryResponse)
+async def patch_thread(
+    thread_id: str,
+    payload: ThreadPatchRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+    _: None = Depends(require_csrf),
+):
+    session = await ThreadService.get_chat_session(db, thread_id, user_id=current_user.id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    await ThreadProfileService.upsert_thread_profile(
+        db,
+        thread_id=thread_id,
+        user_id=current_user.id,
+        title=payload.title,
+        pinned=payload.pinned,
+        archived=payload.archived,
+    )
+    summary = await ThreadService.get_thread_summary(db, thread_id, user_id=current_user.id)
+    if summary is None:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    return ThreadSummaryResponse.model_validate(summary, from_attributes=True)

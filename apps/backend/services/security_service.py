@@ -118,6 +118,17 @@ async def get_current_user(
     return session.user
 
 
+async def get_current_admin_user(
+    user: AuthUser = Depends(get_current_user),
+) -> AuthUser:
+    if user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin privileges required",
+        )
+    return user
+
+
 async def require_csrf(
     request: Request,
     session: AuthSession = Depends(get_current_session),
