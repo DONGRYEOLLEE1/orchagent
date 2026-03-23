@@ -13,7 +13,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { changePasswordUser, fetchThreadDetail, fetchThreads, patchThread, resumeChatStream, sendChatStream } from '@/lib/api';
+import { changePasswordUser, deleteThread, fetchThreadDetail, fetchThreads, patchThread, resumeChatStream, sendChatStream } from '@/lib/api';
 import { appendAssistantText, parseSseBlock, pushUniqueHistory, splitSseBlocks } from '@/lib/chat-stream';
 import {
   applyThreadSummaryToActiveThread,
@@ -32,7 +32,6 @@ import { AdminStatusPanel } from '@/components/auth/AdminStatusPanel';
 import { ProfilePanel } from '@/components/auth/ProfilePanel';
 import { HITLPanel } from '@/components/HITLPanel';
 import { AgentTimeline } from '@/components/sidebar/AgentTimeline';
-import { SessionStatusCard } from '@/components/sidebar/SessionStatusCard';
 import { ThreadListSidebar } from '@/components/sidebar/ThreadListSidebar';
 
 function cn(...inputs: ClassValue[]) {
@@ -475,7 +474,7 @@ function WorkspaceApp({
       const updatedThread = await patchThread({ threadId, title });
       setThreadCollectionState((prev) => ({
         ...prev,
-        threads: upsertThreadSummary(prev.threads, updatedThread),
+        threads: patchThreadSummary(prev.threads, threadId, updatedThread),
       }));
       if (activeThreadState.threadId === threadId) {
         setActiveThreadState((prev) => applyThreadSummaryToActiveThread(prev, updatedThread));
@@ -483,7 +482,7 @@ function WorkspaceApp({
     } catch (error) {
       setThreadCollectionState((prev) => ({
         ...prev,
-        threads: upsertThreadSummary(prev.threads, existingThread),
+        threads: patchThreadSummary(prev.threads, threadId, existingThread),
         error: error instanceof Error ? error.message : 'Unknown error',
       }));
       if (activeThreadState.threadId === threadId) {
@@ -507,7 +506,7 @@ function WorkspaceApp({
       const updatedThread = await patchThread({ threadId, pinned });
       setThreadCollectionState((prev) => ({
         ...prev,
-        threads: upsertThreadSummary(prev.threads, updatedThread),
+        threads: patchThreadSummary(prev.threads, threadId, updatedThread),
       }));
       if (activeThreadState.threadId === threadId) {
         setActiveThreadState((prev) => applyThreadSummaryToActiveThread(prev, updatedThread));
@@ -515,9 +514,56 @@ function WorkspaceApp({
     } catch (error) {
       setThreadCollectionState((prev) => ({
         ...prev,
-        threads: upsertThreadSummary(prev.threads, existingThread),
+        threads: patchThreadSummary(prev.threads, threadId, existingThread),
         error: error instanceof Error ? error.message : 'Unknown error',
       }));
+    }
+  };
+
+  const handleDeleteThread = async (threadId: string) => {
+    const existingThread = threadCollectionState.threads.find((thread) => thread.thread_id === threadId);
+    if (!existingThread) {
+      return;
+    }
+
+    const nextThreads = threadCollectionState.threads.filter((thread) => thread.thread_id !== threadId);
+    const deletingActiveThread = activeThreadState.threadId === threadId;
+    const previousActiveThreadState = activeThreadState;
+    const previousStreamSessionState = streamSessionState;
+    const previousActionSpaceState = actionSpaceState;
+
+    setThreadCollectionState((prev) => ({
+      ...prev,
+      threads: prev.threads.filter((thread) => thread.thread_id !== threadId),
+      error: '',
+    }));
+    if (deletingActiveThread) {
+      setInput('');
+      setSelectedImages([]);
+      setActiveThreadState(createInitialActiveThreadState());
+      setStreamSessionState(createInitialStreamSessionState());
+      setActionSpaceState(createInitialActionSpaceState());
+    }
+
+    try {
+      await deleteThread(threadId);
+    } catch (error) {
+      const restoredThreads = [...nextThreads, existingThread].sort((a, b) => {
+        const left = a.last_activity_at || a.created_at || '';
+        const right = b.last_activity_at || b.created_at || '';
+        return right.localeCompare(left);
+      });
+
+      setThreadCollectionState((prev) => ({
+        ...prev,
+        threads: restoredThreads,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }));
+      if (deletingActiveThread) {
+        setActiveThreadState(previousActiveThreadState);
+        setStreamSessionState(previousStreamSessionState);
+        setActionSpaceState(previousActionSpaceState);
+      }
     }
   };
 
@@ -780,7 +826,7 @@ function WorkspaceApp({
       setActionSpaceState(createInitialActionSpaceState());
       setThreadCollectionState(prev => ({
         ...prev,
-        threads: upsertThreadSummary(prev.threads, detail.thread),
+        threads: patchThreadSummary(prev.threads, detail.thread.thread_id, detail.thread),
         error: '',
       }));
       setInput('');
@@ -1053,16 +1099,6 @@ function WorkspaceApp({
           historicalView={isHistoricalView}
         />
 
-        <SessionStatusCard
-          loading={streamSessionState.loading}
-          checkpointId={activeThreadState.checkpointId}
-          activeThreadId={activeThreadState.threadId}
-          threadCount={threadCollectionState.threads.length}
-          threadLoadState={threadCollectionState.loadState}
-          latestStatus={activeThreadState.latestStatus}
-          lastActivityAt={activeThreadState.lastActivityAt}
-          historicalView={isHistoricalView}
-        />
       </div>
 
       <ThreadListSidebar
@@ -1075,6 +1111,7 @@ function WorkspaceApp({
         onSelectThread={handleSelectThread}
         onRenameThread={handleRenameThread}
         onTogglePinnedThread={handleTogglePinnedThread}
+        onDeleteThread={handleDeleteThread}
       />
     </>
   );

@@ -145,6 +145,42 @@ export async function patchThread(params: {
   });
 }
 
+async function requestNoContent(
+  path: string,
+  options: {
+    method: string;
+    includeCsrf?: boolean;
+  }
+): Promise<void> {
+  const headers: Record<string, string> = {};
+  if (options.includeCsrf) {
+    const csrfToken = readCsrfToken();
+    if (csrfToken) {
+      headers[CSRF_HEADER_NAME] = csrfToken;
+    }
+  }
+
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: options.method,
+    credentials: 'include',
+    headers,
+  });
+  if (response.status === 401) {
+    notifyUnauthorized();
+    throw new UnauthorizedError(await readErrorMessage(response));
+  }
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response));
+  }
+}
+
+export async function deleteThread(threadId: string): Promise<void> {
+  await requestNoContent(`/api/threads/${encodeURIComponent(threadId)}`, {
+    method: 'DELETE',
+    includeCsrf: true,
+  });
+}
+
 export async function fetchCurrentUser(): Promise<AuthUser> {
   return requestJson<AuthUser>('/api/auth/me');
 }

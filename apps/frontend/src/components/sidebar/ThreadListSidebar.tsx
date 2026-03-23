@@ -13,6 +13,7 @@ export function ThreadListSidebar({
   onSelectThread,
   onRenameThread,
   onTogglePinnedThread,
+  onDeleteThread,
 }: {
   threads: ThreadSummary[];
   loadState: ThreadLoadState;
@@ -23,6 +24,7 @@ export function ThreadListSidebar({
   onSelectThread?: (threadId: string) => void;
   onRenameThread?: (threadId: string, title: string) => void | Promise<void>;
   onTogglePinnedThread?: (threadId: string, pinned: boolean) => void | Promise<void>;
+  onDeleteThread?: (threadId: string) => void | Promise<void>;
 }) {
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-800/70 bg-slate-900/30">
@@ -43,10 +45,6 @@ export function ThreadListSidebar({
             <span>New Chat</span>
           </button>
         </div>
-
-        <p className="text-xs leading-5 text-slate-500">
-          Recent sessions live here. Pick a thread to restore it or start a fresh draft.
-        </p>
 
         {error ? (
           <div className="mt-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-200">
@@ -88,6 +86,7 @@ export function ThreadListSidebar({
                 onSelect={onSelectThread}
                 onRename={onRenameThread}
                 onTogglePinned={onTogglePinnedThread}
+                onDelete={onDeleteThread}
               />
             ))}
           </div>

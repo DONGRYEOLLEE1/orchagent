@@ -24,6 +24,7 @@ test('renders saved thread items and forwards selection', async () => {
   const user = userEvent.setup();
   const onSelectThread = vi.fn();
   const onNewChat = vi.fn();
+  const onDeleteThread = vi.fn();
 
   render(
     <ThreadListSidebar
@@ -34,14 +35,17 @@ test('renders saved thread items and forwards selection', async () => {
       disabled={false}
       onNewChat={onNewChat}
       onSelectThread={onSelectThread}
+      onDeleteThread={onDeleteThread}
     />
   );
 
   await user.click(screen.getByRole('button', { name: /open thread first thread/i }));
+  await user.click(screen.getByRole('button', { name: /delete first thread/i }));
 
   expect(screen.getByText('First thread')).toBeInTheDocument();
   expect(screen.getByText('A saved preview')).toBeInTheDocument();
   expect(onSelectThread).toHaveBeenCalledWith('thread-1');
+  expect(onDeleteThread).toHaveBeenCalledWith('thread-1');
 });
 
 test('shows empty, loading, and disabled states', () => {

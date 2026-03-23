@@ -1,4 +1,4 @@
-import { Clock3, Edit3, MessageSquareText, Pin, PinOff } from 'lucide-react';
+import { Clock3, Edit3, MessageSquareText, Pin, PinOff, Trash2 } from 'lucide-react';
 
 import React, { useState } from 'react';
 
@@ -63,6 +63,7 @@ export function ThreadListItem({
   onSelect,
   onRename,
   onTogglePinned,
+  onDelete,
 }: {
   thread: ThreadSummary;
   selected: boolean;
@@ -70,6 +71,7 @@ export function ThreadListItem({
   onSelect?: (threadId: string) => void;
   onRename?: (threadId: string, title: string) => void | Promise<void>;
   onTogglePinned?: (threadId: string, pinned: boolean) => void | Promise<void>;
+  onDelete?: (threadId: string) => void | Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState(thread.title);
@@ -196,6 +198,18 @@ export function ThreadListItem({
             className="rounded-lg border border-slate-800 bg-black/20 p-1.5 text-slate-500 transition hover:border-slate-700 hover:text-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {thread.pinned ? <PinOff size={12} /> : <Pin size={12} />}
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              void onDelete?.(thread.thread_id);
+            }}
+            disabled={disabled || !onDelete}
+            aria-label={`Delete ${thread.title}`}
+            className="rounded-lg border border-slate-800 bg-black/20 p-1.5 text-slate-500 transition hover:border-red-500/40 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Trash2 size={12} />
           </button>
           <span className="inline-flex items-center gap-1.5 uppercase tracking-[0.18em]">
             <MessageSquareText size={12} className="shrink-0" />

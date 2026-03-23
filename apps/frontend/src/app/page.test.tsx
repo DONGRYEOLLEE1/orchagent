@@ -158,8 +158,8 @@ test('hydrates a selected thread and resets to a draft with New Chat', async () 
 
   expect(await screen.findByText('Saved user question')).toBeInTheDocument();
   expect(screen.getAllByText('Saved assistant answer').length).toBeGreaterThan(0);
-  expect(screen.getByText(/history snapshot/i)).toBeInTheDocument();
   expect(screen.getByText(/historical timeline replay is not restored in v1/i)).toBeInTheDocument();
+  expect(screen.queryByText(/session state/i)).not.toBeInTheDocument();
 
   await user.click(screen.getByRole('button', { name: /new chat/i }));
 
@@ -486,7 +486,6 @@ test('restores interrupted resume state when resume fails before streaming start
 
   expect(screen.getByText(/action required/i)).toBeInTheDocument();
   expect(screen.queryByText(/\[User Action\]: approve/i)).not.toBeInTheDocument();
-  expect(screen.getByText('Interrupted')).toBeInTheDocument();
 });
 
 test('renames and pins a thread optimistically', async () => {
@@ -653,4 +652,89 @@ test('toggles a thread pin state independently', async () => {
 
   await user.click(await screen.findByRole('button', { name: /pin pin me/i }));
   expect(await screen.findByText('Pinned')).toBeInTheDocument();
+});
+
+test('deletes a thread and returns to draft when the active thread is removed', async () => {
+  const user = userEvent.setup();
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+
+    if (url.includes('/api/auth/me')) {
+      return jsonResponse({
+        id: 'user-1',
+        login_id: 'tester',
+        role: 'user',
+        status: 'active',
+        display_name: null,
+        email: null,
+        must_change_password: false,
+      });
+    }
+
+    if (url.includes('/api/threads?limit=50')) {
+      return jsonResponse({
+        threads: [
+          {
+            thread_id: 'thread-1',
+            title: 'Delete me',
+            preview: 'Saved assistant answer',
+            created_at: '2026-03-22T10:00:00Z',
+            last_activity_at: '2026-03-22T10:15:00Z',
+            message_count: 2,
+            latest_status: 'completed',
+            checkpoint_id: 'cp-1',
+            pinned: false,
+            archived: false,
+          },
+        ],
+      });
+    }
+
+    if (url.includes('/api/threads/thread-1') && (!init || init.method === 'GET')) {
+      return jsonResponse({
+        thread: {
+          thread_id: 'thread-1',
+          title: 'Delete me',
+          preview: 'Saved assistant answer',
+          created_at: '2026-03-22T10:00:00Z',
+          last_activity_at: '2026-03-22T10:15:00Z',
+          message_count: 2,
+          latest_status: 'completed',
+          checkpoint_id: 'cp-1',
+          pinned: false,
+          archived: false,
+        },
+        messages: [
+          {
+            id: 'm-1',
+            role: 'user',
+            content: 'Delete this thread',
+            created_at: '2026-03-22T10:00:00Z',
+          },
+        ],
+      });
+    }
+
+    if (url.endsWith('/api/threads/thread-1') && init?.method === 'DELETE') {
+      return new Response(null, { status: 204 });
+    }
+
+    throw new Error(`Unhandled fetch: ${url}`);
+  });
+
+  Object.defineProperty(document, 'cookie', {
+    configurable: true,
+    get: () => 'orch_csrf=csrf-token',
+  });
+  vi.stubGlobal('fetch', fetchMock);
+
+  renderWorkspace();
+
+  await user.click(await screen.findByRole('button', { name: /open thread delete me/i }));
+  expect(await screen.findByText('Delete this thread')).toBeInTheDocument();
+
+  await user.click(screen.getByRole('button', { name: /delete delete me/i }));
+
+  expect(await screen.findByText('System Ready')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /open thread delete me/i })).not.toBeInTheDocument();
 });
