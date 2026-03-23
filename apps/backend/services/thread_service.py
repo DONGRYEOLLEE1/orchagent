@@ -201,10 +201,22 @@ class ThreadService:
         return stmt
 
     @staticmethod
+    async def get_chat_session(
+        db: AsyncSession, thread_id: str, *, user_id: str | None = None
+    ) -> ChatSession | None:
+        stmt = select(ChatSession).where(ChatSession.id == thread_id)
+        if user_id is not None:
+            stmt = stmt.where(ChatSession.user_id == user_id)
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    @staticmethod
     async def list_thread_summaries(
-        db: AsyncSession, *, limit: int = DEFAULT_LIMIT
+        db: AsyncSession, *, user_id: str, limit: int = DEFAULT_LIMIT
     ) -> list[ThreadSummary]:
-        stmt = ThreadService._thread_summary_stmt(limit=limit)
+        stmt = ThreadService._thread_summary_stmt(limit=limit).where(
+            ChatSession.user_id == user_id
+        )
 
         result = await db.execute(stmt)
         return [
@@ -214,9 +226,11 @@ class ThreadService:
 
     @staticmethod
     async def get_thread_summary(
-        db: AsyncSession, thread_id: str
+        db: AsyncSession, thread_id: str, *, user_id: str
     ) -> ThreadSummary | None:
-        stmt = ThreadService._thread_summary_stmt(thread_id=thread_id, limit=1)
+        stmt = ThreadService._thread_summary_stmt(thread_id=thread_id, limit=1).where(
+            ChatSession.user_id == user_id
+        )
         result = await db.execute(stmt)
         row = result.mappings().first()
         if row is None:
@@ -250,9 +264,9 @@ class ThreadService:
 
     @staticmethod
     async def get_thread_detail(
-        db: AsyncSession, thread_id: str
+        db: AsyncSession, thread_id: str, *, user_id: str
     ) -> ThreadDetail | None:
-        thread = await ThreadService.get_thread_summary(db, thread_id)
+        thread = await ThreadService.get_thread_summary(db, thread_id, user_id=user_id)
         if thread is None:
             return None
 

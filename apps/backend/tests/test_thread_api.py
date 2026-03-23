@@ -27,7 +27,8 @@ def test_list_threads_returns_thread_summaries(monkeypatch):
         checkpoint_id="cp-1",
     )
 
-    async def mock_list_thread_summaries(db, *, limit):
+    async def mock_list_thread_summaries(db, *, user_id, limit):
+        assert user_id == "test-user"
         assert limit == 10
         return [summary]
 
@@ -58,7 +59,8 @@ def test_list_threads_returns_thread_summaries(monkeypatch):
 
 
 def test_list_threads_returns_empty_list(monkeypatch):
-    async def mock_list_thread_summaries(db, *, limit):
+    async def mock_list_thread_summaries(db, *, user_id, limit):
+        assert user_id == "test-user"
         assert limit == 50
         return []
 
@@ -100,7 +102,8 @@ def test_list_threads_preserves_service_order_and_summary_fields(monkeypatch):
         ),
     ]
 
-    async def mock_list_thread_summaries(db, *, limit):
+    async def mock_list_thread_summaries(db, *, user_id, limit):
+        assert user_id == "test-user"
         assert limit == 20
         return summaries
 
@@ -153,8 +156,9 @@ def test_get_thread_returns_detail(monkeypatch):
         ],
     )
 
-    async def mock_get_thread_detail(db, thread_id):
+    async def mock_get_thread_detail(db, thread_id, *, user_id):
         assert thread_id == "thread-2"
+        assert user_id == "test-user"
         return detail
 
     from services.thread_service import ThreadService
@@ -203,8 +207,9 @@ def test_get_thread_returns_user_only_detail(monkeypatch):
         ],
     )
 
-    async def mock_get_thread_detail(db, thread_id):
+    async def mock_get_thread_detail(db, thread_id, *, user_id):
         assert thread_id == "thread-user-only"
+        assert user_id == "test-user"
         return detail
 
     from services.thread_service import ThreadService
@@ -268,8 +273,9 @@ def test_get_thread_returns_resume_messages_in_existing_order(monkeypatch):
         ],
     )
 
-    async def mock_get_thread_detail(db, thread_id):
+    async def mock_get_thread_detail(db, thread_id, *, user_id):
         assert thread_id == "thread-resume"
+        assert user_id == "test-user"
         return detail
 
     from services.thread_service import ThreadService
@@ -291,8 +297,9 @@ def test_get_thread_returns_resume_messages_in_existing_order(monkeypatch):
 
 
 def test_get_thread_returns_404_for_missing_thread(monkeypatch):
-    async def mock_get_thread_detail(db, thread_id):
+    async def mock_get_thread_detail(db, thread_id, *, user_id):
         assert thread_id == "missing-thread"
+        assert user_id == "test-user"
         return None
 
     from services.thread_service import ThreadService

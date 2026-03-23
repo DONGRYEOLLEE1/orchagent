@@ -346,10 +346,10 @@ cookie 인증을 도입하면 `/api/chat`, `/api/chat/resume` 도 CSRF 보호 �
 
 ### Phase 4. 기존 기능과 통합
 
-- [ ] chat route 에 current user dependency 연결
-- [ ] resume route ownership 검증
-- [ ] thread list/detail/trace user filter 적용
-- [ ] `JsonLogger.log_session/log_usage` 에 실제 user_id 반영
+- [x] chat route 에 current user dependency 연결
+- [x] resume route ownership 검증
+- [x] thread list/detail/trace user filter 적용
+- [x] `JsonLogger.log_session/log_usage` 에 실제 user_id 반영
 
 ### Phase 5. 프론트 auth 도입
 

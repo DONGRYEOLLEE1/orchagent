@@ -36,3 +36,9 @@ dev = [
     "pytest>=9.0.2",
     "pytest-asyncio>=1.3.0",
 ]
+
+[tool.pytest.ini_options]
+markers = [
+    "no_auth_override: disable the default authenticated dependency overrides for tests",
+    "real_thread_ownership: disable the default thread ownership guard stub for tests",
+]

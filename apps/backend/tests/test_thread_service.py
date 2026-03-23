@@ -23,7 +23,7 @@ async def test_log_message_updates_session_timestamp():
     LoggingService.get_or_create_session = AsyncMock(return_value=session)
     try:
         message = await LoggingService.log_message(
-            db, "thread-1", role="user", content="hello"
+            db, "thread-1", role="user", content="hello", user_id="user-1"
         )
     finally:
         LoggingService.get_or_create_session = original_get_or_create_session
@@ -94,7 +94,9 @@ async def test_list_thread_summaries_executes_single_query_and_maps_rows():
     db = AsyncMock()
     db.execute = AsyncMock(return_value=result)
 
-    summaries = await ThreadService.list_thread_summaries(db, limit=10)
+    summaries = await ThreadService.list_thread_summaries(
+        db, user_id="user-1", limit=10
+    )
 
     assert len(summaries) == 1
     assert summaries[0].thread_id == "thread-a"
@@ -139,7 +141,9 @@ async def test_list_thread_summaries_preserves_latest_first_order_and_counts():
     db = AsyncMock()
     db.execute = AsyncMock(return_value=result)
 
-    summaries = await ThreadService.list_thread_summaries(db, limit=5)
+    summaries = await ThreadService.list_thread_summaries(
+        db, user_id="user-1", limit=5
+    )
 
     assert [summary.thread_id for summary in summaries] == [
         "thread-newer",
@@ -185,7 +189,9 @@ async def test_get_thread_detail_returns_none_when_summary_is_missing():
     original_get_thread_summary = ThreadService.get_thread_summary
     ThreadService.get_thread_summary = AsyncMock(return_value=None)
     try:
-        detail = await ThreadService.get_thread_detail(db, "missing-thread")
+        detail = await ThreadService.get_thread_detail(
+            db, "missing-thread", user_id="user-1"
+        )
     finally:
         ThreadService.get_thread_summary = original_get_thread_summary
 

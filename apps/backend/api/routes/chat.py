@@ -18,6 +18,8 @@ from schemas.chat import ChatRequest, ResumeRequest
 from workflow.main_graph import DEFAULT_LLM_MODEL, get_orchagent_graph
 from core.database import AsyncSessionLocal, get_db
 from core.config import settings
+from services.security_service import get_current_user, require_csrf
+from services.thread_service import ThreadService
 from services.trace_service import TraceService
 from services.logging_service import LoggingService
 from services.file_logger import JsonLogger
@@ -334,10 +336,12 @@ def _checkpoint_requires_user_action(payload: dict[str, Any]) -> bool:
 
 
 async def _log_message_with_fresh_session(
-    thread_id: str, *, role: str, content: str
+    thread_id: str, *, role: str, content: str, user_id: str
 ) -> None:
     async with AsyncSessionLocal() as db:
-        await LoggingService.log_message(db, thread_id, role=role, content=content)
+        await LoggingService.log_message(
+            db, thread_id, role=role, content=content, user_id=user_id
+        )
 
 
 async def _persist_trace_events_with_fresh_session(trace_events: list[Any]) -> None:
@@ -346,6 +350,17 @@ async def _persist_trace_events_with_fresh_session(trace_events: list[Any]) -> N
 
     async with AsyncSessionLocal() as db:
         await TraceService.create_events(db, trace_events)
+
+
+async def _ensure_thread_owned_by_user(
+    thread_id: str, user_id: str, *, allow_missing: bool
+) -> None:
+    async with AsyncSessionLocal() as db:
+        session = await ThreadService.get_chat_session(db, thread_id)
+        if session is None and allow_missing:
+            return
+        if session is None or session.user_id != user_id:
+            raise HTTPException(status_code=404, detail="Thread not found")
 
 
 def _append_summary_trace_events(
@@ -394,7 +409,11 @@ async def _run_cleanup_task(label: str, operation: Any) -> None:
 
 
 @router.post("/chat")
-async def chat_stream(request: ChatRequest):
+async def chat_stream(
+    request: ChatRequest,
+    current_user=Depends(get_current_user),
+    _: None = Depends(require_csrf),
+):
     """Streaming endpoint for chat with persistence and tracing."""
     print(
         f"[Chat] Endpoint called! thread_id={request.thread_id}",
@@ -402,8 +421,13 @@ async def chat_stream(request: ChatRequest):
         flush=True,
     )
 
-    # We will use a dummy user_id for now as auth is not yet implemented
-    user_id = "anonymous_user"
+    user_id = current_user.id
+
+    await _ensure_thread_owned_by_user(
+        request.thread_id,
+        user_id,
+        allow_missing=True,
+    )
 
     # Save images to disk and get paths for logging
     image_paths = []
@@ -412,7 +436,7 @@ async def chat_stream(request: ChatRequest):
 
     # 1. DB Logging
     await _log_message_with_fresh_session(
-        request.thread_id, role="user", content=request.message
+        request.thread_id, role="user", content=request.message, user_id=user_id
     )
 
     # 2. File Logging (Session start/turn)
@@ -685,6 +709,7 @@ async def chat_stream(request: ChatRequest):
                             request.thread_id,
                             role="assistant",
                             content=final_answer,
+                            user_id=user_id,
                         ),
                     )
 
@@ -753,7 +778,11 @@ async def chat_stream(request: ChatRequest):
 
 
 @router.post("/chat/resume")
-async def chat_resume_stream(request: ResumeRequest):
+async def chat_resume_stream(
+    request: ResumeRequest,
+    current_user=Depends(get_current_user),
+    _: None = Depends(require_csrf),
+):
     """Streaming endpoint to resume an interrupted graph."""
     print(
         f"[Chat] Resume Endpoint called! thread_id={request.thread_id}, action={request.action}",
@@ -761,7 +790,13 @@ async def chat_resume_stream(request: ResumeRequest):
         flush=True,
     )
 
-    user_id = "anonymous_user"
+    user_id = current_user.id
+
+    await _ensure_thread_owned_by_user(
+        request.thread_id,
+        user_id,
+        allow_missing=False,
+    )
 
     # Edge Case 3 & 4: Validate Thread ID and Interrupt State
     async with AsyncPostgresSaver.from_conn_string(
@@ -801,7 +836,7 @@ async def chat_resume_stream(request: ResumeRequest):
         resume_message += f"\nFeedback: {request.feedback}"
 
     await _log_message_with_fresh_session(
-        request.thread_id, role="user", content=resume_message
+        request.thread_id, role="user", content=resume_message, user_id=user_id
     )
 
     JsonLogger.log_session(
@@ -1051,6 +1086,7 @@ async def chat_resume_stream(request: ResumeRequest):
                             request.thread_id,
                             role="assistant",
                             content=final_answer,
+                            user_id=user_id,
                         ),
                     )
 
@@ -1114,7 +1150,14 @@ async def chat_resume_stream(request: ResumeRequest):
 
 
 @router.get("/thread/{thread_id}/trace")
-async def get_thread_trace(thread_id: str, db: AsyncSession = Depends(get_db)):
+async def get_thread_trace(
+    thread_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
     """Retrieve execution trace for a specific thread."""
+    session = await ThreadService.get_chat_session(db, thread_id, user_id=current_user.id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Thread not found")
     traces = await TraceService.get_thread_traces(db, thread_id)
     return {"thread_id": thread_id, "traces": traces}
