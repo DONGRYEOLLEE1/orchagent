@@ -30,6 +30,55 @@ def test_health_check():
     }
 
 
+def test_health_ready_check(monkeypatch):
+    class DummyConn:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def execute(self, statement):
+            return 1
+
+    class DummyEngine:
+        def connect(self):
+            return DummyConn()
+
+    monkeypatch.setattr("api.routes.health.engine", DummyEngine())
+
+    response = client.get("/api/health/ready")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "ok",
+        "checks": {"database": "ok"},
+    }
+
+
+def test_health_ready_check_returns_503_when_database_is_unavailable(monkeypatch):
+    class FailingConn:
+        async def __aenter__(self):
+            raise RuntimeError("database unavailable")
+
+        async def __aexit__(self, *args):
+            return False
+
+    class DummyEngine:
+        def connect(self):
+            return FailingConn()
+
+    monkeypatch.setattr("api.routes.health.engine", DummyEngine())
+
+    response = client.get("/api/health/ready")
+
+    assert response.status_code == 503
+    body = response.json()
+    assert body["status"] == "error"
+    assert body["checks"]["database"] == "error"
+    assert "database unavailable" in body["detail"]
+
+
 def test_chat_stream_emits_normalized_events(monkeypatch):
     """Graph/raw LangGraph events should be normalized to the frontend SSE contract."""
 
