@@ -13,6 +13,7 @@ from langchain_core.messages import HumanMessage
 from langgraph.types import Command
 from langgraph.errors import GraphInterrupt
 
+from agent_core.supervisor import requires_human_approval_for_text
 from schemas.chat import ChatRequest, ResumeRequest
 from workflow.main_graph import DEFAULT_LLM_MODEL, get_orchagent_graph
 from core.database import AsyncSessionLocal, get_db
@@ -325,6 +326,13 @@ async def _build_checkpoint_payload(graph: Any, config: dict[str, Any], thread_i
     }
 
 
+def _checkpoint_requires_user_action(payload: dict[str, Any]) -> bool:
+    next_nodes = payload.get("next_nodes") or []
+    streaming_status = payload.get("streaming_status")
+
+    return bool(next_nodes) and streaming_status != "completed"
+
+
 async def _log_message_with_fresh_session(
     thread_id: str, *, role: str, content: str
 ) -> None:
@@ -420,6 +428,8 @@ async def chat_stream(request: ChatRequest):
     )
 
     async def event_generator():
+        approval_requested = requires_human_approval_for_text(request.message)
+
         # Construct multimodal message if images are present
         if request.images:
             content: list[Any] = [{"type": "text", "text": request.message}]
@@ -430,9 +440,19 @@ async def chat_stream(request: ChatRequest):
                         "image_url": {"url": f"data:image/jpeg;base64,{img}"},
                     }
                 )
-            inputs = {"messages": [HumanMessage(content=content)]}
+            inputs = {
+                "messages": [HumanMessage(content=content)],
+                "shared_context": {
+                    "force_requires_approval": approval_requested,
+                },
+            }
         else:
-            inputs = {"messages": [("user", request.message)]}
+            inputs = {
+                "messages": [("user", request.message)],
+                "shared_context": {
+                    "force_requires_approval": approval_requested,
+                },
+            }
 
         config = {
             "configurable": {"thread_id": request.thread_id},
@@ -638,7 +658,16 @@ async def chat_stream(request: ChatRequest):
 
                 yield emit(checkpoint_payload)
 
-                if not completed_payload_emitted:
+                if _checkpoint_requires_user_action(checkpoint_payload):
+                    yield emit(
+                        _status_payload(
+                            status="interrupted",
+                            thread_id=request.thread_id,
+                            node="OrchAgent",
+                            message="Requires user action.",
+                        )
+                    )
+                elif not completed_payload_emitted:
                     yield emit(
                         _status_payload(
                             status="completed",
@@ -995,7 +1024,16 @@ async def chat_resume_stream(request: ResumeRequest):
 
                 yield emit(checkpoint_payload)
 
-                if not completed_payload_emitted:
+                if _checkpoint_requires_user_action(checkpoint_payload):
+                    yield emit(
+                        _status_payload(
+                            status="interrupted",
+                            thread_id=request.thread_id,
+                            node="OrchAgent",
+                            message="Requires user action.",
+                        )
+                    )
+                elif not completed_payload_emitted:
                     yield emit(
                         _status_payload(
                             status="completed",

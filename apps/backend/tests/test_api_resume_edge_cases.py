@@ -2,6 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 from main import app
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from langgraph.types import Command
 
 client = TestClient(app)
 
@@ -99,5 +100,78 @@ def test_resume_edge_case_5_valid_feedback(mock_postgres_saver, monkeypatch):
             "action": "feedback",
             "feedback": valid_feedback,
         },
+    ) as response:
+        assert response.status_code == 200
+
+
+def test_resume_allows_paused_checkpoint_without_pending_tasks(monkeypatch):
+    class PausedSaver(MockSaver):
+        async def aget_tuple(self, config):
+            thread_id = config.get("configurable", {}).get("thread_id")
+            if thread_id == "paused_checkpoint_id":
+                return MockTuple(tasks=[])
+            return await super().aget_tuple(config)
+
+    monkeypatch.setattr(
+        AsyncPostgresSaver, "from_conn_string", lambda x: PausedSaver()
+    )
+
+    class Snapshot:
+        config = {
+            "configurable": {
+                "thread_id": "paused_checkpoint_id",
+                "checkpoint_id": "cp-paused",
+                "checkpoint_ns": "",
+            }
+        }
+        values = {
+            "messages": ["user"],
+            "route_history": [],
+            "streaming_status": "completed",
+        }
+        next = ("head_supervisor",)
+        created_at = "2026-03-11T00:00:00+00:00"
+
+    class ResumeGraph:
+        async def astream_events(self, *args, **kwargs):
+            yield {
+                "event": "on_chain_end",
+                "name": "head_supervisor",
+                "data": {
+                    "output": Command(
+                        update={
+                            "active_team": None,
+                            "active_worker": None,
+                            "streaming_status": "completed",
+                        },
+                        goto="__end__",
+                    )
+                },
+            }
+
+        async def aget_state(self, config, subgraphs=False):
+            return Snapshot()
+
+    monkeypatch.setattr(
+        "api.routes.chat.get_orchagent_graph",
+        lambda: type("B", (), {"compile": lambda self, checkpointer: ResumeGraph()})(),
+    )
+
+    from services.logging_service import LoggingService
+    from services.trace_service import TraceService
+
+    async def mock_log(*args, **kwargs):
+        pass
+
+    async def mock_create_events(*args, **kwargs):
+        return []
+
+    monkeypatch.setattr(LoggingService, "log_message", mock_log)
+    monkeypatch.setattr(TraceService, "create_events", mock_create_events)
+
+    with client.stream(
+        "POST",
+        "/api/chat/resume",
+        json={"thread_id": "paused_checkpoint_id", "action": "approve"},
     ) as response:
         assert response.status_code == 200

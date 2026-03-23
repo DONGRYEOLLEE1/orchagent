@@ -1,6 +1,6 @@
 import pytest
 from typing import cast
-from agent_core.supervisor import make_supervisor_node
+from agent_core.supervisor import make_supervisor_node, requires_human_approval_for_text
 from agent_core.state import BaseAgentState, build_route_entry
 from langchain_core.messages import HumanMessage
 
@@ -17,6 +17,19 @@ class FakeRouterLLM:
     async def ainvoke(self, messages):
         # Stub the Pydantic router response
         return {"next": self.target_node}
+
+
+class ApprovalAwareLLM:
+    def with_structured_output(self, schema):
+        return self
+
+    async def ainvoke(self, messages):
+        return {
+            "next": "writing_team",
+            "reasoning": "Need to modify files.",
+            "content": "",
+            "requires_approval": False,
+        }
 
 
 @pytest.mark.asyncio
@@ -268,3 +281,146 @@ async def test_research_team_supervisor_stops_after_dispatch_limit():
     assert command.update["route_history"][0]["next"] == "FINISH"
     assert command.update["active_team"] is None
     assert command.update["active_worker"] is None
+
+
+@pytest.mark.asyncio
+async def test_head_supervisor_forces_approval_for_filesystem_write_requests(monkeypatch):
+    interrupts = []
+
+    def fake_interrupt(payload):
+        interrupts.append(payload)
+        return {"action": "approve", "feedback": ""}
+
+    monkeypatch.setattr("langgraph.types.interrupt", fake_interrupt)
+
+    supervisor_func = make_supervisor_node(
+        ApprovalAwareLLM(),  # type: ignore
+        ["research_team", "writing_team", "vision_team"],
+        layer="head",
+    )
+
+    state = cast(
+        BaseAgentState,
+        {
+            "messages": [
+                HumanMessage(
+                    content="Create a file named hello.txt in the workspace and write hello into it."
+                )
+            ],
+            "next": "",
+        },
+    )
+    command = await supervisor_func(state)
+
+    assert interrupts, "Expected the supervisor to interrupt for approval."
+    assert interrupts[0]["goto"] == "writing_team"
+    assert command.goto == "writing_team"
+    assert command.update["active_team"] == "writing"
+
+
+@pytest.mark.asyncio
+async def test_head_supervisor_forces_approval_for_code_execution_requests(monkeypatch):
+    interrupts = []
+
+    def fake_interrupt(payload):
+        interrupts.append(payload)
+        return {"action": "approve", "feedback": ""}
+
+    monkeypatch.setattr("langgraph.types.interrupt", fake_interrupt)
+
+    supervisor_func = make_supervisor_node(
+        ApprovalAwareLLM(),  # type: ignore
+        ["research_team", "writing_team", "vision_team"],
+        layer="head",
+    )
+
+    state = cast(
+        BaseAgentState,
+        {
+            "messages": [
+                HumanMessage(
+                    content="Execute a Python script that writes hello into a file in the current directory."
+                )
+            ],
+            "next": "",
+        },
+    )
+    command = await supervisor_func(state)
+
+    assert interrupts, "Expected the supervisor to interrupt for approval."
+    assert interrupts[0]["goto"] == "writing_team"
+    assert command.goto == "writing_team"
+
+
+@pytest.mark.asyncio
+async def test_head_supervisor_forces_approval_for_tuple_user_messages(monkeypatch):
+    interrupts = []
+
+    def fake_interrupt(payload):
+        interrupts.append(payload)
+        return {"action": "approve", "feedback": ""}
+
+    monkeypatch.setattr("langgraph.types.interrupt", fake_interrupt)
+
+    supervisor_func = make_supervisor_node(
+        ApprovalAwareLLM(),  # type: ignore
+        ["research_team", "writing_team", "vision_team"],
+        layer="head",
+    )
+
+    state = cast(
+        BaseAgentState,
+        {
+            "messages": [
+                ("user", "Edit the file README.md by adding a phase9 test line.")
+            ],
+            "next": "",
+        },
+    )
+    command = await supervisor_func(state)
+
+    assert interrupts, "Expected tuple-style user messages to trigger approval."
+    assert command.goto == "writing_team"
+
+
+def test_requires_human_approval_for_text_detects_risky_requests():
+    assert requires_human_approval_for_text(
+        "Create a file named hello.txt in the workspace."
+    )
+    assert requires_human_approval_for_text(
+        "Execute a Python script that writes to the current directory."
+    )
+    assert not requires_human_approval_for_text(
+        "Summarize the latest AI news in two paragraphs."
+    )
+
+
+@pytest.mark.asyncio
+async def test_head_supervisor_forces_approval_from_shared_context_flag(monkeypatch):
+    interrupts = []
+
+    def fake_interrupt(payload):
+        interrupts.append(payload)
+        return {"action": "approve", "feedback": ""}
+
+    monkeypatch.setattr("langgraph.types.interrupt", fake_interrupt)
+
+    supervisor_func = make_supervisor_node(
+        ApprovalAwareLLM(),  # type: ignore
+        ["research_team", "writing_team", "vision_team"],
+        layer="head",
+    )
+
+    state = cast(
+        BaseAgentState,
+        {
+            "messages": [("user", "safe text")],
+            "shared_context": {"force_requires_approval": True},
+            "next": "",
+        },
+    )
+    command = await supervisor_func(state)
+
+    assert interrupts, "Expected shared_context force flag to trigger approval."
+    assert command.goto == "writing_team"
+    assert command.update["shared_context"]["force_requires_approval"] is False

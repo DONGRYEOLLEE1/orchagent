@@ -14,6 +14,68 @@ from agent_core.state import (
 from prompt_kit.prompts import SYSTEM_SUPERVISOR_PROMPT, TEAM_SUPERVISOR_PROMPT
 
 
+_APPROVAL_PATTERNS = [
+    re.compile(
+        r"\b(edit|modify|write|create|delete|remove|rename|overwrite|save|update)\b.*\b(file|files|filesystem|repo|repository|workspace|directory)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(run|execute)\b.*\b(code|script|command|shell|bash|python)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(shell command|bash command|python script|sql script|rm\s+-rf|chmod|chown|drop database|wipe)\b",
+        re.IGNORECASE,
+    ),
+]
+
+
+def requires_human_approval_for_text(text: str) -> bool:
+    return any(pattern.search(text) for pattern in _APPROVAL_PATTERNS)
+
+
+def _extract_message_text(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict) and item.get("type") == "text":
+                parts.append(str(item.get("text", "")))
+        return " ".join(part for part in parts if part)
+
+    return str(content or "")
+
+
+def _latest_user_request_text(messages: list[Any]) -> str:
+    for message in reversed(messages):
+        if getattr(message, "type", "") in {"human", "user"}:
+            return _extract_message_text(getattr(message, "content", ""))
+
+        if (
+            isinstance(message, tuple)
+            and len(message) == 2
+            and str(message[0]).lower() == "user"
+        ):
+            return _extract_message_text(message[1])
+
+        if isinstance(message, dict) and message.get("role") == "user":
+            return _extract_message_text(message.get("content", ""))
+
+    return ""
+
+
+def _should_force_approval(messages: list[Any]) -> bool:
+    latest_user_text = _latest_user_request_text(messages)
+    if not latest_user_text:
+        return False
+
+    return requires_human_approval_for_text(latest_user_text)
+
+
 def _extract_team_stage_sequence(task_plan: str | None) -> list[str]:
     if not task_plan:
         return []
@@ -176,13 +238,29 @@ def make_supervisor_node(
         next_node = response["next"]
         goto = next_node
         content = response.get("content", "")
-        requires_approval = response.get("requires_approval", False)
+        state_requires_approval = bool(
+            shared_context.get("force_requires_approval", False)
+        )
+        llm_requires_approval = response.get("requires_approval", False)
+        heuristic_requires_approval = layer == "head" and _should_force_approval(
+            state["messages"]
+        )
+        requires_approval = (
+            llm_requires_approval
+            or state_requires_approval
+            or heuristic_requires_approval
+        )
 
         print(f"[Supervisor] Routing decision: {goto}", flush=True)
         if reasoning:
             print(f"[Supervisor] Reasoning: {reasoning}", flush=True)
         if content:
             print(f"[Supervisor] Response content: {content[:50]}...", flush=True)
+        if (state_requires_approval or heuristic_requires_approval) and not llm_requires_approval:
+            print(
+                "[Supervisor] Heuristic approval guard forced interrupt for a risky user request.",
+                flush=True,
+            )
 
         if requires_approval and layer == "head":
             print(
@@ -345,6 +423,13 @@ def make_supervisor_node(
         if content:
             # Add the supervisor's response to the message history
             update_data["messages"] = [AIMessage(content=content, name="supervisor")]
+
+        if layer == "head" and requires_approval:
+            existing_context = update_data.get("shared_context", {})
+            update_data["shared_context"] = {
+                **existing_context,
+                "force_requires_approval": False,
+            }
 
         return Command(update=update_data, goto=goto)
 

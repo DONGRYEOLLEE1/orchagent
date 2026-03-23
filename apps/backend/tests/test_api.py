@@ -779,3 +779,79 @@ def test_chat_stream_interrupt_and_resume(monkeypatch):
 
     assert response.status_code == 200
     assert any(p.get("status") == "completed" for p in resume_payloads)
+
+
+def test_chat_stream_emits_interrupted_status_for_paused_checkpoint(monkeypatch):
+    class MockSaver:
+        async def setup(self):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+    monkeypatch.setattr(AsyncPostgresSaver, "from_conn_string", lambda x: MockSaver())
+
+    class Snapshot:
+        config = {
+            "configurable": {
+                "thread_id": "paused_1",
+                "checkpoint_id": "cp-paused",
+                "checkpoint_ns": "",
+            }
+        }
+        values = {
+            "messages": ["user", "planner"],
+            "route_history": [],
+            "streaming_status": None,
+        }
+        next = ("head_supervisor",)
+        created_at = "2026-03-11T00:00:00+00:00"
+
+    class MockGraph:
+        async def astream_events(self, *args, **kwargs):
+            if False:
+                yield {}
+
+        async def aget_state(self, config, subgraphs=False):
+            return Snapshot()
+
+    monkeypatch.setattr(
+        "api.routes.chat.get_orchagent_graph",
+        lambda: type("B", (), {"compile": lambda self, checkpointer: MockGraph()})(),
+    )
+
+    async def mock_create_events(*args, **kwargs):
+        return []
+
+    monkeypatch.setattr(TraceService, "create_events", mock_create_events)
+
+    async def mock_log_message(*args, **kwargs):
+        pass
+
+    from services.logging_service import LoggingService
+
+    monkeypatch.setattr(LoggingService, "log_message", mock_log_message)
+
+    with client.stream(
+        "POST",
+        "/api/chat",
+        json={"message": "edit a file", "thread_id": "paused_1"},
+    ) as response:
+        payloads = _sse_payloads(response)
+
+    assert response.status_code == 200
+    interrupted_status = [
+        payload
+        for payload in payloads
+        if payload.get("event_type") == "status"
+        and payload.get("status") == "interrupted"
+    ]
+    assert interrupted_status, payloads
+    assert not any(
+        payload.get("event_type") == "status"
+        and payload.get("status") == "completed"
+        for payload in payloads
+    )
