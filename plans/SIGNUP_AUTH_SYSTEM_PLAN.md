@@ -362,22 +362,22 @@ cookie 인증을 도입하면 `/api/chat`, `/api/chat/resume` 도 CSRF 보호 �
 
 ### Phase 6. 테스트
 
-- [ ] backend unit tests
-  - [ ] password hash/verify
-  - [ ] bootstrap admin idempotency
-  - [ ] signup duplicate/invalid payload
-  - [ ] login success/failure
-  - [ ] logout/session revoke
-  - [ ] change-password / must-change-password
-  - [ ] thread ownership isolation
-  - [ ] chat/resume unauthorized/forbidden
-- [ ] frontend tests
-  - [ ] signup form validation
-  - [ ] login redirect
-  - [ ] auth guard
-  - [ ] logout
-  - [ ] must-change-password flow
-  - [ ] 401 recovery
+- [x] backend unit tests
+  - [x] password hash/verify
+  - [x] bootstrap admin idempotency
+  - [x] signup duplicate/invalid payload
+  - [x] login success/failure
+  - [x] logout/session revoke
+  - [x] change-password / must-change-password
+  - [x] thread ownership isolation
+  - [x] chat/resume unauthorized/forbidden
+- [x] frontend tests
+  - [x] signup form validation
+  - [x] login redirect
+  - [x] auth guard
+  - [x] logout
+  - [x] must-change-password flow
+  - [x] 401 recovery
 
 ### Phase 7. 수동 검증
 

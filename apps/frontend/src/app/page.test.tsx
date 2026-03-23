@@ -3,12 +3,16 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
-import { expect, test, vi } from 'vitest';
+import { beforeEach, expect, test, vi } from 'vitest';
 
 import { AuthProvider } from '@/components/auth/AuthProvider';
 import ChatWorkspace from '@/app/page';
 
 const replaceMock = vi.fn();
+
+beforeEach(() => {
+  replaceMock.mockReset();
+});
 
 vi.mock('next/image', () => ({
   default: (props: React.ImgHTMLAttributes<HTMLImageElement>) => <img {...props} alt={props.alt || ''} />,

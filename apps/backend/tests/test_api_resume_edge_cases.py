@@ -175,3 +175,34 @@ def test_resume_allows_paused_checkpoint_without_pending_tasks(monkeypatch):
         json={"thread_id": "paused_checkpoint_id", "action": "approve"},
     ) as response:
         assert response.status_code == 200
+
+
+@pytest.mark.real_thread_ownership
+def test_resume_returns_404_for_thread_owned_by_another_user(monkeypatch):
+    class DummySession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+    class DummySessionFactory:
+        def __call__(self):
+            return DummySession()
+
+    async def mock_get_chat_session(db, thread_id, *, user_id=None):
+        return type("Session", (), {"user_id": "other-user"})()
+
+    monkeypatch.setattr("api.routes.chat.AsyncSessionLocal", DummySessionFactory())
+    monkeypatch.setattr(
+        "api.routes.chat.ThreadService.get_chat_session",
+        mock_get_chat_session,
+    )
+
+    response = client.post(
+        "/api/chat/resume",
+        json={"thread_id": "owned-by-other", "action": "approve"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Thread not found"

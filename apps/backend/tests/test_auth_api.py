@@ -1,10 +1,11 @@
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
+from datetime import datetime, timedelta
 
 from fastapi.testclient import TestClient
 
 from main import app
-from models.auth import AuthSession, AuthUser
+from models.auth import AuthSession, AuthUser, KST
 from services.auth_service import IssuedSession, hash_password
 from services.security_service import get_current_session, get_current_user, require_csrf
 
@@ -76,6 +77,56 @@ def test_login_returns_401_for_invalid_credentials(monkeypatch):
 
     assert response.status_code == 401
     assert response.json()["detail"] == "Invalid credentials"
+
+
+def test_login_sets_auth_cookies(monkeypatch):
+    user = AuthUser(
+        id="user-1",
+        login_id="user1",
+        password_hash=hash_password("abcdefghijklmn1"),
+        role="user",
+        status="active",
+        must_change_password=False,
+    )
+    issued_session = IssuedSession(
+        session=AuthSession(
+            id="session-1",
+            user_id="user-1",
+            session_token_hash="session-hash",
+            csrf_token_hash="csrf-hash",
+            expires_at=datetime.now(KST) + timedelta(hours=1),
+        ),
+        session_token="session-token",
+        csrf_token="csrf-token",
+    )
+
+    async def mock_authenticate_user(*args, **kwargs):
+        return user
+
+    async def mock_issue_session(*args, **kwargs):
+        return issued_session
+
+    monkeypatch.setattr("api.routes.auth.authenticate_user", mock_authenticate_user)
+    monkeypatch.setattr("api.routes.auth.issue_session", mock_issue_session)
+
+    response = client.post(
+        "/api/auth/login",
+        json={"login_id": "user1", "password": "abcdefghijklmn1"},
+        headers={"origin": "http://localhost:3000"},
+    )
+
+    assert response.status_code == 200
+    assert "orch_session=session-token" in response.headers.get("set-cookie", "")
+
+
+def test_signup_invalid_payload_returns_422():
+    response = client.post(
+        "/api/auth/signup",
+        json={"login_id": "user1"},
+        headers={"origin": "http://localhost:3000"},
+    )
+
+    assert response.status_code == 422
 
 
 def test_me_returns_current_user(monkeypatch):
