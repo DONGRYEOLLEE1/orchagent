@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
@@ -77,3 +77,16 @@ async def patch_thread(
     if summary is None:
         raise HTTPException(status_code=404, detail="Thread not found")
     return ThreadSummaryResponse.model_validate(summary, from_attributes=True)
+
+
+@router.delete("/threads/{thread_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_thread(
+    thread_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+    _: None = Depends(require_csrf),
+):
+    deleted = await ThreadService.delete_thread(db, thread_id, user_id=current_user.id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

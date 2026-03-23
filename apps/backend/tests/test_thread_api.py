@@ -327,3 +327,41 @@ def test_get_thread_returns_404_for_missing_thread(monkeypatch):
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Thread not found"}
+
+
+def test_delete_thread_returns_204(monkeypatch):
+    async def mock_delete_thread(db, thread_id, *, user_id):
+        assert thread_id == "thread-delete"
+        assert user_id == "test-user"
+        return True
+
+    from services.thread_service import ThreadService
+
+    app.dependency_overrides[get_db] = _override_get_db
+    monkeypatch.setattr(ThreadService, "delete_thread", mock_delete_thread)
+    try:
+        response = client.delete("/api/threads/thread-delete")
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+    assert response.status_code == 204
+    assert response.text == ""
+
+
+def test_delete_thread_returns_404_for_missing_thread(monkeypatch):
+    async def mock_delete_thread(db, thread_id, *, user_id):
+        assert thread_id == "thread-missing"
+        assert user_id == "test-user"
+        return False
+
+    from services.thread_service import ThreadService
+
+    app.dependency_overrides[get_db] = _override_get_db
+    monkeypatch.setattr(ThreadService, "delete_thread", mock_delete_thread)
+    try:
+        response = client.delete("/api/threads/thread-missing")
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Thread not found"}

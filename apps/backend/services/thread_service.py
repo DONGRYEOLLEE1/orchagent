@@ -5,11 +5,12 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import desc, func, select
+from sqlalchemy import delete, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.logging import ChatMessageLog, ChatSession
 from models.trace import TraceEvent
+from models.thread_profile import ThreadProfile
 from services.thread_profile_service import ThreadProfileService
 
 
@@ -310,3 +311,22 @@ class ThreadService:
 
         messages = await ThreadService.get_thread_messages(db, thread_id)
         return ThreadDetail(thread=thread, messages=messages)
+
+    @staticmethod
+    async def delete_thread(
+        db: AsyncSession, thread_id: str, *, user_id: str
+    ) -> bool:
+        session = await ThreadService.get_chat_session(db, thread_id, user_id=user_id)
+        if session is None:
+            return False
+
+        await db.execute(
+            delete(ThreadProfile).where(
+                ThreadProfile.thread_id == thread_id,
+                ThreadProfile.user_id == user_id,
+            )
+        )
+        await db.execute(delete(TraceEvent).where(TraceEvent.thread_id == thread_id))
+        await db.delete(session)
+        await db.commit()
+        return True
