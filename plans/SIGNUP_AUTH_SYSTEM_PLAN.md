@@ -339,10 +339,10 @@ cookie 인증을 도입하면 `/api/chat`, `/api/chat/resume` 도 CSRF 보호 �
 
 ### Phase 3. 인증 API
 
-- [ ] `apps/backend/schemas/auth.py`
-- [ ] `apps/backend/api/routes/auth.py`
-- [ ] `main.py` router 등록
-- [ ] signup/login/logout/me/change-password 구현
+- [x] `apps/backend/schemas/auth.py`
+- [x] `apps/backend/api/routes/auth.py`
+- [x] `main.py` router 등록
+- [x] signup/login/logout/me/change-password 구현
 
 ### Phase 4. 기존 기능과 통합
 

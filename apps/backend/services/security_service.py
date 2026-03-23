@@ -46,6 +46,10 @@ def _ensure_allowed_origin(request: Request) -> None:
         )
 
 
+def validate_request_origin(request: Request) -> None:
+    _ensure_allowed_origin(request)
+
+
 def request_client_ip(request: Request) -> str | None:
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:

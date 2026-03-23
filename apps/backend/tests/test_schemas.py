@@ -1,6 +1,7 @@
 import pytest
 from pydantic import ValidationError
 from schemas.chat import ChatRequest
+from schemas.auth import ChangePasswordRequest, LoginRequest, SignupRequest
 
 
 def test_chat_request_valid():
@@ -26,3 +27,18 @@ def test_chat_request_with_images():
         images=["base64_data_1", "base64_data_2"],
     )
     assert req.images == ["base64_data_1", "base64_data_2"]
+
+
+def test_signup_request_valid():
+    req = SignupRequest(login_id="user1", password="abcdefghijklmn1")
+    assert req.login_id == "user1"
+
+
+def test_login_request_valid():
+    req = LoginRequest(login_id="admin", password="admin1")
+    assert req.login_id == "admin"
+
+
+def test_change_password_request_requires_fields():
+    with pytest.raises(ValidationError):
+        ChangePasswordRequest(current_password="old")
