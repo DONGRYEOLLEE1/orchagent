@@ -15,9 +15,11 @@ from services.auth_service import (
     DuplicateEmailError,
     DuplicateLoginIdError,
     InvalidCredentialsError,
+    PasswordPolicyError,
     authenticate_user,
     change_password,
     create_user,
+    get_user_by_id,
     issue_session,
     revoke_session,
     revoke_user_sessions,
@@ -49,6 +51,11 @@ def _raise_auth_exception(error: Exception) -> None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials",
+        )
+    if isinstance(error, PasswordPolicyError):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(error),
         )
     if isinstance(error, DisabledUserError):
         raise HTTPException(
@@ -87,7 +94,8 @@ async def signup(
     )
     apply_auth_cookies(response, issued_session)
     JsonLogger.log_user(user_id, "signup", {"login_id": login_id})
-    return _to_auth_user_response(user)
+    fresh_user = await get_user_by_id(db, user_id)
+    return _to_auth_user_response(fresh_user or user)
 
 
 @router.post("/auth/login", response_model=AuthUserResponse)
@@ -117,7 +125,8 @@ async def login(
     )
     apply_auth_cookies(response, issued_session)
     JsonLogger.log_user(user_id, "login", {"login_id": login_id})
-    return _to_auth_user_response(user)
+    fresh_user = await get_user_by_id(db, user_id)
+    return _to_auth_user_response(fresh_user or user)
 
 
 @router.post("/auth/logout", response_model=AuthStatusResponse)
@@ -164,14 +173,18 @@ async def update_password(
 
     user_id = user.id
     login_id = user.login_id
-    await change_password(db, user=user, new_password=payload.new_password)
+    try:
+        await change_password(db, user=user, new_password=payload.new_password)
+    except Exception as error:
+        _raise_auth_exception(error)
     await revoke_user_sessions(db, user_id)
+    fresh_user = await get_user_by_id(db, user_id)
     issued_session = await issue_session(
         db,
-        user=user,
+        user=fresh_user or user,
         user_agent=request_user_agent(request),
         ip_address=request_client_ip(request),
     )
     apply_auth_cookies(response, issued_session)
     JsonLogger.log_user(user_id, "change_password", {"login_id": login_id})
-    return _to_auth_user_response(user)
+    return _to_auth_user_response(fresh_user or user)

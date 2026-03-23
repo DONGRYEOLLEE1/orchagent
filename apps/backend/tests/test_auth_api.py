@@ -260,3 +260,52 @@ def test_change_password_issues_new_session(monkeypatch):
     assert response.status_code == 200
     assert response.json()["must_change_password"] is False
     assert "orch_session=new-session-token" in response.headers.get("set-cookie", "")
+
+
+def test_change_password_returns_400_for_policy_error(monkeypatch):
+    user = AuthUser(
+        id="user-1",
+        login_id="admin",
+        password_hash=hash_password("adminpassword5x"),
+        role="admin",
+        status="active",
+        must_change_password=False,
+    )
+    session = AuthSession(
+        id="session-1",
+        user_id="user-1",
+        session_token_hash="session-hash",
+        csrf_token_hash="csrf-hash",
+        expires_at=datetime.now(KST) + timedelta(hours=1),
+    )
+    session.user = user
+
+    async def override_current_session():
+        return session
+
+    async def override_require_csrf():
+        return None
+
+    async def mock_change_password(*args, **kwargs):
+        from services.auth_service import PasswordPolicyError
+
+        raise PasswordPolicyError("Password must include at least one number.")
+
+    monkeypatch.setattr("api.routes.auth.change_password", mock_change_password)
+    app.dependency_overrides[get_current_session] = override_current_session
+    app.dependency_overrides[require_csrf] = override_require_csrf
+    try:
+        response = client.post(
+            "/api/auth/change-password",
+            json={
+                "current_password": "adminpassword5x",
+                "new_password": "weakpassword",
+            },
+            headers={"origin": "http://localhost:3000"},
+        )
+    finally:
+        app.dependency_overrides.pop(get_current_session, None)
+        app.dependency_overrides.pop(require_csrf, None)
+
+    assert response.status_code == 400
+    assert "Password must include at least one number" in response.json()["detail"]
