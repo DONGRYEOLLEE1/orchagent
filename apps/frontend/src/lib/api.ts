@@ -198,6 +198,33 @@ export async function changePasswordUser(params: {
   });
 }
 
+export async function patchCurrentUser(params: {
+  displayName?: string;
+  email?: string;
+}): Promise<AuthUser> {
+  return requestJson<AuthUser>('/api/users/me', {
+    method: 'PATCH',
+    includeCsrf: true,
+    body: {
+      display_name: params.displayName,
+      email: params.email,
+    },
+  });
+}
+
+export async function patchAdminUser(params: {
+  userId: string;
+  status: string;
+}): Promise<AuthUser> {
+  return requestJson<AuthUser>(`/api/users/${encodeURIComponent(params.userId)}`, {
+    method: 'PATCH',
+    includeCsrf: true,
+    body: {
+      status: params.status,
+    },
+  });
+}
+
 export async function sendChatStream(params: {
   message: string;
   threadId: string;

@@ -28,6 +28,8 @@ import {
   upsertThreadSummary,
 } from '@/lib/workspace-state';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { AdminStatusPanel } from '@/components/auth/AdminStatusPanel';
+import { ProfilePanel } from '@/components/auth/ProfilePanel';
 import { HITLPanel } from '@/components/HITLPanel';
 import { AgentTimeline } from '@/components/sidebar/AgentTimeline';
 import { SessionStatusCard } from '@/components/sidebar/SessionStatusCard';
@@ -331,9 +333,11 @@ function MustChangePasswordView({
 function WorkspaceApp({
   currentUser,
   onLogout,
+  onUserUpdated,
 }: {
   currentUser: AuthUser;
   onLogout: () => Promise<void> | void;
+  onUserUpdated: (user: AuthUser) => void;
 }) {
   const [input, setInput] = useState('');
   const [selectedImages, setSelectedImages] = useState<File[]>([]);
@@ -1328,6 +1332,9 @@ function WorkspaceApp({
         </div>
 
         <div className="space-y-6">
+          <ProfilePanel user={currentUser} onUserUpdated={onUserUpdated} />
+          {currentUser.role === 'admin' ? <AdminStatusPanel /> : null}
+
           {isHistoricalView ? (
             <div className="rounded-2xl border border-amber-500/20 bg-amber-500/8 px-4 py-4 text-sm text-amber-100/90">
               Historical thread selected. Tool activity, reasoning, and raw events are not hydrated in v1.
@@ -1400,7 +1407,7 @@ function WorkspaceApp({
 
 export default function ChatWorkspacePage() {
   const router = useRouter();
-  const { user, loading, refreshUser, logout } = useAuth();
+  const { user, loading, refreshUser, updateUser, logout } = useAuth();
 
   useEffect(() => {
     if (!loading && !user) {
@@ -1431,5 +1438,5 @@ export default function ChatWorkspacePage() {
     );
   }
 
-  return <WorkspaceApp currentUser={user} onLogout={handleLogout} />;
+  return <WorkspaceApp currentUser={user} onLogout={handleLogout} onUserUpdated={updateUser} />;
 }

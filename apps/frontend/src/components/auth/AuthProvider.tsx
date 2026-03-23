@@ -11,6 +11,7 @@ interface AuthContextValue {
   error: string;
   refreshUser: () => Promise<AuthUser | null>;
   setUser: React.Dispatch<React.SetStateAction<AuthUser | null>>;
+  updateUser: (user: AuthUser) => void;
   logout: () => Promise<void>;
 }
 
@@ -51,6 +52,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const updateUser = (nextUser: AuthUser) => {
+    setUser(nextUser);
+  };
+
   useEffect(() => {
     void refreshUser();
   }, []);
@@ -69,7 +74,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, error, refreshUser, setUser, logout }}>
+    <AuthContext.Provider value={{ user, loading, error, refreshUser, setUser, updateUser, logout }}>
       {children}
     </AuthContext.Provider>
   );

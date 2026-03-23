@@ -305,9 +305,9 @@
 
 ### Phase 5. 프론트 user 연동
 
-- [ ] profile edit UI
-- [ ] auth context refresh
-- [ ] admin 전용 user status UI 또는 최소 페이지
+- [x] profile edit UI
+- [x] auth context refresh
+- [x] admin 전용 user status UI 또는 최소 페이지
 
 ### Phase 6. 테스트
 
