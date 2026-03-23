@@ -32,10 +32,15 @@ class Settings(BaseSettings):
     AUTH_PASSWORD_REQUIRE_LOWERCASE: bool = True
     AUTH_PASSWORD_REQUIRE_NUMBER: bool = True
     AUTH_PASSWORD_PEPPER: str = ""
+    AUTH_TOKEN_PEPPER: str = ""
     AUTH_PBKDF2_ITERATIONS: int = 150000
     AUTH_SESSION_TTL_HOURS: int = 24
     AUTH_SESSION_ABSOLUTE_DAYS: int = 7
     AUTH_COOKIE_SECURE: bool = False
+    AUTH_COOKIE_SAMESITE: str = "lax"
+    AUTH_SESSION_COOKIE_NAME: str = "orch_session"
+    AUTH_CSRF_COOKIE_NAME: str = "orch_csrf"
+    AUTH_CSRF_HEADER_NAME: str = "X-CSRF-Token"
 
     @property
     def sync_database_uri(self) -> str:
@@ -52,6 +57,10 @@ class Settings(BaseSettings):
             for origin in self.AUTH_ALLOWED_ORIGINS.split(",")
             if origin.strip()
         ]
+
+    @property
+    def auth_session_ttl_seconds(self) -> int:
+        return self.AUTH_SESSION_TTL_HOURS * 60 * 60
 
     model_config = SettingsConfigDict(
         env_file=".env", case_sensitive=True, extra="ignore"

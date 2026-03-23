@@ -327,15 +327,15 @@ cookie 인증을 도입하면 `/api/chat`, `/api/chat/resume` 도 CSRF 보호 �
 
 ### Phase 2. 인증 서비스 계층
 
-- [ ] `apps/backend/services/auth_service.py`
+- [x] `apps/backend/services/auth_service.py`
   - 사용자 생성
   - password hash/verify
   - session issue/revoke
   - bootstrap admin ensure
-- [ ] `apps/backend/services/security_service.py`
+- [x] `apps/backend/services/security_service.py`
   - CSRF/쿠키/세션 해석
   - current user dependency
-- [ ] `apps/backend/services/file_logger.py` 의 `log_user()` 활용 시작
+- [x] `apps/backend/services/file_logger.py` 의 `log_user()` 활용 시작
 
 ### Phase 3. 인증 API
 

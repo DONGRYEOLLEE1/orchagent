@@ -62,4 +62,4 @@ class AuthSession(Base):
     expires_at = Column(DateTime(timezone=True), nullable=False)
     revoked_at = Column(DateTime(timezone=True), nullable=True)
 
-    user = relationship("AuthUser", back_populates="sessions")
+    user = relationship("AuthUser", back_populates="sessions", lazy="selectin")
