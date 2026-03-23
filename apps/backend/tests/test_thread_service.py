@@ -7,6 +7,7 @@ import pytest
 
 from models.logging import KST, ChatSession
 from services.logging_service import LoggingService
+from services.thread_profile_service import ThreadProfileService
 from services.thread_service import ThreadService
 
 
@@ -94,9 +95,15 @@ async def test_list_thread_summaries_executes_single_query_and_maps_rows():
     db = AsyncMock()
     db.execute = AsyncMock(return_value=result)
 
-    summaries = await ThreadService.list_thread_summaries(
-        db, user_id="user-1", limit=10
-    )
+    original_get_thread_profiles_map = ThreadProfileService.get_thread_profiles_map
+    ThreadProfileService.get_thread_profiles_map = AsyncMock(return_value={})
+
+    try:
+        summaries = await ThreadService.list_thread_summaries(
+            db, user_id="user-1", limit=10
+        )
+    finally:
+        ThreadProfileService.get_thread_profiles_map = original_get_thread_profiles_map
 
     assert len(summaries) == 1
     assert summaries[0].thread_id == "thread-a"
@@ -141,9 +148,15 @@ async def test_list_thread_summaries_preserves_latest_first_order_and_counts():
     db = AsyncMock()
     db.execute = AsyncMock(return_value=result)
 
-    summaries = await ThreadService.list_thread_summaries(
-        db, user_id="user-1", limit=5
-    )
+    original_get_thread_profiles_map = ThreadProfileService.get_thread_profiles_map
+    ThreadProfileService.get_thread_profiles_map = AsyncMock(return_value={})
+
+    try:
+        summaries = await ThreadService.list_thread_summaries(
+            db, user_id="user-1", limit=5
+        )
+    finally:
+        ThreadProfileService.get_thread_profiles_map = original_get_thread_profiles_map
 
     assert [summary.thread_id for summary in summaries] == [
         "thread-newer",

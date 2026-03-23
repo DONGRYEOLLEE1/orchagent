@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.logging import ChatMessageLog, ChatSession
 from models.trace import TraceEvent
+from services.thread_profile_service import ThreadProfileService
 
 
 @dataclass(slots=True)
@@ -22,6 +23,8 @@ class ThreadSummary:
     message_count: int
     latest_status: str | None
     checkpoint_id: str | None
+    pinned: bool
+    archived: bool
 
 
 @dataclass(slots=True)
@@ -91,6 +94,28 @@ class ThreadService:
                 row.get("latest_status"), row.get("checkpoint_status")
             ),
             checkpoint_id=row.get("checkpoint_id"),
+            pinned=False,
+            archived=False,
+        )
+
+    @staticmethod
+    def _apply_profile_overrides(
+        summary: ThreadSummary, profile: Any | None
+    ) -> ThreadSummary:
+        if profile is None:
+            return summary
+
+        return ThreadSummary(
+            thread_id=summary.thread_id,
+            title=profile.title_override or summary.title,
+            preview=summary.preview,
+            created_at=summary.created_at,
+            last_activity_at=summary.last_activity_at,
+            message_count=summary.message_count,
+            latest_status=summary.latest_status,
+            checkpoint_id=summary.checkpoint_id,
+            pinned=profile.pinned,
+            archived=profile.archived,
         )
 
     @staticmethod
@@ -219,9 +244,20 @@ class ThreadService:
         )
 
         result = await db.execute(stmt)
-        return [
+        summaries = [
             ThreadService._build_summary(dict(row))
             for row in result.mappings().all()
+        ]
+        profiles = await ThreadProfileService.get_thread_profiles_map(
+            db,
+            [summary.thread_id for summary in summaries],
+            user_id,
+        )
+        return [
+            ThreadService._apply_profile_overrides(
+                summary, profiles.get(summary.thread_id)
+            )
+            for summary in summaries
         ]
 
     @staticmethod
@@ -235,7 +271,9 @@ class ThreadService:
         row = result.mappings().first()
         if row is None:
             return None
-        return ThreadService._build_summary(dict(row))
+        summary = ThreadService._build_summary(dict(row))
+        profile = await ThreadProfileService.get_thread_profile(db, thread_id, user_id)
+        return ThreadService._apply_profile_overrides(summary, profile)
 
     @staticmethod
     async def get_thread_messages(

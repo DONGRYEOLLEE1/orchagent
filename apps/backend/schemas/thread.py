@@ -13,6 +13,8 @@ class ThreadSummaryResponse(BaseModel):
     message_count: int
     latest_status: str | None
     checkpoint_id: str | None
+    pinned: bool = False
+    archived: bool = False
 
 
 class ThreadMessageResponse(BaseModel):

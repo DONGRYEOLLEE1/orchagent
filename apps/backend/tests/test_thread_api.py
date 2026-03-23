@@ -25,6 +25,8 @@ def test_list_threads_returns_thread_summaries(monkeypatch):
         message_count=2,
         latest_status="completed",
         checkpoint_id="cp-1",
+        pinned=False,
+        archived=False,
     )
 
     async def mock_list_thread_summaries(db, *, user_id, limit):
@@ -53,6 +55,8 @@ def test_list_threads_returns_thread_summaries(monkeypatch):
                 "message_count": 2,
                 "latest_status": "completed",
                 "checkpoint_id": "cp-1",
+                "pinned": False,
+                "archived": False,
             }
         ]
     }
@@ -85,22 +89,26 @@ def test_list_threads_preserves_service_order_and_summary_fields(monkeypatch):
             title="newest prompt",
             preview="newest answer",
             created_at=base_time,
-            last_activity_at=base_time,
-            message_count=4,
-            latest_status="completed",
-            checkpoint_id="cp-new",
-        ),
-        ThreadSummary(
-            thread_id="thread-old",
+                last_activity_at=base_time,
+                message_count=4,
+                latest_status="completed",
+                checkpoint_id="cp-new",
+                pinned=False,
+                archived=False,
+            ),
+            ThreadSummary(
+                thread_id="thread-old",
             title="older prompt",
             preview="older preview",
             created_at=base_time,
-            last_activity_at=base_time,
-            message_count=1,
-            latest_status="interrupted",
-            checkpoint_id="cp-old",
-        ),
-    ]
+                last_activity_at=base_time,
+                message_count=1,
+                latest_status="interrupted",
+                checkpoint_id="cp-old",
+                pinned=False,
+                archived=False,
+            ),
+        ]
 
     async def mock_list_thread_summaries(db, *, user_id, limit):
         assert user_id == "test-user"
@@ -139,6 +147,8 @@ def test_get_thread_returns_detail(monkeypatch):
             message_count=2,
             latest_status="interrupted",
             checkpoint_id="cp-2",
+            pinned=False,
+            archived=False,
         ),
         messages=[
             ThreadMessage(
@@ -196,6 +206,8 @@ def test_get_thread_returns_user_only_detail(monkeypatch):
             message_count=1,
             latest_status="running",
             checkpoint_id="cp-user-only",
+            pinned=False,
+            archived=False,
         ),
         messages=[
             ThreadMessage(
@@ -244,6 +256,8 @@ def test_get_thread_returns_resume_messages_in_existing_order(monkeypatch):
             message_count=4,
             latest_status="completed",
             checkpoint_id="cp-resume",
+            pinned=False,
+            archived=False,
         ),
         messages=[
             ThreadMessage(

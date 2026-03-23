@@ -284,10 +284,10 @@
 
 ### Phase 2. 서비스 계층
 
-- [ ] `apps/backend/services/thread_profile_service.py`
-- [ ] 기존 `thread_service.py` 와 thread summary/detail 합성 로직 연결
-- [ ] `apps/backend/services/user_profile_service.py`
-- [ ] `apps/backend/services/admin_user_service.py`
+- [x] `apps/backend/services/thread_profile_service.py`
+- [x] 기존 `thread_service.py` 와 thread summary/detail 합성 로직 연결
+- [x] `apps/backend/services/user_profile_service.py`
+- [x] `apps/backend/services/admin_user_service.py`
 
 ### Phase 3. 백엔드 라우터
 
