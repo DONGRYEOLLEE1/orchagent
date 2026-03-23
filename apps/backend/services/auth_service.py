@@ -278,14 +278,16 @@ async def touch_session(db: AsyncSession, session: AuthSession) -> AuthSession:
 
 
 async def revoke_session(db: AsyncSession, session: AuthSession) -> None:
+    session_id = session.id
+    user_id = session.user_id
     if session.revoked_at is None:
         session.revoked_at = datetime.now(KST)
         await db.commit()
     JsonLogger.log_user(
-        session.user_id,
+        user_id,
         "session_revoked",
         {
-            "session_id": session.id,
+            "session_id": session_id,
         },
     )
 

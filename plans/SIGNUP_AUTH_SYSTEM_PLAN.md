@@ -381,12 +381,12 @@ cookie 인증을 도입하면 `/api/chat`, `/api/chat/resume` 도 CSRF 보호 �
 
 ### Phase 7. 수동 검증
 
-- [ ] 신규 사용자 회원가입 -> 자동 로그인 -> workspace 진입
-- [ ] 로그아웃 -> workspace 접근 차단
-- [ ] `admin/admin1` 로그인 -> 즉시 비밀번호 변경 강제
-- [ ] 다른 사용자 thread 접근 차단
-- [ ] 로그인 후 새 thread 생성 -> 새로고침 후 동일 사용자만 조회 가능
-- [ ] CSRF 없이 POST 요청 시 거부
+- [x] 신규 사용자 회원가입 -> 자동 로그인 -> workspace 진입
+- [x] 로그아웃 -> workspace 접근 차단
+- [x] `admin/admin1` 로그인 -> 즉시 비밀번호 변경 강제
+- [x] 다른 사용자 thread 접근 차단
+- [x] 로그인 후 새 thread 생성 -> 새로고침 후 동일 사용자만 조회 가능
+- [x] CSRF 없이 POST 요청 시 거부
 
 ## 11. 리스크 및 주의사항
 
@@ -399,12 +399,12 @@ cookie 인증을 도입하면 `/api/chat`, `/api/chat/resume` 도 CSRF 보호 �
 
 ## 12. 완료 기준
 
-- [ ] 회원가입/로그인/로그아웃/현재 사용자 조회가 동작한다.
-- [ ] 인증되지 않은 사용자는 workspace 와 thread API 를 사용할 수 없다.
-- [ ] 사용자별 thread ownership 이 보장된다.
-- [ ] 기존 chat/resume/thread/trace 흐름이 실제 사용자 기준으로 회귀 없이 동작한다.
-- [ ] 초기 관리자 계정 `admin/admin1` 이 seed 되고, 첫 로그인 후 비밀번호 변경이 강제된다.
-- [ ] 프론트가 cookie session + CSRF 정책과 함께 동작한다.
+- [x] 회원가입/로그인/로그아웃/현재 사용자 조회가 동작한다.
+- [x] 인증되지 않은 사용자는 workspace 와 thread API 를 사용할 수 없다.
+- [x] 사용자별 thread ownership 이 보장된다.
+- [x] 기존 chat/resume/thread/trace 흐름이 실제 사용자 기준으로 회귀 없이 동작한다.
+- [x] 초기 관리자 계정 `admin/admin1` 이 seed 되고, 첫 로그인 후 비밀번호 변경이 강제된다.
+- [x] 프론트가 cookie session + CSRF 정책과 함께 동작한다.
 
 ## 13. 구현 순서 권장
 

@@ -77,6 +77,8 @@ async def signup(
     except Exception as error:
         _raise_auth_exception(error)
 
+    user_id = user.id
+    login_id = user.login_id
     issued_session = await issue_session(
         db,
         user=user,
@@ -84,7 +86,7 @@ async def signup(
         ip_address=request_client_ip(request),
     )
     apply_auth_cookies(response, issued_session)
-    JsonLogger.log_user(user.id, "signup", {"login_id": user.login_id})
+    JsonLogger.log_user(user_id, "signup", {"login_id": login_id})
     return _to_auth_user_response(user)
 
 
@@ -105,6 +107,8 @@ async def login(
     except Exception as error:
         _raise_auth_exception(error)
 
+    user_id = user.id
+    login_id = user.login_id
     issued_session = await issue_session(
         db,
         user=user,
@@ -112,7 +116,7 @@ async def login(
         ip_address=request_client_ip(request),
     )
     apply_auth_cookies(response, issued_session)
-    JsonLogger.log_user(user.id, "login", {"login_id": user.login_id})
+    JsonLogger.log_user(user_id, "login", {"login_id": login_id})
     return _to_auth_user_response(user)
 
 
@@ -123,9 +127,11 @@ async def logout(
     _: None = Depends(require_csrf),
     db: AsyncSession = Depends(get_db),
 ):
+    session_id = session.id
+    user_id = session.user_id
     await revoke_session(db, session)
     clear_auth_cookies(response)
-    JsonLogger.log_user(session.user_id, "logout", {"session_id": session.id})
+    JsonLogger.log_user(user_id, "logout", {"session_id": session_id})
     return AuthStatusResponse(message="Logged out")
 
 
@@ -156,8 +162,10 @@ async def update_password(
             detail="New password must be different from the current password",
         )
 
+    user_id = user.id
+    login_id = user.login_id
     await change_password(db, user=user, new_password=payload.new_password)
-    await revoke_user_sessions(db, user.id)
+    await revoke_user_sessions(db, user_id)
     issued_session = await issue_session(
         db,
         user=user,
@@ -165,5 +173,5 @@ async def update_password(
         ip_address=request_client_ip(request),
     )
     apply_auth_cookies(response, issued_session)
-    JsonLogger.log_user(user.id, "change_password", {"login_id": user.login_id})
+    JsonLogger.log_user(user_id, "change_password", {"login_id": login_id})
     return _to_auth_user_response(user)
