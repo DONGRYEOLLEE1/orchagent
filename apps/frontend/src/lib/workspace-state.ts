@@ -85,6 +85,8 @@ export function createOptimisticThreadSummary(params: {
     message_count: existingThread ? existingThread.message_count + 1 : 1,
     latest_status: 'running',
     checkpoint_id: existingThread?.checkpoint_id || null,
+    pinned: existingThread?.pinned || false,
+    archived: existingThread?.archived || false,
   };
 }
 

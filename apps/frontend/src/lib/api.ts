@@ -128,6 +128,23 @@ export async function fetchThreadDetail(threadId: string): Promise<ThreadDetail>
   return requestJson<ThreadDetail>(`/api/threads/${encodeURIComponent(threadId)}`);
 }
 
+export async function patchThread(params: {
+  threadId: string;
+  title?: string;
+  pinned?: boolean;
+  archived?: boolean;
+}): Promise<ThreadSummary> {
+  return requestJson<ThreadSummary>(`/api/threads/${encodeURIComponent(params.threadId)}`, {
+    method: 'PATCH',
+    includeCsrf: true,
+    body: {
+      title: params.title,
+      pinned: params.pinned,
+      archived: params.archived,
+    },
+  });
+}
+
 export async function fetchCurrentUser(): Promise<AuthUser> {
   return requestJson<AuthUser>('/api/auth/me');
 }

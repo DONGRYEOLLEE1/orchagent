@@ -11,6 +11,8 @@ export function ThreadListSidebar({
   disabled,
   onNewChat,
   onSelectThread,
+  onRenameThread,
+  onTogglePinnedThread,
 }: {
   threads: ThreadSummary[];
   loadState: ThreadLoadState;
@@ -19,6 +21,8 @@ export function ThreadListSidebar({
   disabled: boolean;
   onNewChat: () => void;
   onSelectThread?: (threadId: string) => void;
+  onRenameThread?: (threadId: string, title: string) => void | Promise<void>;
+  onTogglePinnedThread?: (threadId: string, pinned: boolean) => void | Promise<void>;
 }) {
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-800/70 bg-slate-900/30">
@@ -82,6 +86,8 @@ export function ThreadListSidebar({
                 selected={selectedThreadId === thread.thread_id}
                 disabled={disabled}
                 onSelect={onSelectThread}
+                onRename={onRenameThread}
+                onTogglePinned={onTogglePinnedThread}
               />
             ))}
           </div>

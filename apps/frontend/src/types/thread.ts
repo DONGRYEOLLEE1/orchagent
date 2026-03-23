@@ -9,6 +9,8 @@ export interface ThreadSummary {
   message_count: number;
   latest_status: string | null;
   checkpoint_id: string | null;
+  pinned: boolean;
+  archived: boolean;
 }
 
 export interface ThreadMessage {

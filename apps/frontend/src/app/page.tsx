@@ -13,7 +13,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { changePasswordUser, fetchThreadDetail, fetchThreads, resumeChatStream, sendChatStream } from '@/lib/api';
+import { changePasswordUser, fetchThreadDetail, fetchThreads, patchThread, resumeChatStream, sendChatStream } from '@/lib/api';
 import { appendAssistantText, parseSseBlock, pushUniqueHistory, splitSseBlocks } from '@/lib/chat-stream';
 import {
   applyThreadSummaryToActiveThread,
@@ -451,6 +451,70 @@ function WorkspaceApp({
     setStreamSessionState(createInitialStreamSessionState());
     setActionSpaceState(createInitialActionSpaceState());
     setMobileSidebarOpen(false);
+  };
+
+  const handleRenameThread = async (threadId: string, title: string) => {
+    const existingThread = threadCollectionState.threads.find((thread) => thread.thread_id === threadId);
+    if (!existingThread) {
+      return;
+    }
+
+    setThreadCollectionState((prev) => ({
+      ...prev,
+      threads: patchThreadSummary(prev.threads, threadId, { title }),
+    }));
+    if (activeThreadState.threadId === threadId) {
+      setActiveThreadState((prev) => ({ ...prev, title }));
+    }
+
+    try {
+      const updatedThread = await patchThread({ threadId, title });
+      setThreadCollectionState((prev) => ({
+        ...prev,
+        threads: upsertThreadSummary(prev.threads, updatedThread),
+      }));
+      if (activeThreadState.threadId === threadId) {
+        setActiveThreadState((prev) => applyThreadSummaryToActiveThread(prev, updatedThread));
+      }
+    } catch (error) {
+      setThreadCollectionState((prev) => ({
+        ...prev,
+        threads: upsertThreadSummary(prev.threads, existingThread),
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }));
+      if (activeThreadState.threadId === threadId) {
+        setActiveThreadState((prev) => ({ ...prev, title: existingThread.title }));
+      }
+    }
+  };
+
+  const handleTogglePinnedThread = async (threadId: string, pinned: boolean) => {
+    const existingThread = threadCollectionState.threads.find((thread) => thread.thread_id === threadId);
+    if (!existingThread) {
+      return;
+    }
+
+    setThreadCollectionState((prev) => ({
+      ...prev,
+      threads: patchThreadSummary(prev.threads, threadId, { pinned }),
+    }));
+
+    try {
+      const updatedThread = await patchThread({ threadId, pinned });
+      setThreadCollectionState((prev) => ({
+        ...prev,
+        threads: upsertThreadSummary(prev.threads, updatedThread),
+      }));
+      if (activeThreadState.threadId === threadId) {
+        setActiveThreadState((prev) => applyThreadSummaryToActiveThread(prev, updatedThread));
+      }
+    } catch (error) {
+      setThreadCollectionState((prev) => ({
+        ...prev,
+        threads: upsertThreadSummary(prev.threads, existingThread),
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }));
+    }
   };
 
   const handleStreamEvent = (
@@ -1005,6 +1069,8 @@ function WorkspaceApp({
         disabled={isInteractionLocked}
         onNewChat={handleStartNewChat}
         onSelectThread={handleSelectThread}
+        onRenameThread={handleRenameThread}
+        onTogglePinnedThread={handleTogglePinnedThread}
       />
     </>
   );

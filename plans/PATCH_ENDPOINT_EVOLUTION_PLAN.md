@@ -298,10 +298,10 @@
 
 ### Phase 4. 프론트 thread 연동
 
-- [ ] thread rename UI
-- [ ] thread pin toggle UI
-- [ ] archived badge or state 반영
-- [ ] optimistic patch / rollback
+- [x] thread rename UI
+- [x] thread pin toggle UI
+- [x] archived badge or state 반영
+- [x] optimistic patch / rollback
 
 ### Phase 5. 프론트 user 연동
 
