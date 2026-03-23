@@ -5,10 +5,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from core.config import settings
-from core.database import engine, Base
+from core.database import engine, Base, AsyncSessionLocal
 from api.routes import chat, health, threads
+import models  # noqa: F401
 
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from services.auth_service import ensure_bootstrap_admin
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +26,9 @@ async def _initialize_runtime_dependencies_once() -> None:
         settings.sync_database_uri
     ) as checkpointer:
         await checkpointer.setup()
+
+    async with AsyncSessionLocal() as db:
+        await ensure_bootstrap_admin(db)
 
 
 async def initialize_runtime_dependencies() -> None:
@@ -68,7 +73,7 @@ app = FastAPI(
 # Set all CORS enabled origins
 app.add_middleware(
     CORSMiddleware,  # type: ignore
-    allow_origins=["*"],  # In production, specify frontend domain
+    allow_origins=settings.auth_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

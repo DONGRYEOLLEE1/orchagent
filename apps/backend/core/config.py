@@ -24,6 +24,18 @@ class Settings(BaseSettings):
 
     OPENAI_API_KEY: str = ""
     TAVILY_API_KEY: str = ""
+    AUTH_ALLOWED_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
+    AUTH_BOOTSTRAP_ADMIN_ENABLED: bool = True
+    AUTH_BOOTSTRAP_ADMIN_LOGIN_ID: str = "admin"
+    AUTH_BOOTSTRAP_ADMIN_PASSWORD: str = "admin1"
+    AUTH_PASSWORD_MIN_LENGTH: int = 15
+    AUTH_PASSWORD_REQUIRE_LOWERCASE: bool = True
+    AUTH_PASSWORD_REQUIRE_NUMBER: bool = True
+    AUTH_PASSWORD_PEPPER: str = ""
+    AUTH_PBKDF2_ITERATIONS: int = 150000
+    AUTH_SESSION_TTL_HOURS: int = 24
+    AUTH_SESSION_ABSOLUTE_DAYS: int = 7
+    AUTH_COOKIE_SECURE: bool = False
 
     @property
     def sync_database_uri(self) -> str:
@@ -32,6 +44,14 @@ class Settings(BaseSettings):
     @property
     def async_database_uri(self) -> str:
         return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+
+    @property
+    def auth_allowed_origins(self) -> list[str]:
+        return [
+            origin.strip()
+            for origin in self.AUTH_ALLOWED_ORIGINS.split(",")
+            if origin.strip()
+        ]
 
     model_config = SettingsConfigDict(
         env_file=".env", case_sensitive=True, extra="ignore"

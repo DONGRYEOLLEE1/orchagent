@@ -2,7 +2,7 @@ import socket
 
 import pytest
 
-from main import initialize_runtime_dependencies
+from main import initialize_runtime_dependencies, _initialize_runtime_dependencies_once
 
 
 @pytest.mark.asyncio
@@ -53,3 +53,66 @@ async def test_initialize_runtime_dependencies_raises_after_retry_budget(monkeyp
         await initialize_runtime_dependencies()
 
     assert attempts == 2
+
+
+@pytest.mark.asyncio
+async def test_initialize_runtime_dependencies_once_bootstraps_admin(monkeypatch):
+    sync_calls: list[str] = []
+
+    class DummyConn:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def run_sync(self, fn):
+            sync_calls.append(fn.__name__)
+
+    class DummyEngine:
+        def begin(self):
+            return DummyConn()
+
+    class DummyCheckpointer:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def setup(self):
+            sync_calls.append("checkpointer.setup")
+
+    class DummySession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+    class DummySessionFactory:
+        def __call__(self):
+            return DummySession()
+
+    bootstrap_calls = []
+
+    async def fake_bootstrap_admin(db):
+        bootstrap_calls.append(db)
+
+    monkeypatch.setattr("main.engine", DummyEngine())
+    monkeypatch.setattr(
+        "main.AsyncPostgresSaver",
+        type(
+            "DummySaver",
+            (),
+            {"from_conn_string": staticmethod(lambda conn: DummyCheckpointer())},
+        ),
+    )
+    monkeypatch.setattr("main.AsyncSessionLocal", DummySessionFactory())
+    monkeypatch.setattr("main.ensure_bootstrap_admin", fake_bootstrap_admin)
+
+    await _initialize_runtime_dependencies_once()
+
+    assert "create_all" in sync_calls
+    assert "checkpointer.setup" in sync_calls
+    assert len(bootstrap_calls) == 1
