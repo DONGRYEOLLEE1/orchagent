@@ -20,6 +20,8 @@ test('creates optimistic thread summaries and moves them to the top', () => {
     message_count: 1,
     latest_status: 'completed',
     checkpoint_id: 'cp-old',
+    pinned: false,
+    archived: false,
   };
 
   const optimistic = createOptimisticThreadSummary({
@@ -48,6 +50,8 @@ test('hydrates active thread state from detail and summary metadata', () => {
       message_count: 2,
       latest_status: 'interrupted',
       checkpoint_id: 'cp-1',
+      pinned: false,
+      archived: false,
     },
     messages: [
       {

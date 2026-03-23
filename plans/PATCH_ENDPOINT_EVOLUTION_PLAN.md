@@ -311,19 +311,19 @@
 
 ### Phase 6. 테스트
 
-- [ ] backend tests
-  - [ ] thread rename success
-  - [ ] thread pinned toggle success
-  - [ ] thread ownership 404
-  - [ ] user self patch success
-  - [ ] duplicate email conflict
-  - [ ] admin-only status patch
-  - [ ] non-admin forbidden
-- [ ] frontend tests
-  - [ ] thread rename optimistic update
-  - [ ] thread pin toggle
-  - [ ] profile edit save
-  - [ ] admin status update UI gating
+- [x] backend tests
+  - [x] thread rename success
+  - [x] thread pinned toggle success
+  - [x] thread ownership 404
+  - [x] user self patch success
+  - [x] duplicate email conflict
+  - [x] admin-only status patch
+  - [x] non-admin forbidden
+- [x] frontend tests
+  - [x] thread rename optimistic update
+  - [x] thread pin toggle
+  - [x] profile edit save
+  - [x] admin status update UI gating
 
 ### Phase 7. 수동 검증
 

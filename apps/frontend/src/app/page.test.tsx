@@ -109,6 +109,8 @@ test('hydrates a selected thread and resets to a draft with New Chat', async () 
             message_count: 2,
             latest_status: 'completed',
             checkpoint_id: 'cp-1',
+            pinned: false,
+            archived: false,
           },
         ],
       });
@@ -125,6 +127,8 @@ test('hydrates a selected thread and resets to a draft with New Chat', async () 
           message_count: 2,
           latest_status: 'completed',
           checkpoint_id: 'cp-1',
+          pinned: false,
+          archived: false,
         },
         messages: [
           {
@@ -193,6 +197,8 @@ test('reuses the selected thread id for follow-up sends and disables switching w
             message_count: 2,
             latest_status: 'completed',
             checkpoint_id: 'cp-1',
+            pinned: false,
+            archived: false,
           },
           {
             thread_id: 'thread-2',
@@ -203,6 +209,8 @@ test('reuses the selected thread id for follow-up sends and disables switching w
             message_count: 1,
             latest_status: 'completed',
             checkpoint_id: 'cp-2',
+            pinned: false,
+            archived: false,
           },
         ],
       });
@@ -219,6 +227,8 @@ test('reuses the selected thread id for follow-up sends and disables switching w
           message_count: 2,
           latest_status: 'completed',
           checkpoint_id: 'cp-1',
+          pinned: false,
+          archived: false,
         },
         messages: [
           {
@@ -324,6 +334,8 @@ test('marks a thread as errored when a send request fails before streaming start
             message_count: 2,
             latest_status: 'completed',
             checkpoint_id: 'cp-1',
+            pinned: false,
+            archived: false,
           },
         ],
       });
@@ -340,6 +352,8 @@ test('marks a thread as errored when a send request fails before streaming start
           message_count: 2,
           latest_status: 'completed',
           checkpoint_id: 'cp-1',
+          pinned: false,
+          archived: false,
         },
         messages: [
           {
@@ -412,6 +426,8 @@ test('restores interrupted resume state when resume fails before streaming start
             message_count: 2,
             latest_status: 'interrupted',
             checkpoint_id: 'cp-1',
+            pinned: false,
+            archived: false,
           },
         ],
       });
@@ -428,6 +444,8 @@ test('restores interrupted resume state when resume fails before streaming start
           message_count: 2,
           latest_status: 'interrupted',
           checkpoint_id: 'cp-1',
+          pinned: false,
+          archived: false,
         },
         messages: [
           {
@@ -469,4 +487,166 @@ test('restores interrupted resume state when resume fails before streaming start
   expect(screen.getByText(/action required/i)).toBeInTheDocument();
   expect(screen.queryByText(/\[User Action\]: approve/i)).not.toBeInTheDocument();
   expect(screen.getByText('Interrupted')).toBeInTheDocument();
+});
+
+test('renames and pins a thread optimistically', async () => {
+  const user = userEvent.setup();
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+
+    if (url.includes('/api/auth/me')) {
+      return jsonResponse({
+        id: 'user-1',
+        login_id: 'tester',
+        role: 'user',
+        status: 'active',
+        display_name: null,
+        email: null,
+        must_change_password: false,
+      });
+    }
+
+    if (url.includes('/api/threads?limit=50')) {
+      return jsonResponse({
+        threads: [
+          {
+            thread_id: 'thread-1',
+            title: 'Existing thread',
+            preview: 'Saved assistant answer',
+            created_at: '2026-03-22T10:00:00Z',
+            last_activity_at: '2026-03-22T10:15:00Z',
+            message_count: 2,
+            latest_status: 'completed',
+            checkpoint_id: 'cp-1',
+            pinned: false,
+            archived: false,
+          },
+        ],
+      });
+    }
+
+    if (url.endsWith('/api/threads/thread-1')) {
+      if (init?.method === 'PATCH') {
+        const body = JSON.parse(String(init.body || '{}'));
+        return jsonResponse({
+          thread_id: 'thread-1',
+          title: body.title || 'Existing thread',
+          preview: 'Saved assistant answer',
+          created_at: '2026-03-22T10:00:00Z',
+          last_activity_at: '2026-03-22T10:15:00Z',
+          message_count: 2,
+          latest_status: 'completed',
+          checkpoint_id: 'cp-1',
+          pinned: body.pinned ?? false,
+          archived: false,
+        });
+      }
+
+      return jsonResponse({
+        thread: {
+          thread_id: 'thread-1',
+          title: 'Existing thread',
+          preview: 'Saved assistant answer',
+          created_at: '2026-03-22T10:00:00Z',
+          last_activity_at: '2026-03-22T10:15:00Z',
+          message_count: 2,
+          latest_status: 'completed',
+          checkpoint_id: 'cp-1',
+          pinned: false,
+          archived: false,
+        },
+        messages: [],
+      });
+    }
+
+    throw new Error(`Unhandled fetch: ${url}`);
+  });
+
+  Object.defineProperty(document, 'cookie', {
+    configurable: true,
+    get: () => 'orch_csrf=csrf-token',
+  });
+  vi.stubGlobal('fetch', fetchMock);
+
+  renderWorkspace();
+
+  await user.click(await screen.findByRole('button', { name: /rename existing thread/i }));
+  const renameInput = screen.getByLabelText(/rename thread thread-1/i);
+  await user.clear(renameInput);
+  await user.type(renameInput, 'Renamed thread');
+  await user.keyboard('{Enter}');
+
+  await waitFor(() => {
+    expect(screen.getAllByText('Renamed thread').length).toBeGreaterThan(0);
+  });
+
+  await user.click(screen.getByRole('button', { name: /pin renamed thread/i }));
+  expect(await screen.findByText('Pinned')).toBeInTheDocument();
+});
+
+test('toggles a thread pin state independently', async () => {
+  const user = userEvent.setup();
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+
+    if (url.includes('/api/auth/me')) {
+      return jsonResponse({
+        id: 'user-1',
+        login_id: 'tester',
+        role: 'user',
+        status: 'active',
+        display_name: null,
+        email: null,
+        must_change_password: false,
+      });
+    }
+
+    if (url.includes('/api/threads?limit=50')) {
+      return jsonResponse({
+        threads: [
+          {
+            thread_id: 'thread-1',
+            title: 'Pin me',
+            preview: 'Saved assistant answer',
+            created_at: '2026-03-22T10:00:00Z',
+            last_activity_at: '2026-03-22T10:15:00Z',
+            message_count: 2,
+            latest_status: 'completed',
+            checkpoint_id: 'cp-1',
+            pinned: false,
+            archived: false,
+          },
+        ],
+      });
+    }
+
+    if (url.endsWith('/api/threads/thread-1')) {
+      const body = JSON.parse(String(init?.body || '{}'));
+      return jsonResponse({
+        thread_id: 'thread-1',
+        title: 'Pin me',
+        preview: 'Saved assistant answer',
+        created_at: '2026-03-22T10:00:00Z',
+        last_activity_at: '2026-03-22T10:15:00Z',
+        message_count: 2,
+        latest_status: 'completed',
+        checkpoint_id: 'cp-1',
+        pinned: body.pinned ?? false,
+        archived: false,
+      });
+    }
+
+    throw new Error(`Unhandled fetch: ${url}`);
+  });
+
+  Object.defineProperty(document, 'cookie', {
+    configurable: true,
+    get: () => 'orch_csrf=csrf-token',
+  });
+  vi.stubGlobal('fetch', fetchMock);
+
+  renderWorkspace();
+
+  await user.click(await screen.findByRole('button', { name: /pin pin me/i }));
+  expect(await screen.findByText('Pinned')).toBeInTheDocument();
 });

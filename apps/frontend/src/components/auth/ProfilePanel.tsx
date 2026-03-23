@@ -47,10 +47,14 @@ export function ProfilePanel({
 
       <div className="space-y-3">
         <div>
-          <label className="mb-1 block text-xs uppercase tracking-[0.18em] text-slate-500">
+          <label
+            htmlFor="profile-display-name"
+            className="mb-1 block text-xs uppercase tracking-[0.18em] text-slate-500"
+          >
             Display Name
           </label>
           <input
+            id="profile-display-name"
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             className="w-full rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-blue-500/60"
@@ -60,10 +64,14 @@ export function ProfilePanel({
         </div>
 
         <div>
-          <label className="mb-1 block text-xs uppercase tracking-[0.18em] text-slate-500">
+          <label
+            htmlFor="profile-email"
+            className="mb-1 block text-xs uppercase tracking-[0.18em] text-slate-500"
+          >
             Email
           </label>
           <input
+            id="profile-email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             className="w-full rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-blue-500/60"

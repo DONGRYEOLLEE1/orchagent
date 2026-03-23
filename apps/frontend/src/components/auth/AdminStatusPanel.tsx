@@ -39,10 +39,14 @@ export function AdminStatusPanel() {
 
       <div className="space-y-3">
         <div>
-          <label className="mb-1 block text-xs uppercase tracking-[0.18em] text-amber-200/60">
+          <label
+            htmlFor="admin-target-user-id"
+            className="mb-1 block text-xs uppercase tracking-[0.18em] text-amber-200/60"
+          >
             Target User ID
           </label>
           <input
+            id="admin-target-user-id"
             value={targetUserId}
             onChange={(e) => setTargetUserId(e.target.value)}
             className="w-full rounded-xl border border-amber-500/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-amber-400/50"
@@ -52,10 +56,14 @@ export function AdminStatusPanel() {
         </div>
 
         <div>
-          <label className="mb-1 block text-xs uppercase tracking-[0.18em] text-amber-200/60">
+          <label
+            htmlFor="admin-status"
+            className="mb-1 block text-xs uppercase tracking-[0.18em] text-amber-200/60"
+          >
             Status
           </label>
           <select
+            id="admin-status"
             value={status}
             onChange={(e) => setStatus(e.target.value)}
             className="w-full rounded-xl border border-amber-500/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-amber-400/50"

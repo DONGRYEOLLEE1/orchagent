@@ -15,6 +15,8 @@ const threads: ThreadSummary[] = [
     message_count: 2,
     latest_status: 'completed',
     checkpoint_id: 'cp-1',
+    pinned: false,
+    archived: false,
   },
 ];
 

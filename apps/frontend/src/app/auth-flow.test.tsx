@@ -273,3 +273,141 @@ test('workspace redirects to login when a protected fetch returns 401', async ()
     expect(replaceMock).toHaveBeenCalledWith('/login');
   });
 });
+
+test('profile panel saves and updates the visible user state', async () => {
+  const user = userEvent.setup();
+  let meCalls = 0;
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+
+    if (url.includes('/api/auth/me')) {
+      meCalls += 1;
+      return jsonResponse({
+        id: 'user-1',
+        login_id: 'user1',
+        role: 'user',
+        status: 'active',
+        display_name: meCalls === 1 ? null : 'Updated Name',
+        email: null,
+        must_change_password: false,
+      });
+    }
+
+    if (url.includes('/api/threads?limit=50')) {
+      return jsonResponse({ threads: [] });
+    }
+
+    if (url.endsWith('/api/users/me')) {
+      expect(init?.method).toBe('PATCH');
+      return jsonResponse({
+        id: 'user-1',
+        login_id: 'user1',
+        role: 'user',
+        status: 'active',
+        display_name: 'Updated Name',
+        email: 'updated@example.com',
+        must_change_password: false,
+      });
+    }
+
+    throw new Error(`Unhandled fetch: ${url}`);
+  });
+
+  Object.defineProperty(document, 'cookie', {
+    configurable: true,
+    get: () => 'orch_csrf=csrf-token',
+  });
+  vi.stubGlobal('fetch', fetchMock);
+
+  renderWithAuth(<ChatWorkspace />);
+
+  await user.type(await screen.findByLabelText(/display name/i), 'Updated Name');
+  await user.type(screen.getByLabelText(/email/i), 'updated@example.com');
+  await user.click(screen.getByRole('button', { name: /save profile/i }));
+
+  expect(await screen.findByDisplayValue('Updated Name')).toBeInTheDocument();
+});
+
+test('admin status panel is only rendered for admins and can submit a status change', async () => {
+  const user = userEvent.setup();
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+
+    if (url.includes('/api/auth/me')) {
+      return jsonResponse({
+        id: 'admin-1',
+        login_id: 'admin',
+        role: 'admin',
+        status: 'active',
+        display_name: null,
+        email: null,
+        must_change_password: false,
+      });
+    }
+
+    if (url.includes('/api/threads?limit=50')) {
+      return jsonResponse({ threads: [] });
+    }
+
+    if (url.endsWith('/api/users/user-2')) {
+      expect(init?.method).toBe('PATCH');
+      return jsonResponse({
+        id: 'user-2',
+        login_id: 'user2',
+        role: 'user',
+        status: 'disabled',
+        display_name: null,
+        email: null,
+        must_change_password: false,
+      });
+    }
+
+    throw new Error(`Unhandled fetch: ${url}`);
+  });
+
+  Object.defineProperty(document, 'cookie', {
+    configurable: true,
+    get: () => 'orch_csrf=csrf-token',
+  });
+  vi.stubGlobal('fetch', fetchMock);
+
+  renderWithAuth(<ChatWorkspace />);
+
+  expect(await screen.findByText(/Admin User Status/i)).toBeInTheDocument();
+  await user.type(screen.getByLabelText(/target user id/i), 'user-2');
+  await user.selectOptions(screen.getByLabelText(/status/i), 'disabled');
+  await user.click(screen.getByRole('button', { name: /update status/i }));
+
+  expect(await screen.findByText(/Updated user2 to disabled/i)).toBeInTheDocument();
+});
+
+test('admin status panel is hidden for non-admin users', async () => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+
+    if (url.includes('/api/auth/me')) {
+      return jsonResponse({
+        id: 'user-1',
+        login_id: 'user1',
+        role: 'user',
+        status: 'active',
+        display_name: null,
+        email: null,
+        must_change_password: false,
+      });
+    }
+
+    if (url.includes('/api/threads?limit=50')) {
+      return jsonResponse({ threads: [] });
+    }
+
+    throw new Error(`Unhandled fetch: ${url}`);
+  });
+
+  vi.stubGlobal('fetch', fetchMock);
+
+  renderWithAuth(<ChatWorkspace />);
+
+  expect(await screen.findByRole('button', { name: /save profile/i })).toBeInTheDocument();
+  expect(screen.queryByText(/Admin User Status/i)).not.toBeInTheDocument();
+});
