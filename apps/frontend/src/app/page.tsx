@@ -1158,7 +1158,9 @@ function WorkspaceApp({
           <div className="hidden items-center gap-3 sm:flex">
             <div className="rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1.5 text-xs text-slate-400">
               <span className="mr-2 uppercase tracking-[0.2em] text-slate-500">User</span>
-              <span className="font-mono text-slate-200">{currentUser.login_id}</span>
+              <span className="font-mono text-slate-200">
+                {currentUser.display_name || currentUser.login_id}
+              </span>
             </div>
             <button
               type="button"

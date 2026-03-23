@@ -60,19 +60,20 @@ async def patch_thread(
     current_user=Depends(get_current_user),
     _: None = Depends(require_csrf),
 ):
-    session = await ThreadService.get_chat_session(db, thread_id, user_id=current_user.id)
+    user_id = current_user.id
+    session = await ThreadService.get_chat_session(db, thread_id, user_id=user_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Thread not found")
 
     await ThreadProfileService.upsert_thread_profile(
         db,
         thread_id=thread_id,
-        user_id=current_user.id,
+        user_id=user_id,
         title=payload.title,
         pinned=payload.pinned,
         archived=payload.archived,
     )
-    summary = await ThreadService.get_thread_summary(db, thread_id, user_id=current_user.id)
+    summary = await ThreadService.get_thread_summary(db, thread_id, user_id=user_id)
     if summary is None:
         raise HTTPException(status_code=404, detail="Thread not found")
     return ThreadSummaryResponse.model_validate(summary, from_attributes=True)

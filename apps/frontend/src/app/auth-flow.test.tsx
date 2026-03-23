@@ -326,6 +326,7 @@ test('profile panel saves and updates the visible user state', async () => {
   await user.click(screen.getByRole('button', { name: /save profile/i }));
 
   expect(await screen.findByDisplayValue('Updated Name')).toBeInTheDocument();
+  expect(screen.getByText('Updated Name')).toBeInTheDocument();
 });
 
 test('admin status panel is only rendered for admins and can submit a status change', async () => {

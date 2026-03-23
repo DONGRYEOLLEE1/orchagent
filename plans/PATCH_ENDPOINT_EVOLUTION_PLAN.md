@@ -327,11 +327,11 @@
 
 ### Phase 7. 수동 검증
 
-- [ ] thread 제목 변경 후 목록/헤더/새로고침 반영 확인
-- [ ] pinned 토글 후 목록 상태 유지 확인
-- [ ] 다른 사용자가 내 thread PATCH 시 404 확인
-- [ ] profile 수정 후 헤더 표시 이름 갱신 확인
-- [ ] admin이 사용자 disable 후 해당 사용자의 로그인/접근 제한 확인
+- [x] thread 제목 변경 후 목록/헤더/새로고침 반영 확인
+- [x] pinned 토글 후 목록 상태 유지 확인
+- [x] 다른 사용자가 내 thread PATCH 시 404 확인
+- [x] profile 수정 후 헤더 표시 이름 갱신 확인
+- [x] admin이 사용자 disable 후 해당 사용자의 로그인/접근 제한 확인
 
 ## 11. 리스크 및 주의사항
 
@@ -343,12 +343,12 @@
 
 ## 12. 완료 기준
 
-- [ ] 기존 POST 엔드포인트 중 유지/비유지 정책이 문서화된다.
-- [ ] `PATCH /api/threads/{thread_id}` 가 title/pinned/archive를 부분 수정할 수 있다.
-- [ ] `PATCH /api/users/me` 가 display_name/email 부분 수정을 지원한다.
-- [ ] `PATCH /api/users/{user_id}` 가 admin 전용 status 수정을 지원한다.
-- [ ] 프론트에서 thread rename / pin / profile edit 가 자연스럽게 연결된다.
-- [ ] ownership / auth / admin 권한 검증이 회귀 없이 유지된다.
+- [x] 기존 POST 엔드포인트 중 유지/비유지 정책이 문서화된다.
+- [x] `PATCH /api/threads/{thread_id}` 가 title/pinned/archive를 부분 수정할 수 있다.
+- [x] `PATCH /api/users/me` 가 display_name/email 부분 수정을 지원한다.
+- [x] `PATCH /api/users/{user_id}` 가 admin 전용 status 수정을 지원한다.
+- [x] 프론트에서 thread rename / pin / profile edit 가 자연스럽게 연결된다.
+- [x] ownership / auth / admin 권한 검증이 회귀 없이 유지된다.
 
 ## 13. 구현 순서 권장
 
