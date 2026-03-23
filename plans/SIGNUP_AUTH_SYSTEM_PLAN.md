@@ -353,12 +353,12 @@ cookie 인증을 도입하면 `/api/chat`, `/api/chat/resume` 도 CSRF 보호 �
 
 ### Phase 5. 프론트 auth 도입
 
-- [ ] auth 페이지 구현
-- [ ] `/api/auth/me` bootstrap
-- [ ] workspace auth guard
-- [ ] `credentials: 'include'` 및 CSRF helper 적용
-- [ ] logout UI
-- [ ] must-change-password UX
+- [x] auth 페이지 구현
+- [x] `/api/auth/me` bootstrap
+- [x] workspace auth guard
+- [x] `credentials: 'include'` 및 CSRF helper 적용
+- [x] logout UI
+- [x] must-change-password UX
 
 ### Phase 6. 테스트
 

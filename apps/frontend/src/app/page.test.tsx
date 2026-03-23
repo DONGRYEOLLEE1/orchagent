@@ -5,10 +5,19 @@ import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { expect, test, vi } from 'vitest';
 
+import { AuthProvider } from '@/components/auth/AuthProvider';
 import ChatWorkspace from '@/app/page';
+
+const replaceMock = vi.fn();
 
 vi.mock('next/image', () => ({
   default: (props: React.ImgHTMLAttributes<HTMLImageElement>) => <img {...props} alt={props.alt || ''} />,
+}));
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({
+    replace: replaceMock,
+  }),
 }));
 
 vi.mock('react-markdown', () => ({
@@ -59,10 +68,30 @@ function deferredSseResponse() {
   };
 }
 
+function renderWorkspace() {
+  return render(
+    <AuthProvider>
+      <ChatWorkspace />
+    </AuthProvider>
+  );
+}
+
 test('hydrates a selected thread and resets to a draft with New Chat', async () => {
   const user = userEvent.setup();
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
+
+    if (url.includes('/api/auth/me')) {
+      return jsonResponse({
+        id: 'user-1',
+        login_id: 'tester',
+        role: 'user',
+        status: 'active',
+        display_name: null,
+        email: null,
+        must_change_password: false,
+      });
+    }
 
     if (url.includes('/api/threads?limit=50')) {
       return jsonResponse({
@@ -115,7 +144,7 @@ test('hydrates a selected thread and resets to a draft with New Chat', async () 
 
   vi.stubGlobal('fetch', fetchMock);
 
-  render(<ChatWorkspace />);
+  renderWorkspace();
 
   await user.click(await screen.findByRole('button', { name: /open thread existing thread/i }));
 
@@ -135,6 +164,18 @@ test('reuses the selected thread id for follow-up sends and disables switching w
   const deferred = deferredSseResponse();
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+
+    if (url.includes('/api/auth/me')) {
+      return jsonResponse({
+        id: 'user-1',
+        login_id: 'tester',
+        role: 'user',
+        status: 'active',
+        display_name: null,
+        email: null,
+        must_change_password: false,
+      });
+    }
 
     if (url.includes('/api/threads?limit=50')) {
       return jsonResponse({
@@ -203,7 +244,7 @@ test('reuses the selected thread id for follow-up sends and disables switching w
 
   vi.stubGlobal('fetch', fetchMock);
 
-  render(<ChatWorkspace />);
+  renderWorkspace();
 
   await user.click(await screen.findByRole('button', { name: /open thread primary thread/i }));
   expect(await screen.findByText('Original question')).toBeInTheDocument();
@@ -254,6 +295,18 @@ test('marks a thread as errored when a send request fails before streaming start
   const user = userEvent.setup();
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+
+    if (url.includes('/api/auth/me')) {
+      return jsonResponse({
+        id: 'user-1',
+        login_id: 'tester',
+        role: 'user',
+        status: 'active',
+        display_name: null,
+        email: null,
+        must_change_password: false,
+      });
+    }
 
     if (url.includes('/api/threads?limit=50')) {
       return jsonResponse({
@@ -312,7 +365,7 @@ test('marks a thread as errored when a send request fails before streaming start
 
   vi.stubGlobal('fetch', fetchMock);
 
-  render(<ChatWorkspace />);
+  renderWorkspace();
 
   await user.click(await screen.findByRole('button', { name: /open thread primary thread/i }));
   await user.type(screen.getByPlaceholderText(/message orchagent/i), 'Failing follow up');
@@ -330,6 +383,18 @@ test('restores interrupted resume state when resume fails before streaming start
   const user = userEvent.setup();
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
+
+    if (url.includes('/api/auth/me')) {
+      return jsonResponse({
+        id: 'user-1',
+        login_id: 'tester',
+        role: 'user',
+        status: 'active',
+        display_name: null,
+        email: null,
+        must_change_password: false,
+      });
+    }
 
     if (url.includes('/api/threads?limit=50')) {
       return jsonResponse({
@@ -386,7 +451,7 @@ test('restores interrupted resume state when resume fails before streaming start
 
   vi.stubGlobal('fetch', fetchMock);
 
-  render(<ChatWorkspace />);
+  renderWorkspace();
 
   await user.click(await screen.findByRole('button', { name: /open thread interrupted thread/i }));
   expect(await screen.findByText(/action required/i)).toBeInTheDocument();

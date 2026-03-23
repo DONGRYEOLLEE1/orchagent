@@ -1,17 +1,19 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { Send, Terminal, Loader2, Bot, User, Activity, Image as ImageIcon, X, ChevronDown, Menu } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import NextImage from 'next/image';
 import { ChatMessage, StreamEvent, ToolExecution } from '@/types/agent';
+import type { AuthUser } from '@/types/auth';
 import type { ActionSpaceState, ActiveThreadState, StreamSessionState, ThreadCollectionState } from '@/types/thread';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { fetchThreadDetail, fetchThreads, resumeChatStream, sendChatStream } from '@/lib/api';
+import { changePasswordUser, fetchThreadDetail, fetchThreads, resumeChatStream, sendChatStream } from '@/lib/api';
 import { appendAssistantText, parseSseBlock, pushUniqueHistory, splitSseBlocks } from '@/lib/chat-stream';
 import {
   applyThreadSummaryToActiveThread,
@@ -25,6 +27,7 @@ import {
   createInitialThreadCollectionState,
   upsertThreadSummary,
 } from '@/lib/workspace-state';
+import { useAuth } from '@/components/auth/AuthProvider';
 import { HITLPanel } from '@/components/HITLPanel';
 import { AgentTimeline } from '@/components/sidebar/AgentTimeline';
 import { SessionStatusCard } from '@/components/sidebar/SessionStatusCard';
@@ -208,9 +211,130 @@ const ToolPanel = ({
   </div>
 );
 
+const AuthLoadingScreen = ({ message }: { message: string }) => (
+  <main className="flex min-h-screen items-center justify-center bg-slate-950 px-6 text-slate-100">
+    <div className="rounded-3xl border border-slate-800 bg-slate-900/70 px-8 py-7 shadow-2xl shadow-black/40 backdrop-blur-xl">
+      <div className="flex items-center gap-3">
+        <Loader2 size={18} className="animate-spin text-blue-400" />
+        <span className="text-sm text-slate-300">{message}</span>
+      </div>
+    </div>
+  </main>
+);
+
+function MustChangePasswordView({
+  currentUser,
+  onPasswordChanged,
+  onLogout,
+}: {
+  currentUser: AuthUser;
+  onPasswordChanged: () => Promise<unknown>;
+  onLogout: () => Promise<void> | void;
+}) {
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    setError('');
+    try {
+      await changePasswordUser({ currentPassword, newPassword });
+      await onPasswordChanged();
+    } catch (passwordError) {
+      setError(passwordError instanceof Error ? passwordError.message : 'Unknown error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-slate-950 px-6 py-12 text-slate-100">
+      <div className="w-full max-w-lg rounded-3xl border border-slate-800/80 bg-slate-900/70 p-8 shadow-2xl shadow-black/40 backdrop-blur-xl">
+        <div className="mb-8 flex items-center justify-between gap-4">
+          <div>
+            <div className="text-xs uppercase tracking-[0.24em] text-slate-500">Security Gate</div>
+            <h1 className="mt-1 text-2xl font-bold text-slate-100">Change Your Password</h1>
+            <p className="mt-3 text-sm leading-6 text-slate-400">
+              The bootstrap admin account is active as <span className="font-mono text-slate-200">{currentUser.login_id}</span>.
+              You must replace the temporary password before using the workspace.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => void onLogout()}
+            className="rounded-2xl border border-slate-800 bg-slate-950/70 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-700 hover:text-slate-100"
+          >
+            Log Out
+          </button>
+        </div>
+
+        <form className="space-y-5" onSubmit={handleSubmit}>
+          <div>
+            <label className="mb-2 block text-sm font-medium text-slate-300" htmlFor="current-password">
+              Current Password
+            </label>
+            <input
+              id="current-password"
+              type="password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              className="w-full rounded-2xl border border-slate-800 bg-slate-950/70 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-blue-500/60"
+              placeholder="Enter the current password"
+              disabled={submitting}
+            />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-slate-300" htmlFor="new-password">
+              New Password
+            </label>
+            <input
+              id="new-password"
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              className="w-full rounded-2xl border border-slate-800 bg-slate-950/70 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-blue-500/60"
+              placeholder="Create a new password"
+              disabled={submitting}
+            />
+            <p className="mt-2 text-xs italic leading-5 text-slate-500">
+              Password must be at least 15 characters and include lowercase letters and numbers.
+            </p>
+          </div>
+
+          {error ? (
+            <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+              {error}
+            </div>
+          ) : null}
+
+          <button
+            type="submit"
+            disabled={submitting || !currentPassword || !newPassword}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-500"
+          >
+            {submitting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+            <span>Change Password</span>
+          </button>
+        </form>
+      </div>
+    </main>
+  );
+}
+
 // --- Main Page ---
 
-export default function ChatWorkspace() {
+function WorkspaceApp({
+  currentUser,
+  onLogout,
+}: {
+  currentUser: AuthUser;
+  onLogout: () => Promise<void> | void;
+}) {
   const [input, setInput] = useState('');
   const [selectedImages, setSelectedImages] = useState<File[]>([]);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -941,7 +1065,7 @@ export default function ChatWorkspace() {
 
       {/* Center Content: Chat Workspace */}
       <section className="flex-1 flex flex-col relative z-10 bg-transparent">
-        <header className="h-16 border-b border-slate-800/50 flex items-center px-8 bg-slate-950/20 backdrop-blur-sm">
+        <header className="flex h-16 items-center justify-between border-b border-slate-800/50 bg-slate-950/20 px-8 backdrop-blur-sm">
           <div className="flex items-center gap-3 text-sm font-medium text-slate-400">
             <button
               type="button"
@@ -959,6 +1083,20 @@ export default function ChatWorkspace() {
             <span className="text-blue-400 font-mono text-xs bg-blue-400/10 px-2 py-0.5 rounded border border-blue-400/20">
               {activeThreadState.threadId || 'draft_session'}
             </span>
+          </div>
+
+          <div className="hidden items-center gap-3 sm:flex">
+            <div className="rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1.5 text-xs text-slate-400">
+              <span className="mr-2 uppercase tracking-[0.2em] text-slate-500">User</span>
+              <span className="font-mono text-slate-200">{currentUser.login_id}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => void onLogout()}
+              className="rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-2 text-xs font-medium text-slate-300 transition hover:border-slate-700 hover:text-slate-100"
+            >
+              Log Out
+            </button>
           </div>
         </header>
 
@@ -1192,4 +1330,40 @@ export default function ChatWorkspace() {
         </div>
       </aside>    </main>
   );
+}
+
+export default function ChatWorkspacePage() {
+  const router = useRouter();
+  const { user, loading, refreshUser, logout } = useAuth();
+
+  useEffect(() => {
+    if (!loading && !user) {
+      router.replace('/login');
+    }
+  }, [loading, router, user]);
+
+  const handleLogout = async () => {
+    await logout();
+    router.replace('/login');
+  };
+
+  if (loading) {
+    return <AuthLoadingScreen message="Loading your workspace..." />;
+  }
+
+  if (!user) {
+    return <AuthLoadingScreen message="Redirecting to login..." />;
+  }
+
+  if (user.must_change_password) {
+    return (
+      <MustChangePasswordView
+        currentUser={user}
+        onPasswordChanged={refreshUser}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
+  return <WorkspaceApp currentUser={user} onLogout={handleLogout} />;
 }
