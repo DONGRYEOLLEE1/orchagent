@@ -277,10 +277,10 @@
 
 ### Phase 1. 모델/스키마
 
-- [ ] `apps/backend/models/thread_profile.py` 추가
-- [ ] `apps/backend/models/__init__.py` 등록
-- [ ] `apps/backend/schemas/thread_patch.py` 또는 기존 thread schema 확장
-- [ ] `apps/backend/schemas/user_patch.py` 추가
+- [x] `apps/backend/models/thread_profile.py` 추가
+- [x] `apps/backend/models/__init__.py` 등록
+- [x] `apps/backend/schemas/thread_patch.py` 또는 기존 thread schema 확장
+- [x] `apps/backend/schemas/user_patch.py` 추가
 
 ### Phase 2. 서비스 계층
 
