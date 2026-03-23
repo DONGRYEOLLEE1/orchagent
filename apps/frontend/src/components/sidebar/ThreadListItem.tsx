@@ -82,8 +82,8 @@ export function ThreadListItem({
       return;
     }
 
-    await onRename?.(thread.thread_id, normalized);
     setEditing(false);
+    await onRename?.(thread.thread_id, normalized);
   };
 
   const interactive = Boolean(onSelect);
@@ -97,8 +97,29 @@ export function ThreadListItem({
     .filter(Boolean)
     .join(' ');
 
-  const content = (
-    <>
+  return (
+    <div
+      className={baseClassName}
+      role={interactive ? 'button' : undefined}
+      tabIndex={interactive && !disabled ? 0 : undefined}
+      aria-label={interactive ? `Open thread ${thread.title}` : undefined}
+      aria-disabled={interactive && disabled ? 'true' : undefined}
+      onClick={
+        interactive && !disabled
+          ? () => onSelect?.(thread.thread_id)
+          : undefined
+      }
+      onKeyDown={
+        interactive && !disabled
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onSelect?.(thread.thread_id);
+              }
+            }
+          : undefined
+      }
+    >
       <div className="mb-2 flex items-start justify-between gap-3">
         <div className="min-w-0">
           {editing ? (
@@ -107,6 +128,7 @@ export function ThreadListItem({
               value={draftTitle}
               onChange={(e) => setDraftTitle(e.target.value)}
               onBlur={() => void submitRename()}
+              onClick={(e) => e.stopPropagation()}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault();
@@ -181,22 +203,6 @@ export function ThreadListItem({
           </span>
         </div>
       </div>
-    </>
-  );
-
-  if (!interactive) {
-    return <div className={baseClassName}>{content}</div>;
-  }
-
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={() => onSelect?.(thread.thread_id)}
-      aria-label={`Open thread ${thread.title}`}
-      className={baseClassName}
-    >
-      {content}
-    </button>
+    </div>
   );
 }

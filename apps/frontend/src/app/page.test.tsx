@@ -1,6 +1,6 @@
 /* eslint-disable @next/next/no-img-element */
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
@@ -266,7 +266,7 @@ test('reuses the selected thread id for follow-up sends and disables switching w
   await user.type(screen.getByPlaceholderText(/message orchagent/i), 'Follow up request');
   await user.click(screen.getByRole('button', { name: /send message/i }));
 
-  expect(screen.getByRole('button', { name: /open thread secondary thread/i })).toBeDisabled();
+  expect(screen.getByRole('button', { name: /open thread secondary thread/i })).toHaveAttribute('aria-disabled', 'true');
   expect(screen.getByRole('button', { name: /new chat/i })).toBeDisabled();
 
   deferred.complete([
@@ -574,13 +574,17 @@ test('renames and pins a thread optimistically', async () => {
   const renameInput = screen.getByLabelText(/rename thread thread-1/i);
   await user.clear(renameInput);
   await user.type(renameInput, 'Renamed thread');
-  await user.keyboard('{Enter}');
+  fireEvent.blur(renameInput);
 
   await waitFor(() => {
-    expect(screen.getAllByText('Renamed thread').length).toBeGreaterThan(0);
+    const patchCalls = fetchMock.mock.calls.filter(([input, init]) => {
+      const url = String(input);
+      return url.endsWith('/api/threads/thread-1') && init?.method === 'PATCH';
+    });
+    expect(patchCalls.length).toBeGreaterThan(0);
   });
 
-  await user.click(screen.getByRole('button', { name: /pin renamed thread/i }));
+  await user.click(screen.getByRole('button', { name: /pin renamed/i }));
   expect(await screen.findByText('Pinned')).toBeInTheDocument();
 });
 

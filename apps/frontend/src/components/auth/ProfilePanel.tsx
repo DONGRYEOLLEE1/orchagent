@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Loader2, Save, UserCircle2 } from 'lucide-react';
 
 import { patchCurrentUser } from '@/lib/api';
@@ -17,6 +17,11 @@ export function ProfilePanel({
   const [email, setEmail] = useState(user.email || '');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    setDisplayName(user.display_name || '');
+    setEmail(user.email || '');
+  }, [user.display_name, user.email]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();

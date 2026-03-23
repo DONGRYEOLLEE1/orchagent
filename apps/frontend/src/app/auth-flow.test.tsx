@@ -408,6 +408,6 @@ test('admin status panel is hidden for non-admin users', async () => {
 
   renderWithAuth(<ChatWorkspace />);
 
-  expect(await screen.findByRole('button', { name: /save profile/i })).toBeInTheDocument();
+  expect(await screen.findByText(/System Ready/i)).toBeInTheDocument();
   expect(screen.queryByText(/Admin User Status/i)).not.toBeInTheDocument();
 });
