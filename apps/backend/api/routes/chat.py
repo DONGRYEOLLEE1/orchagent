@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import re
 import sys
@@ -5,6 +7,7 @@ import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime, UTC
 from typing import Any
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from sse_starlette.sse import EventSourceResponse
@@ -22,6 +25,11 @@ from core.config import settings
 from services.security_service import get_current_user, require_csrf
 from services.thread_service import ThreadService
 from services.trace_service import TraceService
+from services.chat_analytics_service import (
+    ChatAnalyticsService,
+    ChatTurnFinalizeParams,
+    ChatTurnStartParams,
+)
 from services.logging_service import LoggingService
 from services.file_logger import JsonLogger
 from services.storage_service import StorageService
@@ -249,12 +257,20 @@ def _chunk_text(text: str, chunk_size: int = 24) -> list[str]:
     return [text[i : i + chunk_size] for i in range(0, len(text), chunk_size)]
 
 
-def _trace_event(thread_id: str, payload: dict[str, Any]):
+def _trace_event(trace_context: _TraceWriteContext, payload: dict[str, Any]):
+    trace_context.seq += 1
+    run_id = payload.get("run_id")
     return TraceService.build_event(
-        thread_id=thread_id,
+        thread_id=trace_context.thread_id,
         event_type=payload["event_type"],
         node_name=payload.get("node"),
         payload=payload,
+        user_id=trace_context.user_id,
+        turn_id=trace_context.turn_id,
+        seq=trace_context.seq,
+        run_id=run_id,
+        trace_id=trace_context.trace_id,
+        span_id=run_id,
     )
 
 
@@ -298,6 +314,15 @@ class _BufferedFinalTextRun:
     run_id: str
     node: str
     chunks: list[str] = field(default_factory=list)
+
+
+@dataclass
+class _TraceWriteContext:
+    thread_id: str
+    user_id: str
+    turn_id: UUID | None = None
+    trace_id: str | None = None
+    seq: int = 0
 
 
 class _FinalResponseCollector:
@@ -538,9 +563,9 @@ def _checkpoint_requires_user_action(payload: dict[str, Any]) -> bool:
 
 async def _log_message_with_fresh_session(
     thread_id: str, *, role: str, content: str, user_id: str
-) -> None:
+) -> Any:
     async with AsyncSessionLocal() as db:
-        await LoggingService.log_message(
+        return await LoggingService.log_message(
             db, thread_id, role=role, content=content, user_id=user_id
         )
 
@@ -551,6 +576,45 @@ async def _persist_trace_events_with_fresh_session(trace_events: list[Any]) -> N
 
     async with AsyncSessionLocal() as db:
         await TraceService.create_events(db, trace_events)
+
+
+async def _start_turn_with_fresh_session(
+    *,
+    thread_id: str,
+    user_id: str,
+    request_kind: str,
+    request_message_id: UUID | None,
+    started_at: datetime,
+    trace_id: str,
+    metadata: dict[str, Any] | None = None,
+) -> Any:
+    async with AsyncSessionLocal() as db:
+        return await ChatAnalyticsService.start_turn(
+            db,
+            ChatTurnStartParams(
+                thread_id=thread_id,
+                user_id=user_id,
+                request_kind=request_kind,
+                request_message_id=request_message_id,
+                started_at=started_at,
+                trace_id=trace_id,
+                metadata=metadata,
+            ),
+        )
+
+
+async def _mark_turn_first_token_with_fresh_session(
+    turn_id: UUID, first_token_at: datetime
+) -> None:
+    async with AsyncSessionLocal() as db:
+        await ChatAnalyticsService.mark_first_token(db, turn_id, first_token_at)
+
+
+async def _finalize_turn_with_fresh_session(
+    params: ChatTurnFinalizeParams,
+) -> None:
+    async with AsyncSessionLocal() as db:
+        await ChatAnalyticsService.finalize_turn(db, params)
 
 
 async def _ensure_thread_owned_by_user(
@@ -565,7 +629,7 @@ async def _ensure_thread_owned_by_user(
 
 
 def _append_summary_trace_events(
-    thread_id: str,
+    trace_context: _TraceWriteContext,
     trace_events: list[Any],
     reasoning_chunks: list[str],
     final_answer_chunks: list[str],
@@ -573,7 +637,7 @@ def _append_summary_trace_events(
     if reasoning_chunks:
         trace_events.append(
             _trace_event(
-                thread_id,
+                trace_context,
                 {
                     "event_type": "reasoning_summary",
                     "node": "assistant",
@@ -585,7 +649,7 @@ def _append_summary_trace_events(
     if final_answer_chunks:
         trace_events.append(
             _trace_event(
-                thread_id,
+                trace_context,
                 {
                     "event_type": "text_summary",
                     "node": "assistant",
@@ -636,8 +700,28 @@ async def chat_stream(
         image_paths = [StorageService.save_base64_image(img) for img in request.images]
 
     # 1. DB Logging
-    await _log_message_with_fresh_session(
+    request_message = await _log_message_with_fresh_session(
         request.thread_id, role="user", content=request.message, user_id=user_id
+    )
+    turn_started_at = datetime.now(UTC)
+    started_turn = await _start_turn_with_fresh_session(
+        thread_id=request.thread_id,
+        user_id=user_id,
+        request_kind="chat",
+        request_message_id=getattr(request_message, "id", None),
+        started_at=turn_started_at,
+        trace_id="",
+        metadata={
+            "has_images": bool(request.images),
+            "message_length": len(request.message),
+        },
+    )
+    trace_context = _TraceWriteContext(
+        thread_id=request.thread_id,
+        user_id=user_id,
+        turn_id=getattr(started_turn, "id", None),
+        trace_id=getattr(started_turn, "trace_id", None)
+        or str(getattr(started_turn, "id", "")),
     )
 
     # 2. File Logging (Session start/turn)
@@ -688,14 +772,53 @@ async def chat_stream(
         trace_events = []
         graph = None
         completed_payload_emitted = False
+        final_checkpoint_payload: dict[str, Any] | None = None
+        first_token_recorded = False
+        first_token_at: datetime | None = None
+        tool_call_count = 0
+        final_status: str = "running"
+        response_mode: str | None = None
+        active_team_final: str | None = None
+        active_worker_final: str | None = None
+        final_status_node: str | None = None
+        assistant_response_message_id: UUID | None = None
+        disconnected = False
+        error_message: str | None = None
 
-        def emit(payload: dict[str, Any], *, persist: bool = True):
+        async def emit(payload: dict[str, Any], *, persist: bool = True):
+            nonlocal final_status, final_status_node
+            nonlocal response_mode, active_team_final, active_worker_final
+            nonlocal final_checkpoint_payload
+            if payload.get("event_type") == "status":
+                status = payload.get("status")
+                if status in {"completed", "interrupted", "errored"}:
+                    final_status = str(status)
+                    final_status_node = payload.get("node")
+                    active_team_final = payload.get("active_team") or active_team_final
+                    active_worker_final = (
+                        payload.get("active_worker") or active_worker_final
+                    )
+            elif payload.get("event_type") == "checkpoint":
+                final_checkpoint_payload = payload
+                response_mode = payload.get("response_mode") or response_mode
+                active_team_final = payload.get("active_team") or active_team_final
+                active_worker_final = payload.get("active_worker") or active_worker_final
             if persist:
-                trace_events.append(_trace_event(request.thread_id, payload))
+                trace_events.append(_trace_event(trace_context, payload))
             return {"event": "message", "data": json.dumps(payload)}
 
+        async def emit_text_emission(emission: _FinalTextEmission):
+            nonlocal first_token_recorded, first_token_at
+            if trace_context.turn_id and not first_token_recorded:
+                first_token_recorded = True
+                first_token_at = datetime.now(UTC)
+                await _mark_turn_first_token_with_fresh_session(
+                    trace_context.turn_id, first_token_at
+                )
+            return await emit(_text_payload_from_emission(emission), persist=False)
+
         try:
-            yield emit(
+            yield await emit(
                 _status_payload(
                     status="running",
                     thread_id=request.thread_id,
@@ -722,7 +845,7 @@ async def chat_stream(
                         reasoning_chunk = _extract_reasoning_chunk(chunk)
                         if reasoning_chunk:
                             reasoning_chunks.append(reasoning_chunk)
-                            yield emit(
+                            yield await emit(
                                 {
                                     "event_type": "reasoning",
                                     "node": event_node,
@@ -738,14 +861,12 @@ async def chat_stream(
                             getattr(chunk, "content", "")
                         )
                         for emission in collector.ingest_model_stream(event, text_chunk):
-                            yield emit(
-                                _text_payload_from_emission(emission),
-                                persist=False,
-                            )
+                            yield await emit_text_emission(emission)
                         continue
 
                     if kind == "on_tool_start":
-                        yield emit(
+                        tool_call_count += 1
+                        yield await emit(
                             {
                                 "event_type": "tool_start",
                                 "node": name,
@@ -759,7 +880,7 @@ async def chat_stream(
                         continue
 
                     if kind == "on_tool_end":
-                        yield emit(
+                        yield await emit(
                             {
                                 "event_type": "tool_end",
                                 "node": name,
@@ -773,7 +894,7 @@ async def chat_stream(
                         continue
 
                     if kind == "on_tool_error":
-                        yield emit(
+                        yield await emit(
                             {
                                 "event_type": "tool_error",
                                 "node": name,
@@ -792,13 +913,13 @@ async def chat_stream(
                             update = output.update or {}
                             route_history = update.get("route_history") or []
                             if route_history:
-                                yield emit(_route_payload(name, route_history[-1]))
+                                yield await emit(_route_payload(name, route_history[-1]))
 
                             if name == "head_supervisor":
                                 status = update.get("streaming_status")
                                 if status:
                                     completed_payload_emitted = status == "completed"
-                                    yield emit(
+                                    yield await emit(
                                         _status_payload(
                                             status=status,
                                             thread_id=request.thread_id,
@@ -816,16 +937,13 @@ async def chat_stream(
                                 for emission in collector.consume_head_supervisor_end(
                                     update, goto=output.goto
                                 ):
-                                    yield emit(
-                                        _text_payload_from_emission(emission),
-                                        persist=False,
-                                    )
+                                    yield await emit_text_emission(emission)
 
                             elif name == "finalizer":
                                 status = update.get("streaming_status")
                                 if status:
                                     completed_payload_emitted = status == "completed"
-                                    yield emit(
+                                    yield await emit(
                                         _status_payload(
                                             status=status,
                                             thread_id=request.thread_id,
@@ -834,10 +952,7 @@ async def chat_stream(
                                         )
                                     )
                                 for emission in collector.consume_finalizer_end(update):
-                                    yield emit(
-                                        _text_payload_from_emission(emission),
-                                        persist=False,
-                                    )
+                                    yield await emit_text_emission(emission)
 
                 checkpoint_payload = await _build_checkpoint_payload(
                     graph, config, request.thread_id
@@ -848,15 +963,12 @@ async def chat_stream(
                     snapshot.values if isinstance(snapshot.values, dict) else {}
                 )
                 for emission in collector.collect_state_fallback(state_values):
-                    yield emit(
-                        _text_payload_from_emission(emission),
-                        persist=False,
-                    )
+                    yield await emit_text_emission(emission)
 
-                yield emit(checkpoint_payload)
+                yield await emit(checkpoint_payload)
 
                 if _checkpoint_requires_user_action(checkpoint_payload):
-                    yield emit(
+                    yield await emit(
                         _status_payload(
                             status="interrupted",
                             thread_id=request.thread_id,
@@ -865,7 +977,7 @@ async def chat_stream(
                         )
                     )
                 elif not completed_payload_emitted:
-                    yield emit(
+                    yield await emit(
                         _status_payload(
                             status="completed",
                             thread_id=request.thread_id,
@@ -876,15 +988,13 @@ async def chat_stream(
 
                 final_answer = collector.final_answer()
                 if final_answer:
-                    await _run_cleanup_task(
-                        "assistant message persist",
-                        _log_message_with_fresh_session(
-                            request.thread_id,
-                            role="assistant",
-                            content=final_answer,
-                            user_id=user_id,
-                        ),
+                    assistant_message = await _log_message_with_fresh_session(
+                        request.thread_id,
+                        role="assistant",
+                        content=final_answer,
+                        user_id=user_id,
                     )
+                    assistant_response_message_id = getattr(assistant_message, "id", None)
 
                     JsonLogger.log_session(
                         session_id=request.thread_id,
@@ -901,7 +1011,7 @@ async def chat_stream(
 
         except GraphInterrupt as gi:
             print(f"[Chat] Graph interrupted: {gi}", file=sys.stderr, flush=True)
-            yield emit(
+            yield await emit(
                 _status_payload(
                     status="interrupted",
                     thread_id=request.thread_id,
@@ -915,10 +1025,12 @@ async def chat_stream(
                 file=sys.stderr,
                 flush=True,
             )
+            disconnected = True
             # Trace events will still be persisted by the finally block
             raise
         except Exception as e:
-            yield emit(
+            error_message = str(e)
+            yield await emit(
                 _status_payload(
                     status="errored",
                     thread_id=request.thread_id,
@@ -926,7 +1038,7 @@ async def chat_stream(
                     message="Execution failed.",
                 )
             )
-            yield emit(
+            yield await emit(
                 {
                     "event_type": "error",
                     "node": "OrchAgent",
@@ -936,11 +1048,60 @@ async def chat_stream(
             )
         finally:
             _append_summary_trace_events(
-                request.thread_id,
+                trace_context,
                 trace_events,
                 reasoning_chunks,
                 collector.final_answer_chunks,
             )
+            if trace_context.turn_id is not None:
+                now = datetime.now(UTC)
+                await _run_cleanup_task(
+                    "turn finalize",
+                    _finalize_turn_with_fresh_session(
+                        ChatTurnFinalizeParams(
+                            turn_id=trace_context.turn_id,
+                            status=(
+                                final_status
+                                if final_status in {"completed", "interrupted", "errored"}
+                                else ("errored" if disconnected else "completed")
+                            ),
+                            response_message_id=assistant_response_message_id,
+                            completed_at=(
+                                now
+                                if (
+                                    final_status == "completed"
+                                    or (
+                                        final_status == "running"
+                                        and not disconnected
+                                    )
+                                )
+                                else None
+                            ),
+                            interrupted_at=now if final_status == "interrupted" else None,
+                            errored_at=(
+                                now
+                                if final_status == "errored" or disconnected
+                                else None
+                            ),
+                            final_checkpoint_id=(
+                                final_checkpoint_payload.get("checkpoint_id")
+                                if final_checkpoint_payload
+                                else None
+                            ),
+                            final_status_node=final_status_node,
+                            response_mode=response_mode,
+                            active_team_final=active_team_final,
+                            active_worker_final=active_worker_final,
+                            assistant_char_count=len(collector.final_answer()),
+                            tool_call_count=tool_call_count,
+                            metadata={
+                                "disconnected": disconnected,
+                                "error_message": error_message,
+                                "first_token_recorded": first_token_recorded,
+                            },
+                        )
+                    ),
+                )
             if trace_events:
                 await _run_cleanup_task(
                     "trace batch persist",
@@ -1008,8 +1169,28 @@ async def chat_resume_stream(
     if request.feedback:
         resume_message += f"\nFeedback: {request.feedback}"
 
-    await _log_message_with_fresh_session(
+    request_message = await _log_message_with_fresh_session(
         request.thread_id, role="user", content=resume_message, user_id=user_id
+    )
+    turn_started_at = datetime.now(UTC)
+    started_turn = await _start_turn_with_fresh_session(
+        thread_id=request.thread_id,
+        user_id=user_id,
+        request_kind="resume",
+        request_message_id=getattr(request_message, "id", None),
+        started_at=turn_started_at,
+        trace_id="",
+        metadata={
+            "action": request.action,
+            "has_feedback": bool(request.feedback),
+        },
+    )
+    trace_context = _TraceWriteContext(
+        thread_id=request.thread_id,
+        user_id=user_id,
+        turn_id=getattr(started_turn, "id", None),
+        trace_id=getattr(started_turn, "trace_id", None)
+        or str(getattr(started_turn, "id", "")),
     )
 
     JsonLogger.log_session(
@@ -1037,14 +1218,51 @@ async def chat_resume_stream(
         trace_events = []
         graph = None
         completed_payload_emitted = False
+        final_checkpoint_payload: dict[str, Any] | None = None
+        first_token_recorded = False
+        tool_call_count = 0
+        final_status: str = "running"
+        response_mode: str | None = None
+        active_team_final: str | None = None
+        active_worker_final: str | None = None
+        final_status_node: str | None = None
+        assistant_response_message_id: UUID | None = None
+        disconnected = False
+        error_message: str | None = None
 
-        def emit(payload: dict[str, Any], *, persist: bool = True):
+        async def emit(payload: dict[str, Any], *, persist: bool = True):
+            nonlocal final_status, final_status_node
+            nonlocal response_mode, active_team_final, active_worker_final
+            nonlocal final_checkpoint_payload
+            if payload.get("event_type") == "status":
+                status = payload.get("status")
+                if status in {"completed", "interrupted", "errored"}:
+                    final_status = str(status)
+                    final_status_node = payload.get("node")
+                    active_team_final = payload.get("active_team") or active_team_final
+                    active_worker_final = (
+                        payload.get("active_worker") or active_worker_final
+                    )
+            elif payload.get("event_type") == "checkpoint":
+                final_checkpoint_payload = payload
+                response_mode = payload.get("response_mode") or response_mode
+                active_team_final = payload.get("active_team") or active_team_final
+                active_worker_final = payload.get("active_worker") or active_worker_final
             if persist:
-                trace_events.append(_trace_event(request.thread_id, payload))
+                trace_events.append(_trace_event(trace_context, payload))
             return {"event": "message", "data": json.dumps(payload)}
 
+        async def emit_text_emission(emission: _FinalTextEmission):
+            nonlocal first_token_recorded
+            if trace_context.turn_id and not first_token_recorded:
+                first_token_recorded = True
+                await _mark_turn_first_token_with_fresh_session(
+                    trace_context.turn_id, datetime.now(UTC)
+                )
+            return await emit(_text_payload_from_emission(emission), persist=False)
+
         try:
-            yield emit(
+            yield await emit(
                 _status_payload(
                     status="running",
                     thread_id=request.thread_id,
@@ -1071,7 +1289,7 @@ async def chat_resume_stream(
                         reasoning_chunk = _extract_reasoning_chunk(chunk)
                         if reasoning_chunk:
                             reasoning_chunks.append(reasoning_chunk)
-                            yield emit(
+                            yield await emit(
                                 {
                                     "event_type": "reasoning",
                                     "node": event_node,
@@ -1087,14 +1305,12 @@ async def chat_resume_stream(
                             getattr(chunk, "content", "")
                         )
                         for emission in collector.ingest_model_stream(event, text_chunk):
-                            yield emit(
-                                _text_payload_from_emission(emission),
-                                persist=False,
-                            )
+                            yield await emit_text_emission(emission)
                         continue
 
                     if kind == "on_tool_start":
-                        yield emit(
+                        tool_call_count += 1
+                        yield await emit(
                             {
                                 "event_type": "tool_start",
                                 "node": name,
@@ -1108,7 +1324,7 @@ async def chat_resume_stream(
                         continue
 
                     if kind == "on_tool_end":
-                        yield emit(
+                        yield await emit(
                             {
                                 "event_type": "tool_end",
                                 "node": name,
@@ -1122,7 +1338,7 @@ async def chat_resume_stream(
                         continue
 
                     if kind == "on_tool_error":
-                        yield emit(
+                        yield await emit(
                             {
                                 "event_type": "tool_error",
                                 "node": name,
@@ -1141,13 +1357,13 @@ async def chat_resume_stream(
                             update = output.update or {}
                             route_history = update.get("route_history") or []
                             if route_history:
-                                yield emit(_route_payload(name, route_history[-1]))
+                                yield await emit(_route_payload(name, route_history[-1]))
 
                             if name == "head_supervisor":
                                 status = update.get("streaming_status")
                                 if status:
                                     completed_payload_emitted = status == "completed"
-                                    yield emit(
+                                    yield await emit(
                                         _status_payload(
                                             status=status,
                                             thread_id=request.thread_id,
@@ -1165,16 +1381,13 @@ async def chat_resume_stream(
                                 for emission in collector.consume_head_supervisor_end(
                                     update, goto=output.goto
                                 ):
-                                    yield emit(
-                                        _text_payload_from_emission(emission),
-                                        persist=False,
-                                    )
+                                    yield await emit_text_emission(emission)
 
                             elif name == "finalizer":
                                 status = update.get("streaming_status")
                                 if status:
                                     completed_payload_emitted = status == "completed"
-                                    yield emit(
+                                    yield await emit(
                                         _status_payload(
                                             status=status,
                                             thread_id=request.thread_id,
@@ -1183,10 +1396,7 @@ async def chat_resume_stream(
                                         )
                                     )
                                 for emission in collector.consume_finalizer_end(update):
-                                    yield emit(
-                                        _text_payload_from_emission(emission),
-                                        persist=False,
-                                    )
+                                    yield await emit_text_emission(emission)
 
                 checkpoint_payload = await _build_checkpoint_payload(
                     graph, config, request.thread_id
@@ -1197,15 +1407,12 @@ async def chat_resume_stream(
                     snapshot.values if isinstance(snapshot.values, dict) else {}
                 )
                 for emission in collector.collect_state_fallback(state_values):
-                    yield emit(
-                        _text_payload_from_emission(emission),
-                        persist=False,
-                    )
+                    yield await emit_text_emission(emission)
 
-                yield emit(checkpoint_payload)
+                yield await emit(checkpoint_payload)
 
                 if _checkpoint_requires_user_action(checkpoint_payload):
-                    yield emit(
+                    yield await emit(
                         _status_payload(
                             status="interrupted",
                             thread_id=request.thread_id,
@@ -1214,7 +1421,7 @@ async def chat_resume_stream(
                         )
                     )
                 elif not completed_payload_emitted:
-                    yield emit(
+                    yield await emit(
                         _status_payload(
                             status="completed",
                             thread_id=request.thread_id,
@@ -1225,15 +1432,13 @@ async def chat_resume_stream(
 
                 final_answer = collector.final_answer()
                 if final_answer:
-                    await _run_cleanup_task(
-                        "assistant message persist",
-                        _log_message_with_fresh_session(
-                            request.thread_id,
-                            role="assistant",
-                            content=final_answer,
-                            user_id=user_id,
-                        ),
+                    assistant_message = await _log_message_with_fresh_session(
+                        request.thread_id,
+                        role="assistant",
+                        content=final_answer,
+                        user_id=user_id,
                     )
+                    assistant_response_message_id = getattr(assistant_message, "id", None)
 
                     JsonLogger.log_session(
                         session_id=request.thread_id,
@@ -1244,7 +1449,7 @@ async def chat_resume_stream(
 
         except GraphInterrupt as gi:
             print(f"[Chat] Graph interrupted again: {gi}", file=sys.stderr, flush=True)
-            yield emit(
+            yield await emit(
                 _status_payload(
                     status="interrupted",
                     thread_id=request.thread_id,
@@ -1258,11 +1463,13 @@ async def chat_resume_stream(
                 file=sys.stderr,
                 flush=True,
             )
+            disconnected = True
             # We don't yield any more SSE events since the connection is gone,
             # but the finally block will still execute and persist trace_events.
             raise
         except Exception as e:
-            yield emit(
+            error_message = str(e)
+            yield await emit(
                 _status_payload(
                     status="errored",
                     thread_id=request.thread_id,
@@ -1270,7 +1477,7 @@ async def chat_resume_stream(
                     message="Execution failed.",
                 )
             )
-            yield emit(
+            yield await emit(
                 {
                     "event_type": "error",
                     "node": "OrchAgent",
@@ -1280,11 +1487,61 @@ async def chat_resume_stream(
             )
         finally:
             _append_summary_trace_events(
-                request.thread_id,
+                trace_context,
                 trace_events,
                 reasoning_chunks,
                 collector.final_answer_chunks,
             )
+            if trace_context.turn_id is not None:
+                now = datetime.now(UTC)
+                await _run_cleanup_task(
+                    "turn finalize",
+                    _finalize_turn_with_fresh_session(
+                        ChatTurnFinalizeParams(
+                            turn_id=trace_context.turn_id,
+                            status=(
+                                final_status
+                                if final_status in {"completed", "interrupted", "errored"}
+                                else ("errored" if disconnected else "completed")
+                            ),
+                            response_message_id=assistant_response_message_id,
+                            completed_at=(
+                                now
+                                if (
+                                    final_status == "completed"
+                                    or (
+                                        final_status == "running"
+                                        and not disconnected
+                                    )
+                                )
+                                else None
+                            ),
+                            interrupted_at=now if final_status == "interrupted" else None,
+                            errored_at=(
+                                now
+                                if final_status == "errored" or disconnected
+                                else None
+                            ),
+                            final_checkpoint_id=(
+                                final_checkpoint_payload.get("checkpoint_id")
+                                if final_checkpoint_payload
+                                else None
+                            ),
+                            final_status_node=final_status_node,
+                            response_mode=response_mode,
+                            active_team_final=active_team_final,
+                            active_worker_final=active_worker_final,
+                            assistant_char_count=len(collector.final_answer()),
+                            tool_call_count=tool_call_count,
+                            metadata={
+                                "disconnected": disconnected,
+                                "error_message": error_message,
+                                "first_token_recorded": first_token_recorded,
+                                "resume_action": request.action,
+                            },
+                        )
+                    ),
+                )
             if trace_events:
                 await _run_cleanup_task(
                     "trace batch persist",

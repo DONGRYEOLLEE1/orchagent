@@ -51,10 +51,28 @@ class TraceService:
 
     @staticmethod
     def build_event(
-        thread_id: str, event_type: str, node_name: str | None, payload: dict
+        thread_id: str,
+        event_type: str,
+        node_name: str | None,
+        payload: dict,
+        *,
+        user_id: str | None = None,
+        turn_id=None,
+        seq: int | None = None,
+        run_id: str | None = None,
+        trace_id: str | None = None,
+        span_id: str | None = None,
+        parent_span_id: str | None = None,
     ) -> TraceEvent:
         return TraceEvent(
             thread_id=thread_id,
+            user_id=user_id,
+            turn_id=turn_id,
+            seq=seq,
+            run_id=run_id,
+            trace_id=trace_id,
+            span_id=span_id,
+            parent_span_id=parent_span_id,
             event_type=event_type,
             node_name=node_name,
             payload=TraceService._optimize_payload(payload),
@@ -71,13 +89,19 @@ class TraceService:
 
     @staticmethod
     async def create_event(
-        db: AsyncSession, thread_id: str, event_type: str, node_name: str, payload: dict
+        db: AsyncSession,
+        thread_id: str,
+        event_type: str,
+        node_name: str,
+        payload: dict,
+        **kwargs,
     ):
         event = TraceService.build_event(
             thread_id=thread_id,
             event_type=event_type,
             node_name=node_name,
             payload=payload,
+            **kwargs,
         )
         await TraceService.create_events(db, [event])
         return event

@@ -468,14 +468,14 @@ historical cost 안정성을 위한 가격 스냅샷 테이블.
 
 ## Phase 2. Turn lifecycle 계측
 
-- [ ] `/api/chat` 시작 시 `chat_turns` row 생성
-- [ ] `/api/chat/resume` 시작 시 `request_kind = 'resume'`로 row 생성
-- [ ] 최초 text emission 시 `first_token_at` 기록
-- [ ] 완료/중단/에러 시 turn 종료 update
+- [x] `/api/chat` 시작 시 `chat_turns` row 생성
+- [x] `/api/chat/resume` 시작 시 `request_kind = 'resume'`로 row 생성
+- [x] 최초 text emission 시 `first_token_at` 기록
+- [x] 완료/중단/에러 시 turn 종료 update
 
 검증:
 
-- [ ] completed / interrupted / errored turn 각각 pytest로 확인
+- [x] completed / interrupted / errored turn 각각 pytest로 확인
 
 ## Phase 3. Exact usage_metadata 적재
 
