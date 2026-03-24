@@ -17,6 +17,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { changePasswordUser, deleteThread, fetchThreadDetail, fetchThreadTelemetry, fetchThreads, generateAiThreadTitle, generateSuggestedQueries, patchThread, resumeChatStream, sendChatStream } from '@/lib/api';
 import { appendAssistantText, parseSseBlock, pushUniqueHistory, splitSseBlocks } from '@/lib/chat-stream';
+import { preprocessMarkdown } from '@/lib/markdown';
 import {
   applyThreadSummaryToActiveThread,
   createActiveThreadStateFromDetail,
@@ -82,7 +83,7 @@ const MarkdownContent = ({ content }: { content: string }) => {
         ol: ({ children }) => <ol className="list-decimal pl-6 mb-4 space-y-1">{children}</ol>,
       }}
     >
-      {content}
+      {preprocessMarkdown(content)}
     </ReactMarkdown>
   );
 };
