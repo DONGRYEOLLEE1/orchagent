@@ -71,7 +71,7 @@ export function LiveToolStatusStrip({
         return (
           <div
             key={tool.id}
-            className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[rgba(143,245,255,0.78)]"
+            className={`flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[rgba(143,245,255,0.78)] ${isRunning ? 'animate-pulse' : ''}`}
           >
             {isRunning ? (
               <Loader2 size={10} className="shrink-0 animate-spin text-[#8ff5ff]" />

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Send, Terminal, Loader2, Bot, Image as ImageIcon, X, ChevronDown, Menu, Bell, PanelRightOpen } from 'lucide-react';
+import { Send, Loader2, Bot, Image as ImageIcon, X, Menu, PanelRightOpen } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import NextImage from 'next/image';
@@ -1132,9 +1132,9 @@ function WorkspaceApp({
     }
   };
 
-  const latestAssistantMessageId = [...activeThreadState.messages]
-    .reverse()
-    .find((message) => message.role === 'assistant')?.id;
+  const latestThreadMessage = activeThreadState.messages[activeThreadState.messages.length - 1];
+  const latestAssistantMessageId =
+    latestThreadMessage?.role === 'assistant' ? latestThreadMessage.id : undefined;
 
   const handleSuggestedQuerySelect = (query: string) => {
     setInput(query);
@@ -1169,6 +1169,12 @@ function WorkspaceApp({
     return '현재 요청을 해석하고 다음 응답 단계를 정리하는 중입니다.';
   })();
 
+  const shouldShowStandaloneToolStrip =
+    streamSessionState.loading &&
+    !isHistoricalView &&
+    !latestAssistantMessageId &&
+    (actionSpaceState.toolExecutions.length > 0 || Boolean(streamSessionState.currentNode));
+
   const sidebarContent = (
     <ThreadListSidebar
       threads={threadCollectionState.threads}
@@ -1191,7 +1197,16 @@ function WorkspaceApp({
         <div className="absolute bottom-[-16%] right-[-8%] h-[28rem] w-[28rem] rounded-full bg-[rgba(172,137,255,0.12)] blur-[120px]" />
       </div>
 
-      <header className="relative z-20 flex h-16 shrink-0 items-center justify-between border-b border-[rgba(255,255,255,0.05)] bg-[rgba(12,14,20,0.9)] px-6 backdrop-blur-xl md:px-8">
+      {accountPanelOpen ? (
+        <AccountDrawer
+          user={currentUser}
+          onClose={() => setAccountPanelOpen(false)}
+          onLogout={onLogout}
+          onUserUpdated={onUserUpdated}
+        />
+      ) : null}
+
+      <header className="relative z-20 flex h-16 shrink-0 items-center justify-between border-b border-[rgba(255,255,255,0.05)] bg-[rgba(12,14,20,0.88)] px-6 backdrop-blur-xl md:px-8">
         <div className="flex min-w-0 items-center gap-4">
           <button
             type="button"
@@ -1252,31 +1267,12 @@ function WorkspaceApp({
         </div>
 
         <div className="flex min-w-0 items-center gap-3">
-          <div className="hidden min-w-0 items-center gap-3 rounded-[12px] border border-[rgba(255,255,255,0.06)] bg-[rgba(29,31,40,0.45)] px-3 py-2 sm:flex">
-            <div className="min-w-0">
-              <div className="truncate text-[12px] font-semibold text-[#e7e7f0]">
-                {activeThreadState.title || 'New Chat'}
-              </div>
-              <div className="truncate text-[10px] uppercase tracking-[0.22em] text-[rgba(170,170,179,0.72)]">
-                {activeThreadState.threadId || 'draft_session'}
-              </div>
-            </div>
-          </div>
-
           <button
             type="button"
-            aria-label="Notifications"
-            className="hidden rounded-[12px] border border-[rgba(255,255,255,0.06)] bg-[rgba(29,31,40,0.45)] p-2 text-[rgba(170,170,179,0.82)] transition hover:text-[#e7e7f0] sm:inline-flex"
-          >
-            <Bell size={16} />
-          </button>
-
-            <button
-              type="button"
-              aria-label="Open account drawer"
-              onClick={() => setAccountPanelOpen(true)}
+            aria-label="Open account drawer"
+            onClick={() => setAccountPanelOpen(true)}
             className="inline-flex items-center gap-2 rounded-[12px] border border-[rgba(143,245,255,0.16)] bg-[rgba(29,31,40,0.45)] px-3 py-2 text-[12px] text-[#e7e7f0] transition hover:border-[rgba(143,245,255,0.3)]"
-            >
+          >
             <PanelRightOpen size={15} className="text-[#8ff5ff]" />
             <span className="hidden font-semibold sm:inline">
               {currentUser.display_name || currentUser.login_id}
@@ -1286,15 +1282,6 @@ function WorkspaceApp({
       </header>
 
       <div className="relative z-10 flex min-h-0 flex-1 overflow-hidden">
-      {accountPanelOpen ? (
-        <AccountDrawer
-          user={currentUser}
-          onClose={() => setAccountPanelOpen(false)}
-          onLogout={onLogout}
-          onUserUpdated={onUserUpdated}
-        />
-      ) : null}
-
       <aside className="hidden h-full w-64 shrink-0 border-r border-[rgba(255,255,255,0.05)] bg-[rgba(17,19,26,0.96)] py-6 lg:flex lg:flex-col">
         {sidebarContent}
       </aside>
@@ -1377,7 +1364,7 @@ function WorkspaceApp({
                       )}
                     >
                       {isUser ? (
-                        <div className="max-w-[540px] rounded-bl-[16px] rounded-br-[16px] rounded-tl-[16px] border border-[rgba(143,245,255,0.2)] bg-[rgba(35,38,46,0.4)] px-5 py-4 text-[14px] leading-7 text-[#e7e7f0] backdrop-blur-md">
+                        <div className="max-w-[520px] rounded-bl-[14px] rounded-br-[14px] rounded-tl-[14px] border border-[rgba(143,245,255,0.14)] bg-[rgba(35,38,46,0.28)] px-4 py-3 text-[13px] leading-6 text-[#e7e7f0] backdrop-blur-[12px]">
                           {message.content}
                         </div>
                       ) : (
@@ -1410,8 +1397,17 @@ function WorkspaceApp({
                   <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] bg-[#7000ff] text-white shadow-[0px_0px_0px_2px_rgba(172,137,255,0.2)]">
                     <Bot size={14} />
                   </div>
-                  <div className="px-1 py-1 text-[14px] italic text-[rgba(170,170,179,0.9)]">
-                    {streamSessionState.currentNode || 'Coordinating team...'}
+                  <div className="flex min-w-0 flex-1 flex-col gap-3">
+                    {shouldShowStandaloneToolStrip ? (
+                      <LiveToolStatusStrip
+                        toolExecutions={actionSpaceState.toolExecutions}
+                        currentNode={streamSessionState.currentNode}
+                        loading={streamSessionState.loading}
+                      />
+                    ) : null}
+                    <div className="px-1 py-1 text-[14px] italic text-[rgba(170,170,179,0.9)]">
+                      {streamSessionState.currentNode || 'Coordinating team...'}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1511,7 +1507,7 @@ function WorkspaceApp({
 
       <aside
         ref={actionSpaceRef}
-        className="hidden w-[372px] shrink-0 border-l border-[rgba(255,255,255,0.05)] bg-[rgba(12,14,20,0.78)] px-6 py-6 backdrop-blur-xl xl:flex xl:flex-col xl:overflow-y-auto"
+        className="hidden w-[404px] shrink-0 border-l border-[rgba(255,255,255,0.05)] bg-[rgba(12,14,20,0.78)] px-6 py-6 backdrop-blur-xl xl:flex xl:flex-col xl:overflow-y-auto"
       >
         <div className="space-y-6">
           <AgentTimeline
@@ -1535,52 +1531,6 @@ function WorkspaceApp({
             historicalView={isHistoricalView}
           />
 
-          <div className="border-t border-[rgba(255,255,255,0.06)] pt-4">
-            <button
-              onClick={() => setActionSpaceState(prev => ({ ...prev, showDebug: !prev.showDebug }))}
-              className="flex w-full items-center justify-between px-1 py-2 text-[10px] font-bold uppercase tracking-[0.24em] text-[rgba(170,170,179,0.76)] transition hover:text-[#e7e7f0]"
-            >
-              <span className="flex items-center gap-2">
-                <Terminal size={14} className="text-[#8ff5ff]" />
-                Raw Events ({actionSpaceState.rawTraces.length})
-              </span>
-              <ChevronDown size={14} className={cn('transition-transform duration-300', actionSpaceState.showDebug ? 'rotate-180' : '')} />
-            </button>
-
-            {actionSpaceState.showDebug ? (
-              <div className="mt-3 max-h-96 space-y-2 overflow-y-auto rounded-[12px] border border-[rgba(255,255,255,0.06)] bg-[rgba(0,0,0,0.24)] p-3 font-mono text-[9px] text-[rgba(170,170,179,0.84)]">
-                {actionSpaceState.rawTraces.length === 0 ? (
-                  <div className="py-4 text-center italic text-[rgba(170,170,179,0.58)]">
-                    No events recorded yet.
-                  </div>
-                ) : (
-                  [...actionSpaceState.rawTraces].reverse().map((trace, i) => (
-                    <div key={i} className="border-b border-[rgba(255,255,255,0.05)] pb-2 last:border-0 last:pb-0">
-                      <div className="mb-1 flex items-center justify-between">
-                        <span className={cn(
-                          'rounded px-1.5 py-0.5 text-[8px] font-bold uppercase',
-                          trace.event_type === 'error' ? 'bg-red-500/20 text-red-300' :
-                          trace.event_type === 'status' ? 'bg-blue-500/20 text-blue-300' :
-                          trace.event_type === 'tool_start' ? 'bg-emerald-500/20 text-emerald-300' :
-                          'bg-[rgba(255,255,255,0.06)] text-[rgba(170,170,179,0.9)]'
-                        )}>
-                          {trace.event_type}
-                        </span>
-                        <span className="opacity-50">
-                          {new Date(trace.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                        </span>
-                      </div>
-                      <pre className="whitespace-pre-wrap break-all opacity-85">
-                        {JSON.stringify({ ...trace, timestamp: undefined, event_type: undefined }, (key, value) =>
-                          typeof value === 'string' && value.length > 100 ? `${value.substring(0, 100)}...` : value
-                        , 1)}
-                      </pre>
-                    </div>
-                  ))
-                )}
-              </div>
-            ) : null}
-          </div>
         </div>
       </aside>
       </div>

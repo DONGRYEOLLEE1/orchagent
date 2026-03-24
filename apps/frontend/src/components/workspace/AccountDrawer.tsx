@@ -16,7 +16,7 @@ export function AccountDrawer({
   onUserUpdated: (user: AuthUser) => void;
 }) {
   return (
-    <div className="fixed inset-0 z-40">
+    <div className="fixed inset-0 z-50">
       <button
         type="button"
         aria-label="Close account drawer"

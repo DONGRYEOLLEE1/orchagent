@@ -190,7 +190,7 @@ test('hydrates a selected thread and resets to a draft with New Chat', async () 
   await user.click(screen.getByRole('button', { name: /new chat/i }));
 
   expect(await screen.findByText('System Ready')).toBeInTheDocument();
-  expect(screen.getAllByText('draft_session').length).toBeGreaterThan(0);
+  expect(screen.queryByText('draft_session')).not.toBeInTheDocument();
 });
 
 test('hydrates historical reasoning summary and suggested queries for a selected thread', async () => {
