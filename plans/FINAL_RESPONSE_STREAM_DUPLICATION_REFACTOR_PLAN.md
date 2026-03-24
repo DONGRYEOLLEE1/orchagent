@@ -1,5 +1,5 @@
 작성일시: 2026-03-24 09:49 KST
-최종 수정일시: 2026-03-24 10:20 KST
+최종 수정일시: 2026-03-24 10:22 KST
 
 # Final Response Stream Duplication Refactor Plan
 
@@ -163,16 +163,16 @@
 
 ### Phase 7. Playwright MCP 실브라우저 최종 검증
 
-- [ ] 개발 스택이 정상 구동된 상태에서 Playwright MCP로 실제 프런트 브라우저 세션을 연다.
-- [ ] 실제 문제 질의인 `웹검색을 통해 RoPE 알고리즘을 검색하여 500자 내외로 설명해줘.` 를 입력해 스트림 완료까지 기다린다.
-- [ ] assistant bubble이 1개이고 동일 답변 블록이 반복되지 않는지 DOM 기준으로 확인한다.
-- [ ] thread preview와 중앙 채팅 내용이 같은 답변을 중복 없이 1회만 반영하는지 확인한다.
-- [ ] 비슷한 질의인 `웹검색을 통해 ALiBi 위치 인코딩을 조사하고 500자 내외로 설명해줘.` 를 새 thread에서 실행한다.
-- [ ] 두 번째 질의에서도 동일한 중복 스트림 현상이 재발하지 않는지 확인한다.
-- [ ] 필요 시 Playwright MCP 스냅샷과 스크린샷을 남겨 회귀 증거로 보관한다.
-- [ ] 각 브라우저 질의 직후 PostgreSQL에서 최신 `chat_messages` assistant row를 조회해 중복 저장이 사라졌는지 확인한다.
-- [ ] 각 브라우저 질의 직후 `trace_events.text_summary`가 1건만 남는지 확인한다.
-- [ ] 가능하면 interrupted/resume 시나리오까지 Playwright MCP로 재현해 동일 계약이 유지되는지 확인한다.
+- [x] 개발 스택이 정상 구동된 상태에서 Playwright MCP로 실제 프런트 브라우저 세션을 연다.
+- [x] 실제 문제 질의인 `웹검색을 통해 RoPE 알고리즘을 검색하여 500자 내외로 설명해줘.` 를 입력해 스트림 완료까지 기다린다.
+- [x] assistant bubble이 1개이고 동일 답변 블록이 반복되지 않는지 DOM 기준으로 확인한다.
+- [x] thread preview와 중앙 채팅 내용이 같은 답변을 중복 없이 1회만 반영하는지 확인한다.
+- [x] 비슷한 질의인 `웹검색을 통해 ALiBi 위치 인코딩을 조사하고 500자 내외로 설명해줘.` 를 새 thread에서 실행한다.
+- [x] 두 번째 질의에서도 동일한 중복 스트림 현상이 재발하지 않는지 확인한다.
+- [x] 필요 시 Playwright MCP 스냅샷과 스크린샷을 남겨 회귀 증거로 보관한다.
+- [x] 각 브라우저 질의 직후 PostgreSQL에서 최신 `chat_messages` assistant row를 조회해 중복 저장이 사라졌는지 확인한다.
+- [x] 각 브라우저 질의 직후 `trace_events.text_summary`가 1건만 남는지 확인한다.
+- [x] 가능하면 interrupted/resume 시나리오까지 Playwright MCP로 재현해 동일 계약이 유지되는지 확인한다.
 
 ## 검증 체크리스트
 
@@ -186,9 +186,9 @@
 
 ### 실브라우저 검증 체크리스트
 
-- [ ] Playwright MCP로 실제 브라우저에서 최종 질의 테스트를 수행한다.
-- [ ] backend 로그에서 `head_supervisor` speculative text가 최종 응답으로 방출되지 않는지 확인한다.
-- [ ] PostgreSQL에서 `chat_messages`, `trace_events`, checkpoint state를 비교해 단일 canonical answer만 남았는지 확인한다.
+- [x] Playwright MCP로 실제 브라우저에서 최종 질의 테스트를 수행한다.
+- [x] backend 로그에서 `head_supervisor` speculative text가 최종 응답으로 방출되지 않는지 확인한다.
+- [x] PostgreSQL에서 `chat_messages`, `trace_events`, checkpoint state를 비교해 단일 canonical answer만 남았는지 확인한다.
 
 ## 완료 조건
 
