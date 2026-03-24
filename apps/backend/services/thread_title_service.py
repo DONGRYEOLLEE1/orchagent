@@ -16,6 +16,7 @@ class ThreadTitleResult(BaseModel):
 class ThreadTitleService:
     TITLE_MAX_LENGTH = 24
     FALLBACK_MAX_LENGTH = 80
+    TRANSCRIPT_MAX_LENGTH = 6000
     UNTITLED_THREAD = "Untitled chat"
 
     @staticmethod
@@ -39,6 +40,25 @@ class ThreadTitleService:
         return ThreadTitleService._truncate(
             normalized, ThreadTitleService.FALLBACK_MAX_LENGTH
         )
+
+    @staticmethod
+    def build_thread_transcript(messages: list[tuple[str, str]]) -> str:
+        if not messages:
+            return ""
+
+        lines: list[str] = []
+        for role, content in messages:
+            normalized = ThreadTitleService._collapse_text(content)
+            if not normalized:
+                continue
+            speaker = "User" if role == "user" else "Assistant"
+            lines.append(f"{speaker}: {normalized}")
+
+        transcript = "\n".join(lines).strip()
+        if len(transcript) <= ThreadTitleService.TRANSCRIPT_MAX_LENGTH:
+            return transcript
+
+        return transcript[-ThreadTitleService.TRANSCRIPT_MAX_LENGTH :]
 
     @staticmethod
     def normalize_title(title: str | None, *, fallback_message: str) -> str:
@@ -88,4 +108,32 @@ class ThreadTitleService:
         return ThreadTitleService.normalize_title(
             result.title,
             fallback_message=normalized_message,
+        )
+
+    @staticmethod
+    async def generate_title_from_transcript(
+        messages: list[tuple[str, str]], *, fallback_message: str
+    ) -> str:
+        transcript = ThreadTitleService.build_thread_transcript(messages)
+        if not transcript:
+            return ThreadTitleService.fallback_title(fallback_message)
+
+        model = ThreadTitleService._get_model()
+        prompt_input = (
+            "Conversation transcript:\n"
+            f"{transcript}\n\n"
+            "Create a short sidebar thread title that reflects the dominant topic."
+        )
+        result = await model.with_structured_output(ThreadTitleResult).ainvoke(
+            [
+                {"role": "system", "content": THREAD_TITLE_SUMMARIZER_PROMPT.template},
+                {"role": "user", "content": prompt_input},
+            ]
+        )
+        if not isinstance(result, ThreadTitleResult):
+            result = ThreadTitleResult.model_validate(result)
+
+        return ThreadTitleService.normalize_title(
+            result.title,
+            fallback_message=fallback_message,
         )

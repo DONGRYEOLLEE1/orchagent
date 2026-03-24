@@ -551,6 +551,158 @@ test('starts ai title generation in parallel for a new thread and patches the ti
   expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/ai-title'))).toBe(true);
 });
 
+test('requests a second ai title update after the fifth completed turn', async () => {
+  const user = userEvent.setup();
+  const deferred = deferredSseResponse();
+  let aiTitleCalls = 0;
+
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    const telemetryResponse = maybeHandleTelemetryRequest(url);
+    if (telemetryResponse) {
+      return telemetryResponse;
+    }
+
+    if (url.includes('/api/auth/me')) {
+      return jsonResponse({
+        id: 'user-1',
+        login_id: 'tester',
+        role: 'user',
+        status: 'active',
+        display_name: null,
+        email: null,
+        must_change_password: false,
+      });
+    }
+
+    if (url.includes('/api/threads?limit=50')) {
+      return jsonResponse({
+        threads: [
+          {
+            thread_id: 'thread-5turn',
+            title: '기존 AI 제목',
+            preview: 'Saved assistant answer',
+            created_at: '2026-03-22T10:00:00Z',
+            last_activity_at: '2026-03-22T10:15:00Z',
+            message_count: 8,
+            latest_status: 'completed',
+            checkpoint_id: 'cp-4',
+            pinned: false,
+            archived: false,
+          },
+        ],
+      });
+    }
+
+    if (url.includes('/api/threads/thread-5turn') && !url.endsWith('/ai-title')) {
+      return jsonResponse({
+        thread: {
+          thread_id: 'thread-5turn',
+          title: '기존 AI 제목',
+          preview: 'Saved assistant answer',
+          created_at: '2026-03-22T10:00:00Z',
+          last_activity_at: '2026-03-22T10:15:00Z',
+          message_count: 8,
+          latest_status: 'completed',
+          checkpoint_id: 'cp-4',
+          pinned: false,
+          archived: false,
+        },
+        messages: [
+          { id: 'u1', role: 'user', content: '질문1', created_at: '2026-03-22T10:00:00Z' },
+          { id: 'a1', role: 'assistant', content: '답변1', created_at: '2026-03-22T10:01:00Z' },
+          { id: 'u2', role: 'user', content: '질문2', created_at: '2026-03-22T10:02:00Z' },
+          { id: 'a2', role: 'assistant', content: '답변2', created_at: '2026-03-22T10:03:00Z' },
+          { id: 'u3', role: 'user', content: '질문3', created_at: '2026-03-22T10:04:00Z' },
+          { id: 'a3', role: 'assistant', content: '답변3', created_at: '2026-03-22T10:05:00Z' },
+          { id: 'u4', role: 'user', content: '질문4', created_at: '2026-03-22T10:06:00Z' },
+          { id: 'a4', role: 'assistant', content: '답변4', created_at: '2026-03-22T10:07:00Z' },
+        ],
+      });
+    }
+
+    if (url.endsWith('/api/chat')) {
+      const body = JSON.parse(String(init?.body || '{}'));
+      expect(body.thread_id).toBe('thread-5turn');
+      return deferred.response;
+    }
+
+    if (url.endsWith('/ai-title')) {
+      aiTitleCalls += 1;
+      const body = JSON.parse(String(init?.body || '{}'));
+      if (aiTitleCalls === 1) {
+        expect(body).toEqual({});
+      }
+      return jsonResponse({
+        thread_id: 'thread-5turn',
+        title: '5턴 누적 주제 재요약',
+        preview: 'Saved assistant answer',
+        created_at: '2026-03-22T10:00:00Z',
+        last_activity_at: '2026-03-22T10:20:00Z',
+        message_count: 10,
+        latest_status: 'completed',
+        checkpoint_id: 'cp-5',
+        pinned: false,
+        archived: false,
+      });
+    }
+
+    throw new Error(`Unhandled fetch: ${url}`);
+  });
+
+  Object.defineProperty(document, 'cookie', {
+    configurable: true,
+    get: () => 'orch_csrf=csrf-token',
+  });
+  vi.stubGlobal('fetch', fetchMock);
+
+  renderWorkspace();
+
+  await user.click(await screen.findByRole('button', { name: /open thread 기존 ai 제목/i }));
+  await user.type(screen.getByPlaceholderText(/message orchagent/i), '질문5');
+  await user.click(screen.getByRole('button', { name: /send message/i }));
+
+  deferred.complete([
+    {
+      event_type: 'status',
+      status: 'running',
+      thread_id: 'thread-5turn',
+      node: 'head_supervisor',
+      display_name: 'Head Supervisor',
+      timestamp: '2026-03-22T10:20:00Z',
+    },
+    {
+      event_type: 'text',
+      node: 'assistant',
+      content: '답변5',
+      timestamp: '2026-03-22T10:20:01Z',
+    },
+    {
+      event_type: 'checkpoint',
+      thread_id: 'thread-5turn',
+      checkpoint_id: 'cp-5',
+      timestamp: '2026-03-22T10:20:02Z',
+    },
+    {
+      event_type: 'status',
+      status: 'completed',
+      thread_id: 'thread-5turn',
+      node: 'assistant',
+      display_name: 'Completed',
+      timestamp: '2026-03-22T10:20:03Z',
+    },
+  ]);
+
+  await waitFor(() => {
+    expect(screen.getByText('답변5')).toBeInTheDocument();
+  });
+
+  await waitFor(() => {
+    expect(aiTitleCalls).toBe(1);
+    expect(screen.getAllByText('5턴 누적 주제 재요약').length).toBeGreaterThan(0);
+  });
+});
+
 test('generates suggested queries after a completed answer and injects the clicked prompt', async () => {
   const user = userEvent.setup();
   const deferred = deferredSseResponse();

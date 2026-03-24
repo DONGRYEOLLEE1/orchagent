@@ -437,8 +437,9 @@ def test_generate_ai_thread_title_creates_title_for_first_message(monkeypatch):
 
     from services.logging_service import LoggingService
     from services.thread_profile_service import ThreadProfileService
-    from services.thread_service import ThreadService
+    from services.thread_service import ThreadService, ThreadTitlePolicyStats
     from services.thread_title_service import ThreadTitleService
+    from services.trace_service import TraceService
 
     async def mock_get_chat_session(db, thread_id, *, user_id=None):
         assert thread_id == "thread-ai-1"
@@ -457,14 +458,29 @@ def test_generate_ai_thread_title_creates_title_for_first_message(monkeypatch):
         assert thread_id == "thread-ai-1"
         return {"user": 1, "assistant": 0}
 
+    async def mock_get_title_policy_stats(db, thread_id):
+        assert thread_id == "thread-ai-1"
+        return ThreadTitlePolicyStats(
+            user_turn_count=1,
+            assistant_turn_count=0,
+            ai_title_generation_count=0,
+            has_manual_title_event=False,
+        )
+
     async def mock_generate_title(message):
         assert "RoPE 논문" in message
         return "RoPE 논문 탐색"
 
-    async def mock_set_generated_title_if_missing(*args, **kwargs):
+    async def mock_upsert_thread_profile(db, **kwargs):
         assert kwargs["thread_id"] == "thread-ai-1"
         assert kwargs["user_id"] == "test-user"
         assert kwargs["title"] == "RoPE 논문 탐색"
+        return object()
+
+    async def mock_create_event(db, *, thread_id, event_type, node_name, payload):
+        assert thread_id == "thread-ai-1"
+        assert event_type == "thread_title_ai_generated"
+        assert payload["generation_index"] == 1
         return object()
 
     async def mock_get_thread_summary(db, thread_id, *, user_id):
@@ -477,12 +493,10 @@ def test_generate_ai_thread_title_creates_title_for_first_message(monkeypatch):
     monkeypatch.setattr(LoggingService, "get_or_create_session", mock_get_or_create_session)
     monkeypatch.setattr(ThreadProfileService, "get_thread_profile", mock_get_thread_profile)
     monkeypatch.setattr(ThreadService, "get_thread_message_role_counts", mock_get_counts)
+    monkeypatch.setattr(ThreadService, "get_thread_title_policy_stats", mock_get_title_policy_stats)
     monkeypatch.setattr(ThreadTitleService, "generate_title", mock_generate_title)
-    monkeypatch.setattr(
-        ThreadProfileService,
-        "set_generated_title_if_missing",
-        mock_set_generated_title_if_missing,
-    )
+    monkeypatch.setattr(ThreadProfileService, "upsert_thread_profile", mock_upsert_thread_profile)
+    monkeypatch.setattr(TraceService, "create_event", mock_create_event)
     monkeypatch.setattr(ThreadService, "get_thread_summary", mock_get_thread_summary)
     try:
         response = client.post(
@@ -512,7 +526,7 @@ def test_generate_ai_thread_title_skips_when_manual_title_exists(monkeypatch):
     )
 
     from services.thread_profile_service import ThreadProfileService
-    from services.thread_service import ThreadService
+    from services.thread_service import ThreadService, ThreadTitlePolicyStats
     from services.thread_title_service import ThreadTitleService
 
     async def mock_get_chat_session(db, thread_id, *, user_id=None):
@@ -520,6 +534,14 @@ def test_generate_ai_thread_title_skips_when_manual_title_exists(monkeypatch):
 
     async def mock_get_thread_profile(db, thread_id, user_id):
         return type("Profile", (), {"title_override": "수동 제목"})()
+
+    async def mock_get_title_policy_stats(db, thread_id):
+        return ThreadTitlePolicyStats(
+            user_turn_count=1,
+            assistant_turn_count=0,
+            ai_title_generation_count=0,
+            has_manual_title_event=False,
+        )
 
     async def mock_get_thread_summary(db, thread_id, *, user_id):
         return summary
@@ -530,6 +552,7 @@ def test_generate_ai_thread_title_skips_when_manual_title_exists(monkeypatch):
     app.dependency_overrides[get_db] = _override_get_db
     monkeypatch.setattr(ThreadService, "get_chat_session", mock_get_chat_session)
     monkeypatch.setattr(ThreadProfileService, "get_thread_profile", mock_get_thread_profile)
+    monkeypatch.setattr(ThreadService, "get_thread_title_policy_stats", mock_get_title_policy_stats)
     monkeypatch.setattr(ThreadService, "get_thread_summary", mock_get_thread_summary)
     monkeypatch.setattr(ThreadTitleService, "generate_title", fail_generate_title)
     try:
@@ -560,7 +583,7 @@ def test_generate_ai_thread_title_skips_existing_threads_after_first_user_turn(m
     )
 
     from services.thread_profile_service import ThreadProfileService
-    from services.thread_service import ThreadService
+    from services.thread_service import ThreadService, ThreadTitlePolicyStats
     from services.thread_title_service import ThreadTitleService
 
     async def mock_get_chat_session(db, thread_id, *, user_id=None):
@@ -569,8 +592,13 @@ def test_generate_ai_thread_title_skips_existing_threads_after_first_user_turn(m
     async def mock_get_thread_profile(db, thread_id, user_id):
         return None
 
-    async def mock_get_counts(db, thread_id):
-        return {"user": 2, "assistant": 1}
+    async def mock_get_title_policy_stats(db, thread_id):
+        return ThreadTitlePolicyStats(
+            user_turn_count=2,
+            assistant_turn_count=1,
+            ai_title_generation_count=0,
+            has_manual_title_event=False,
+        )
 
     async def mock_get_thread_summary(db, thread_id, *, user_id):
         return summary
@@ -581,7 +609,7 @@ def test_generate_ai_thread_title_skips_existing_threads_after_first_user_turn(m
     app.dependency_overrides[get_db] = _override_get_db
     monkeypatch.setattr(ThreadService, "get_chat_session", mock_get_chat_session)
     monkeypatch.setattr(ThreadProfileService, "get_thread_profile", mock_get_thread_profile)
-    monkeypatch.setattr(ThreadService, "get_thread_message_role_counts", mock_get_counts)
+    monkeypatch.setattr(ThreadService, "get_thread_title_policy_stats", mock_get_title_policy_stats)
     monkeypatch.setattr(ThreadService, "get_thread_summary", mock_get_thread_summary)
     monkeypatch.setattr(ThreadTitleService, "generate_title", fail_generate_title)
     try:
@@ -594,6 +622,162 @@ def test_generate_ai_thread_title_skips_existing_threads_after_first_user_turn(m
 
     assert response.status_code == 200
     assert response.json()["title"] == "기존 제목"
+
+
+def test_generate_ai_thread_title_refreshes_after_five_turns(monkeypatch):
+    created_at = datetime(2026, 3, 22, 10, 0, 0, tzinfo=timezone.utc)
+    summary = ThreadSummary(
+        thread_id="thread-ai-4",
+        title="JWT 인증 전략 비교",
+        preview="Latest reply",
+        created_at=created_at,
+        last_activity_at=created_at,
+        message_count=10,
+        latest_status="completed",
+        checkpoint_id="cp-5",
+        pinned=False,
+        archived=False,
+    )
+
+    from services.thread_profile_service import ThreadProfileService
+    from services.thread_service import ThreadMessage, ThreadService, ThreadTitlePolicyStats
+    from services.thread_title_service import ThreadTitleService
+    from services.trace_service import TraceService
+
+    async def mock_get_chat_session(db, thread_id, *, user_id=None):
+        return type("Session", (), {"user_id": "test-user"})()
+
+    async def mock_get_thread_profile(db, thread_id, user_id):
+        return type("Profile", (), {"title_override": "JWT vs 세션 쿠키"})()
+
+    async def mock_get_title_policy_stats(db, thread_id):
+        return ThreadTitlePolicyStats(
+            user_turn_count=5,
+            assistant_turn_count=5,
+            ai_title_generation_count=1,
+            has_manual_title_event=False,
+        )
+
+    async def mock_get_thread_messages(db, thread_id):
+        return [
+            ThreadMessage(
+                id=uuid4(),
+                role="user",
+                content="JWT와 세션 쿠키 차이를 비교해줘",
+                created_at=created_at,
+            ),
+            ThreadMessage(
+                id=uuid4(),
+                role="assistant",
+                content="세션 쿠키를 추천합니다",
+                created_at=created_at,
+            ),
+        ]
+
+    async def mock_generate_title_from_transcript(messages, *, fallback_message):
+        assert messages[0][0] == "user"
+        assert "JWT와 세션 쿠키" in messages[0][1]
+        assert fallback_message == "JWT vs 세션 쿠키"
+        return "JWT 인증 전략 비교"
+
+    async def mock_upsert_thread_profile(db, **kwargs):
+        assert kwargs["title"] == "JWT 인증 전략 비교"
+        return object()
+
+    async def mock_create_event(db, *, thread_id, event_type, node_name, payload):
+        assert thread_id == "thread-ai-4"
+        assert event_type == "thread_title_ai_generated"
+        assert payload["generation_index"] == 2
+        assert payload["trigger"] == "five_turn_refresh"
+        return object()
+
+    async def mock_get_thread_summary(db, thread_id, *, user_id):
+        return summary
+
+    app.dependency_overrides[get_db] = _override_get_db
+    monkeypatch.setattr(ThreadService, "get_chat_session", mock_get_chat_session)
+    monkeypatch.setattr(ThreadProfileService, "get_thread_profile", mock_get_thread_profile)
+    monkeypatch.setattr(ThreadService, "get_thread_title_policy_stats", mock_get_title_policy_stats)
+    monkeypatch.setattr(ThreadService, "get_thread_messages", mock_get_thread_messages)
+    monkeypatch.setattr(
+        ThreadTitleService,
+        "generate_title_from_transcript",
+        mock_generate_title_from_transcript,
+    )
+    monkeypatch.setattr(ThreadProfileService, "upsert_thread_profile", mock_upsert_thread_profile)
+    monkeypatch.setattr(TraceService, "create_event", mock_create_event)
+    monkeypatch.setattr(ThreadService, "get_thread_summary", mock_get_thread_summary)
+    try:
+        response = client.post(
+            "/api/threads/thread-ai-4/ai-title",
+            json={},
+        )
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+    assert response.status_code == 200
+    assert response.json()["title"] == "JWT 인증 전략 비교"
+
+
+def test_generate_ai_thread_title_stops_after_two_generations(monkeypatch):
+    created_at = datetime(2026, 3, 22, 10, 0, 0, tzinfo=timezone.utc)
+    summary = ThreadSummary(
+        thread_id="thread-ai-5",
+        title="두 번 생성 완료",
+        preview="Latest reply",
+        created_at=created_at,
+        last_activity_at=created_at,
+        message_count=12,
+        latest_status="completed",
+        checkpoint_id="cp-6",
+        pinned=False,
+        archived=False,
+    )
+
+    from services.thread_profile_service import ThreadProfileService
+    from services.thread_service import ThreadService, ThreadTitlePolicyStats
+    from services.thread_title_service import ThreadTitleService
+
+    async def mock_get_chat_session(db, thread_id, *, user_id=None):
+        return type("Session", (), {"user_id": "test-user"})()
+
+    async def mock_get_thread_profile(db, thread_id, user_id):
+        return type("Profile", (), {"title_override": "두 번 생성 완료"})()
+
+    async def mock_get_title_policy_stats(db, thread_id):
+        return ThreadTitlePolicyStats(
+            user_turn_count=6,
+            assistant_turn_count=6,
+            ai_title_generation_count=2,
+            has_manual_title_event=False,
+        )
+
+    async def mock_get_thread_summary(db, thread_id, *, user_id):
+        return summary
+
+    async def fail_generate_title_from_transcript(*args, **kwargs):
+        raise AssertionError("AI title must not run after the second generation")
+
+    app.dependency_overrides[get_db] = _override_get_db
+    monkeypatch.setattr(ThreadService, "get_chat_session", mock_get_chat_session)
+    monkeypatch.setattr(ThreadProfileService, "get_thread_profile", mock_get_thread_profile)
+    monkeypatch.setattr(ThreadService, "get_thread_title_policy_stats", mock_get_title_policy_stats)
+    monkeypatch.setattr(ThreadService, "get_thread_summary", mock_get_thread_summary)
+    monkeypatch.setattr(
+        ThreadTitleService,
+        "generate_title_from_transcript",
+        fail_generate_title_from_transcript,
+    )
+    try:
+        response = client.post(
+            "/api/threads/thread-ai-5/ai-title",
+            json={},
+        )
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+    assert response.status_code == 200
+    assert response.json()["title"] == "두 번 생성 완료"
 
 
 def test_get_thread_telemetry_returns_reasoning_and_suggestions(monkeypatch):

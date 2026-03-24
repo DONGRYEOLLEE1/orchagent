@@ -48,6 +48,14 @@ class ThreadSuggestionContext:
     assistant_content: str
 
 
+@dataclass(slots=True)
+class ThreadTitlePolicyStats:
+    user_turn_count: int
+    assistant_turn_count: int
+    ai_title_generation_count: int
+    has_manual_title_event: bool
+
+
 class ThreadService:
     DEFAULT_LIMIT = 50
     TITLE_MAX_LENGTH = 80
@@ -361,6 +369,52 @@ class ThreadService:
         return ThreadSuggestionContext(
             user_content=user_row["content"],
             assistant_content=assistant_row["content"],
+        )
+
+    @staticmethod
+    async def get_thread_title_policy_stats(
+        db: AsyncSession, thread_id: str
+    ) -> ThreadTitlePolicyStats:
+        user_turn_stmt = (
+            select(func.count(ChatMessageLog.id))
+            .where(
+                ChatMessageLog.session_id == thread_id,
+                ChatMessageLog.role == "user",
+                ~ChatMessageLog.content.like("[User Action]:%"),
+            )
+        )
+        assistant_turn_stmt = (
+            select(func.count(ChatMessageLog.id))
+            .where(
+                ChatMessageLog.session_id == thread_id,
+                ChatMessageLog.role == "assistant",
+            )
+        )
+        ai_generation_stmt = (
+            select(func.count(TraceEvent.id))
+            .where(
+                TraceEvent.thread_id == thread_id,
+                TraceEvent.event_type == "thread_title_ai_generated",
+            )
+        )
+        manual_title_stmt = (
+            select(func.count(TraceEvent.id))
+            .where(
+                TraceEvent.thread_id == thread_id,
+                TraceEvent.event_type == "thread_title_manual",
+            )
+        )
+
+        user_turn_result = await db.execute(user_turn_stmt)
+        assistant_turn_result = await db.execute(assistant_turn_stmt)
+        ai_generation_result = await db.execute(ai_generation_stmt)
+        manual_title_result = await db.execute(manual_title_stmt)
+
+        return ThreadTitlePolicyStats(
+            user_turn_count=int(user_turn_result.scalar_one() or 0),
+            assistant_turn_count=int(assistant_turn_result.scalar_one() or 0),
+            ai_title_generation_count=int(ai_generation_result.scalar_one() or 0),
+            has_manual_title_event=bool(manual_title_result.scalar_one() or 0),
         )
 
     @staticmethod

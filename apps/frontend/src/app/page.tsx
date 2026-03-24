@@ -371,6 +371,23 @@ function WorkspaceApp({
     ));
   };
 
+  const requestAiThreadTitleUpdate = (threadId: string, message?: string) => {
+    const titleRequestId = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    pendingTitleRequestIdsRef.current[threadId] = titleRequestId;
+    void generateAiThreadTitle({
+      threadId,
+      message,
+    })
+      .then((summary) => {
+        applyGeneratedThreadTitle(threadId, titleRequestId, summary);
+      })
+      .catch(() => {
+        if (pendingTitleRequestIdsRef.current[threadId] === titleRequestId) {
+          delete pendingTitleRequestIdsRef.current[threadId];
+        }
+      });
+  };
+
   const applyThreadTelemetry = (
     threadId: string,
     requestId: string,
@@ -854,6 +871,12 @@ function WorkspaceApp({
     const isNewThread = !activeThreadState.threadId;
     const thread_id = activeThreadState.threadId || `thread_${Date.now()}`;
     const userMessage: ChatMessage = { role: 'user', content: submittedInput, id: Date.now().toString() };
+    const nextThreadTurnCount =
+      activeThreadState.messages.filter(
+        (message) =>
+          message.role === 'user' &&
+          !message.content.startsWith('[User Action]:')
+      ).length + 1;
 
     // Convert images to base64
     const base64Images = await Promise.all(selectedImages.map(fileToBase64));
@@ -902,20 +925,7 @@ function WorkspaceApp({
       });
 
       if (isNewThread) {
-        const titleRequestId = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
-        pendingTitleRequestIdsRef.current[thread_id] = titleRequestId;
-        void generateAiThreadTitle({
-          threadId: thread_id,
-          message: submittedInput,
-        })
-          .then((summary) => {
-            applyGeneratedThreadTitle(thread_id, titleRequestId, summary);
-          })
-          .catch(() => {
-            if (pendingTitleRequestIdsRef.current[thread_id] === titleRequestId) {
-              delete pendingTitleRequestIdsRef.current[thread_id];
-            }
-          });
+        requestAiThreadTitleUpdate(thread_id, submittedInput);
       }
 
       const reader = stream.getReader();
@@ -956,6 +966,9 @@ function WorkspaceApp({
             loading: false,
           }));
           await refreshThreadsSilently();
+          if (nextThreadTurnCount >= 5) {
+            requestAiThreadTitleUpdate(thread_id);
+          }
           if (turnCompleted) {
             void requestSuggestedQueries(thread_id);
           }

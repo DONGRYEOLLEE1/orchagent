@@ -103,6 +103,19 @@ async def patch_thread(
     summary = await ThreadService.get_thread_summary(db, thread_id, user_id=user_id)
     if summary is None:
         raise HTTPException(status_code=404, detail="Thread not found")
+
+    if payload.title is not None:
+        await TraceService.create_event(
+            db,
+            thread_id=thread_id,
+            event_type="thread_title_manual",
+            node_name="thread_profile",
+            payload={
+                "event_type": "thread_title_manual",
+                "thread_id": thread_id,
+                "title": summary.title,
+            },
+        )
     return ThreadSummaryResponse.model_validate(summary, from_attributes=True)
 
 
@@ -124,25 +137,73 @@ async def generate_ai_thread_title(
         await db.commit()
 
     profile = await ThreadProfileService.get_thread_profile(db, thread_id, user_id)
-    if profile is not None and profile.title_override:
+    policy_stats = await ThreadService.get_thread_title_policy_stats(db, thread_id)
+    has_legacy_or_manual_override = bool(
+        profile is not None
+        and profile.title_override
+        and policy_stats.ai_title_generation_count == 0
+    )
+
+    should_run_initial = (
+        policy_stats.ai_title_generation_count == 0
+        and policy_stats.user_turn_count == 1
+        and not policy_stats.has_manual_title_event
+        and not has_legacy_or_manual_override
+        and payload.message is not None
+    )
+    should_run_fifth_turn_refresh = (
+        policy_stats.ai_title_generation_count == 1
+        and policy_stats.assistant_turn_count >= 5
+        and not policy_stats.has_manual_title_event
+    )
+
+    if not should_run_initial and not should_run_fifth_turn_refresh:
         summary = await ThreadService.get_thread_summary(db, thread_id, user_id=user_id)
         if summary is None:
             raise HTTPException(status_code=404, detail="Thread not found")
         return ThreadSummaryResponse.model_validate(summary, from_attributes=True)
 
-    message_counts = await ThreadService.get_thread_message_role_counts(db, thread_id)
-    if message_counts["user"] > 1:
-        summary = await ThreadService.get_thread_summary(db, thread_id, user_id=user_id)
-        if summary is None:
-            raise HTTPException(status_code=404, detail="Thread not found")
-        return ThreadSummaryResponse.model_validate(summary, from_attributes=True)
+    if should_run_initial:
+        title = await ThreadTitleService.generate_title(payload.message or "")
+    else:
+        thread_messages = await ThreadService.get_thread_messages(db, thread_id)
+        transcript_messages = [
+            (message.role, message.content)
+            for message in thread_messages
+            if message.role in {"user", "assistant"}
+            and not (
+                message.role == "user"
+                and message.content.startswith("[User Action]:")
+            )
+        ]
+        fallback_message = profile.title_override if profile and profile.title_override else (
+            payload.message or " ".join(
+                content for role, content in transcript_messages if role == "user"
+            )
+        )
+        title = await ThreadTitleService.generate_title_from_transcript(
+            transcript_messages,
+            fallback_message=fallback_message,
+        )
 
-    title = await ThreadTitleService.generate_title(payload.message)
-    await ThreadProfileService.set_generated_title_if_missing(
+    await ThreadProfileService.upsert_thread_profile(
         db,
         thread_id=thread_id,
         user_id=user_id,
         title=title,
+    )
+    await TraceService.create_event(
+        db,
+        thread_id=thread_id,
+        event_type="thread_title_ai_generated",
+        node_name="thread_profile",
+        payload={
+            "event_type": "thread_title_ai_generated",
+            "thread_id": thread_id,
+            "title": title,
+            "generation_index": policy_stats.ai_title_generation_count + 1,
+            "trigger": "initial_user_turn" if should_run_initial else "five_turn_refresh",
+        },
     )
 
     summary = await ThreadService.get_thread_summary(db, thread_id, user_id=user_id)

@@ -49,3 +49,29 @@ async def test_thread_title_service_generate_title_uses_model_and_normalizer(mon
     title = await ThreadTitleService.generate_title("웹검색을 통해 RoPE 논문을 탐색해줘")
 
     assert title == "RoPE 논문 탐색"
+
+
+@pytest.mark.asyncio
+async def test_thread_title_service_generate_title_from_transcript(monkeypatch):
+    class FakeModel:
+        def with_structured_output(self, schema):
+            return self
+
+        async def ainvoke(self, messages):
+            assert "Conversation transcript:" in messages[1]["content"]
+            assert "User: JWT와 세션 쿠키 차이 설명" in messages[1]["content"]
+            assert "Assistant: 세션 쿠키를 추천합니다" in messages[1]["content"]
+            return ThreadTitleResult(title="JWT 인증 전략 비교")
+
+    ThreadTitleService._get_model.cache_clear()
+    monkeypatch.setattr(ThreadTitleService, "_get_model", staticmethod(lambda: FakeModel()))
+
+    title = await ThreadTitleService.generate_title_from_transcript(
+        [
+            ("user", "JWT와 세션 쿠키 차이 설명"),
+            ("assistant", "세션 쿠키를 추천합니다"),
+        ],
+        fallback_message="JWT와 세션 쿠키 차이 설명",
+    )
+
+    assert title == "JWT 인증 전략 비교"

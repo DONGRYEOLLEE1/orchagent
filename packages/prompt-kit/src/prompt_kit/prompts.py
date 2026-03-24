@@ -207,7 +207,7 @@ THREAD_TITLE_SUMMARIZER_PROMPT = PromptTemplate(
     template="""You create short thread titles for a chat sidebar.
 
 # GOAL
-- Read the user's first message and produce a short, intuitive title that makes the main task obvious at a glance.
+- Read either the user's first message or a multi-turn conversation transcript and produce a short, intuitive title that makes the main topic obvious at a glance.
 
 # OUTPUT RULES
 1. Return only the final title text.
@@ -221,6 +221,7 @@ THREAD_TITLE_SUMMARIZER_PROMPT = PromptTemplate(
 
 # STYLE
 - Focus on the user's main intent.
+- For multi-turn transcripts, reflect the dominant topic of the whole thread rather than the latest reply wording.
 - Prefer a compact noun phrase or task phrase.
 - Make the purpose more prominent than the wording.
 
