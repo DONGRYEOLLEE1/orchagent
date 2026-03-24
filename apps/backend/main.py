@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from core.config import settings
 from core.database import engine, Base, AsyncSessionLocal
-from api.routes import auth, chat, health, threads, users
+from api.routes import auth, chat, dashboard, health, threads, users
 import models  # noqa: F401
 
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
@@ -82,6 +82,7 @@ app.add_middleware(
 )
 
 app.include_router(chat.router, prefix=settings.API_V1_STR, tags=["chat"])
+app.include_router(dashboard.router, prefix=settings.API_V1_STR, tags=["dashboard"])
 app.include_router(auth.router, prefix=settings.API_V1_STR, tags=["auth"])
 app.include_router(threads.router, prefix=settings.API_V1_STR, tags=["threads"])
 app.include_router(users.router, prefix=settings.API_V1_STR, tags=["users"])

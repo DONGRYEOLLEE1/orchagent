@@ -372,6 +372,12 @@ historical cost 안정성을 위한 가격 스냅샷 테이블.
   - `status`
   - `active_team_final`
 
+### Query Layer 분리 메모
+
+- 초기 구현은 `DashboardService`가 Postgres row를 읽어 Python aggregation으로 summary/series/table shape를 만든다.
+- Dashboard API는 `DashboardService`만 호출하고 SQL/view 세부사항을 직접 알지 않는다.
+- 향후 materialized view, warehouse, ClickHouse로 이전할 때는 `DashboardService` 내부 query 소스만 교체한다.
+
 ## 수집 파이프라인 권장 변경
 
 ### 1. `/api/chat`, `/api/chat/resume` 시작 시 `turn_id` 생성
@@ -513,28 +519,28 @@ historical cost 안정성을 위한 가격 스냅샷 테이블.
 
 ## Phase 6. Dashboard query 계층
 
-- [ ] user summary query service 추가
-- [ ] daily usage series query 추가
-- [ ] real-time tracing table query 추가
-- [ ] 필요 시 view/materialized view 설계
-- [ ] warehouse/OLAP 이전을 염두에 둔 query/view 분리 전략 문서화
+- [x] user summary query service 추가
+- [x] daily usage series query 추가
+- [x] real-time tracing table query 추가
+- [x] 필요 시 view/materialized view 설계
+- [x] warehouse/OLAP 이전을 염두에 둔 query/view 분리 전략 문서화
 
 검증:
 
-- [ ] aggregate query test
-- [ ] date-range test
+- [x] aggregate query test
+- [x] date-range test
 
 ## Phase 7. Dashboard API
 
-- [ ] `/api/dashboard/summary`
-- [ ] `/api/dashboard/daily-usage`
-- [ ] `/api/dashboard/live-traces`
-- [ ] user authorization 정책 확정
+- [x] `/api/dashboard/summary`
+- [x] `/api/dashboard/daily-usage`
+- [x] `/api/dashboard/live-traces`
+- [x] user authorization 정책 확정
 
 검증:
 
-- [ ] auth/role test
-- [ ] response schema test
+- [x] auth/role test
+- [x] response schema test
 
 ## Phase 8. Frontend Dashboard
 
