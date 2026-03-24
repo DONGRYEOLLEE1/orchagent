@@ -1202,14 +1202,14 @@ function WorkspaceApp({
           </button>
 
           <div className="hidden items-center gap-8 md:flex">
-            <div className="font-[var(--font-display)] text-[24px] font-bold tracking-[-0.04em] text-[#ac89ff]">
+            <div className="font-[var(--font-display)] text-[24px] font-bold tracking-[-0.04em] text-[#00f0ff]">
               OrchAgent
             </div>
 
             <nav className="flex items-center gap-2 text-[14px]">
               <button
                 type="button"
-                className="rounded-[8px] border-b-2 border-[#ac89ff] px-3 py-1 font-[var(--font-display)] text-[#ac89ff]"
+                className="rounded-[8px] border-b-2 border-[#00f0ff] px-3 py-1 font-[var(--font-display)] text-[#00f0ff]"
               >
                 Chat
               </button>
@@ -1245,7 +1245,7 @@ function WorkspaceApp({
           </div>
 
           <div className="md:hidden">
-            <div className="font-[var(--font-display)] text-[18px] font-bold text-[#ac89ff]">
+            <div className="font-[var(--font-display)] text-[18px] font-bold text-[#00f0ff]">
               OrchAgent
             </div>
           </div>
@@ -1271,13 +1271,13 @@ function WorkspaceApp({
             <Bell size={16} />
           </button>
 
-          <button
-            type="button"
-            aria-label="Open account drawer"
-            onClick={() => setAccountPanelOpen(true)}
-            className="inline-flex items-center gap-2 rounded-[12px] border border-[rgba(172,137,255,0.18)] bg-[rgba(29,31,40,0.45)] px-3 py-2 text-[12px] text-[#e7e7f0] transition hover:border-[rgba(172,137,255,0.32)]"
-          >
-            <PanelRightOpen size={15} className="text-[#ac89ff]" />
+            <button
+              type="button"
+              aria-label="Open account drawer"
+              onClick={() => setAccountPanelOpen(true)}
+            className="inline-flex items-center gap-2 rounded-[12px] border border-[rgba(143,245,255,0.16)] bg-[rgba(29,31,40,0.45)] px-3 py-2 text-[12px] text-[#e7e7f0] transition hover:border-[rgba(143,245,255,0.3)]"
+            >
+            <PanelRightOpen size={15} className="text-[#8ff5ff]" />
             <span className="hidden font-semibold sm:inline">
               {currentUser.display_name || currentUser.login_id}
             </span>
@@ -1387,9 +1387,13 @@ function WorkspaceApp({
                           </div>
                           <div className="flex min-w-0 flex-1 flex-col gap-3">
                             {showToolStatuses ? (
-                              <LiveToolStatusStrip toolExecutions={actionSpaceState.toolExecutions} />
+                              <LiveToolStatusStrip
+                                toolExecutions={actionSpaceState.toolExecutions}
+                                currentNode={streamSessionState.currentNode}
+                                loading={streamSessionState.loading}
+                              />
                             ) : null}
-                            <div className="rounded-bl-[16px] rounded-br-[16px] rounded-tr-[16px] border border-[rgba(143,245,255,0.1)] bg-[rgba(35,38,46,0.4)] px-6 py-5 text-[14px] leading-7 text-[#e7e7f0] backdrop-blur-md">
+                            <div className="px-1 py-1 text-[14px] leading-7 text-[#e7e7f0]">
                               <MarkdownContent content={message.content} />
                             </div>
                           </div>
@@ -1406,7 +1410,7 @@ function WorkspaceApp({
                   <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] bg-[#7000ff] text-white shadow-[0px_0px_0px_2px_rgba(172,137,255,0.2)]">
                     <Bot size={14} />
                   </div>
-                  <div className="rounded-bl-[16px] rounded-br-[16px] rounded-tr-[16px] border border-[rgba(143,245,255,0.1)] bg-[rgba(35,38,46,0.35)] px-6 py-5 text-[14px] italic text-[rgba(170,170,179,0.9)] backdrop-blur-md">
+                  <div className="px-1 py-1 text-[14px] italic text-[rgba(170,170,179,0.9)]">
                     {streamSessionState.currentNode || 'Coordinating team...'}
                   </div>
                 </div>
@@ -1507,7 +1511,7 @@ function WorkspaceApp({
 
       <aside
         ref={actionSpaceRef}
-        className="hidden w-[320px] shrink-0 border-l border-[rgba(255,255,255,0.05)] bg-[rgba(12,14,20,0.78)] px-6 py-6 backdrop-blur-xl xl:flex xl:flex-col xl:overflow-y-auto"
+        className="hidden w-[372px] shrink-0 border-l border-[rgba(255,255,255,0.05)] bg-[rgba(12,14,20,0.78)] px-6 py-6 backdrop-blur-xl xl:flex xl:flex-col xl:overflow-y-auto"
       >
         <div className="space-y-6">
           <AgentTimeline

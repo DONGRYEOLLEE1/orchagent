@@ -35,17 +35,34 @@ function toRecentItems(toolExecutions: ToolExecution[]) {
 
 export function LiveToolStatusStrip({
   toolExecutions,
+  currentNode,
+  loading,
 }: {
   toolExecutions: ToolExecution[];
+  currentNode?: string;
+  loading?: boolean;
 }) {
   const items = toRecentItems(toolExecutions);
 
-  if (items.length === 0) {
+  const fallbackLabel =
+    currentNode && loading ? `Processing ${currentNode}` : currentNode ? `Completed ${currentNode}` : '';
+  const hasFallback = Boolean(fallbackLabel) && items.length === 0;
+  if (items.length === 0 && !hasFallback) {
     return null;
   }
 
   return (
     <div className="flex flex-col gap-1.5 rounded-[14px] border border-[rgba(143,245,255,0.08)] bg-[rgba(35,38,46,0.26)] px-3.5 py-2.5">
+      {hasFallback ? (
+        <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[rgba(143,245,255,0.78)]">
+          {loading ? (
+            <Loader2 size={10} className="shrink-0 animate-spin text-[#8ff5ff]" />
+          ) : (
+            <CheckCircle2 size={10} className="shrink-0 text-emerald-300" />
+          )}
+          <span className="truncate">{truncateLabel(fallbackLabel)}</span>
+        </div>
+      ) : null}
       {items.map((tool) => {
         const isRunning = tool.status === 'running';
         const isSuccess = tool.status === 'success';
