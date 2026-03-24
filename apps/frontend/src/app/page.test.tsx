@@ -983,6 +983,18 @@ test('toggles a thread pin state independently', async () => {
       return jsonResponse({
         threads: [
           {
+            thread_id: 'thread-2',
+            title: 'Already top',
+            preview: 'Saved assistant answer',
+            created_at: '2026-03-22T10:00:00Z',
+            last_activity_at: '2026-03-22T11:15:00Z',
+            message_count: 2,
+            latest_status: 'completed',
+            checkpoint_id: 'cp-2',
+            pinned: false,
+            archived: false,
+          },
+          {
             thread_id: 'thread-1',
             title: 'Pin me',
             preview: 'Saved assistant answer',
@@ -1025,11 +1037,119 @@ test('toggles a thread pin state independently', async () => {
 
   renderWorkspace();
 
+  expect(
+    (await screen.findAllByRole('button', { name: /open thread/i })).map((button) => button.getAttribute('aria-label'))
+  ).toEqual([
+    'Open thread Already top',
+    'Open thread Pin me',
+  ]);
+
   const pinThreadButton = await screen.findByRole('button', { name: /open thread pin me/i });
   await user.hover(pinThreadButton);
   await user.click(screen.getByRole('button', { name: /thread actions pin me/i }));
   await user.click(screen.getByRole('button', { name: /pin pin me/i }));
   expect(await screen.findByText('Pinned')).toBeInTheDocument();
+  expect(
+    screen.getAllByRole('button', { name: /open thread/i }).map((button) => button.getAttribute('aria-label'))
+  ).toEqual([
+    'Open thread Pin me',
+    'Open thread Already top',
+  ]);
+});
+
+test('returns an unpinned thread to activity order after unpin', async () => {
+  const user = userEvent.setup();
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+
+    if (url.includes('/api/auth/me')) {
+      return jsonResponse({
+        id: 'user-1',
+        login_id: 'tester',
+        role: 'user',
+        status: 'active',
+        display_name: null,
+        email: null,
+        must_change_password: false,
+      });
+    }
+
+    if (url.includes('/api/threads?limit=50')) {
+      return jsonResponse({
+        threads: [
+          {
+            thread_id: 'thread-1',
+            title: 'Pinned now',
+            preview: 'Saved assistant answer',
+            created_at: '2026-03-22T10:00:00Z',
+            last_activity_at: '2026-03-22T10:15:00Z',
+            message_count: 2,
+            latest_status: 'completed',
+            checkpoint_id: 'cp-1',
+            pinned: true,
+            archived: false,
+          },
+          {
+            thread_id: 'thread-2',
+            title: 'Newer thread',
+            preview: 'Saved assistant answer',
+            created_at: '2026-03-22T10:00:00Z',
+            last_activity_at: '2026-03-22T11:15:00Z',
+            message_count: 2,
+            latest_status: 'completed',
+            checkpoint_id: 'cp-2',
+            pinned: false,
+            archived: false,
+          },
+        ],
+      });
+    }
+
+    if (url.endsWith('/api/threads/thread-1')) {
+      const body = JSON.parse(String(init?.body || '{}'));
+      return jsonResponse({
+        thread_id: 'thread-1',
+        title: 'Pinned now',
+        preview: 'Saved assistant answer',
+        created_at: '2026-03-22T10:00:00Z',
+        last_activity_at: '2026-03-22T10:15:00Z',
+        message_count: 2,
+        latest_status: 'completed',
+        checkpoint_id: 'cp-1',
+        pinned: body.pinned ?? true,
+        archived: false,
+      });
+    }
+
+    throw new Error(`Unhandled fetch: ${url}`);
+  });
+
+  Object.defineProperty(document, 'cookie', {
+    configurable: true,
+    get: () => 'orch_csrf=csrf-token',
+  });
+  vi.stubGlobal('fetch', fetchMock);
+
+  renderWorkspace();
+
+  expect(
+    (await screen.findAllByRole('button', { name: /open thread/i })).map((button) => button.getAttribute('aria-label'))
+  ).toEqual([
+    'Open thread Pinned now',
+    'Open thread Newer thread',
+  ]);
+
+  const pinnedThreadButton = await screen.findByRole('button', { name: /open thread pinned now/i });
+  await user.hover(pinnedThreadButton);
+  await user.click(screen.getByRole('button', { name: /thread actions pinned now/i }));
+  await user.click(screen.getByRole('button', { name: /unpin pinned now/i }));
+
+  expect(
+    screen.getAllByRole('button', { name: /open thread/i }).map((button) => button.getAttribute('aria-label'))
+  ).toEqual([
+    'Open thread Newer thread',
+    'Open thread Pinned now',
+  ]);
 });
 
 test('deletes a thread and returns to draft when the active thread is removed', async () => {

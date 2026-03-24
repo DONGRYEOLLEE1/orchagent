@@ -66,6 +66,33 @@ function truncateText(content: string, limit: number): string {
   return `${collapsed.slice(0, Math.max(limit - 3, 1)).trimEnd()}...`;
 }
 
+function toSortableTimestamp(value: string | null): number {
+  if (!value) {
+    return 0;
+  }
+
+  const timestamp = new Date(value).getTime();
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+export function sortThreadSummaries(threads: ThreadSummary[]): ThreadSummary[] {
+  return [...threads].sort((left, right) => {
+    if (left.pinned !== right.pinned) {
+      return left.pinned ? -1 : 1;
+    }
+
+    const leftLastActivity = toSortableTimestamp(left.last_activity_at || left.created_at);
+    const rightLastActivity = toSortableTimestamp(right.last_activity_at || right.created_at);
+    if (leftLastActivity !== rightLastActivity) {
+      return rightLastActivity - leftLastActivity;
+    }
+
+    const leftCreatedAt = toSortableTimestamp(left.created_at);
+    const rightCreatedAt = toSortableTimestamp(right.created_at);
+    return rightCreatedAt - leftCreatedAt;
+  });
+}
+
 export function createOptimisticThreadSummary(params: {
   threadId: string;
   content: string;
@@ -94,7 +121,10 @@ export function upsertThreadSummary(
   threads: ThreadSummary[],
   summary: ThreadSummary
 ): ThreadSummary[] {
-  return [summary, ...threads.filter((thread) => thread.thread_id !== summary.thread_id)];
+  return sortThreadSummaries([
+    summary,
+    ...threads.filter((thread) => thread.thread_id !== summary.thread_id),
+  ]);
 }
 
 export function patchThreadSummary(
@@ -102,8 +132,10 @@ export function patchThreadSummary(
   threadId: string,
   patch: Partial<ThreadSummary>
 ): ThreadSummary[] {
-  return threads.map((thread) =>
-    thread.thread_id === threadId ? { ...thread, ...patch } : thread
+  return sortThreadSummaries(
+    threads.map((thread) =>
+      thread.thread_id === threadId ? { ...thread, ...patch } : thread
+    )
   );
 }
 

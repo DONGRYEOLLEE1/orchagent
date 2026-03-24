@@ -25,6 +25,7 @@ import {
   patchThreadSummary,
   createInitialStreamSessionState,
   createInitialThreadCollectionState,
+  sortThreadSummaries,
   upsertThreadSummary,
 } from '@/lib/workspace-state';
 import { useAuth } from '@/components/auth/AuthProvider';
@@ -570,11 +571,7 @@ function WorkspaceApp({
     try {
       await deleteThread(threadId);
     } catch (error) {
-      const restoredThreads = [...nextThreads, existingThread].sort((a, b) => {
-        const left = a.last_activity_at || a.created_at || '';
-        const right = b.last_activity_at || b.created_at || '';
-        return right.localeCompare(left);
-      });
+      const restoredThreads = sortThreadSummaries([...nextThreads, existingThread]);
 
       setThreadCollectionState((prev) => ({
         ...prev,
