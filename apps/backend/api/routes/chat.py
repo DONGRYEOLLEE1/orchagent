@@ -2,6 +2,7 @@ import json
 import re
 import sys
 import asyncio
+from dataclasses import dataclass, field
 from datetime import datetime, UTC
 from typing import Any
 
@@ -267,6 +268,176 @@ def _extract_final_message_from_state(state_values: dict[str, Any]) -> str:
     return ""
 
 
+@dataclass
+class _FinalTextEmission:
+    node: str
+    content: str
+    run_id: str | None = None
+
+
+@dataclass
+class _BufferedFinalTextRun:
+    run_id: str
+    node: str
+    chunks: list[str] = field(default_factory=list)
+
+
+class _FinalResponseCollector:
+    def __init__(self):
+        self.final_answer_chunks: list[str] = []
+        self.structured_content_states: dict[str, dict[str, Any]] = {}
+        self._pending_by_node: dict[str, list[_BufferedFinalTextRun]] = {
+            "head_supervisor": []
+        }
+        self.approved_owner_run_id: str | None = None
+        self.approved_owner_node: str | None = None
+
+    def ingest_model_stream(
+        self,
+        event: dict[str, Any],
+        text_chunk: str,
+    ) -> list[_FinalTextEmission]:
+        normalized_text_chunk = _normalize_model_text_chunk(
+            event, text_chunk, self.structured_content_states
+        )
+        if not normalized_text_chunk:
+            return []
+
+        node_name = _event_node_name(event)
+        run_id = event.get("run_id") or node_name
+
+        if node_name == "head_supervisor":
+            pending_runs = self._pending_by_node.setdefault(node_name, [])
+            if pending_runs and pending_runs[-1].run_id == run_id:
+                pending_runs[-1].chunks.append(normalized_text_chunk)
+            else:
+                pending_runs.append(
+                    _BufferedFinalTextRun(
+                        run_id=run_id,
+                        node=node_name,
+                        chunks=[normalized_text_chunk],
+                    )
+                )
+            return []
+
+        if node_name == "finalizer":
+            return self._approve_chunks(
+                node=node_name,
+                run_id=run_id,
+                chunks=[normalized_text_chunk],
+            )
+
+        return []
+
+    def consume_head_supervisor_end(
+        self,
+        update: dict[str, Any],
+        *,
+        goto: Any = None,
+    ) -> list[_FinalTextEmission]:
+        pending_run = self._consume_pending_run("head_supervisor")
+        route_history = update.get("route_history") or []
+        route_target = route_history[-1].get("next") if route_history else None
+        status = update.get("streaming_status")
+        response_mode = update.get("response_mode")
+        goto_str = str(goto) if goto is not None else None
+        is_direct_completion = (
+            response_mode == "direct"
+            or goto_str == "__end__"
+            or (status == "completed" and route_target == "FINISH")
+        )
+
+        if not is_direct_completion:
+            return []
+
+        if pending_run and pending_run.chunks:
+            return self._approve_chunks(
+                node=pending_run.node,
+                run_id=pending_run.run_id,
+                chunks=pending_run.chunks,
+            )
+
+        direct_messages = update.get("messages") or []
+        if not direct_messages:
+            return []
+
+        content_str = _extract_text_content(getattr(direct_messages[-1], "content", ""))
+        if not content_str:
+            return []
+
+        return self._approve_chunks(
+            node="head_supervisor",
+            run_id=None,
+            chunks=_chunk_text(content_str),
+        )
+
+    def consume_finalizer_end(self, update: dict[str, Any]) -> list[_FinalTextEmission]:
+        if self.final_answer_chunks:
+            return []
+
+        final_messages = update.get("messages") or []
+        if not final_messages:
+            return []
+
+        content_str = _extract_text_content(getattr(final_messages[-1], "content", ""))
+        if not content_str:
+            return []
+
+        return self._approve_chunks(
+            node="finalizer",
+            run_id=None,
+            chunks=_chunk_text(content_str),
+        )
+
+    def collect_state_fallback(self, state_values: dict[str, Any]) -> list[_FinalTextEmission]:
+        if self.final_answer_chunks:
+            return []
+
+        fallback_answer = _extract_final_message_from_state(state_values)
+        if not fallback_answer:
+            return []
+
+        return self._approve_chunks(
+            node="assistant",
+            run_id=None,
+            chunks=_chunk_text(fallback_answer),
+        )
+
+    def final_answer(self) -> str:
+        return "".join(self.final_answer_chunks)
+
+    def _consume_pending_run(self, node: str) -> _BufferedFinalTextRun | None:
+        pending_runs = self._pending_by_node.get(node) or []
+        if not pending_runs:
+            return None
+        return pending_runs.pop(0)
+
+    def _approve_chunks(
+        self,
+        *,
+        node: str,
+        run_id: str | None,
+        chunks: list[str],
+    ) -> list[_FinalTextEmission]:
+        if not chunks:
+            return []
+
+        approved_run_id = run_id or node
+        if self.approved_owner_run_id is None:
+            self.approved_owner_run_id = approved_run_id
+            self.approved_owner_node = node
+        elif self.approved_owner_run_id != approved_run_id:
+            return []
+
+        emissions: list[_FinalTextEmission] = []
+        for chunk in chunks:
+            self.final_answer_chunks.append(chunk)
+            emissions.append(
+                _FinalTextEmission(node=node, content=chunk, run_id=run_id)
+            )
+        return emissions
+
+
 def _status_payload(
     *,
     status: str,
@@ -306,6 +477,17 @@ def _route_payload(node: str, route_entry: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _text_payload_from_emission(emission: _FinalTextEmission) -> dict[str, Any]:
+    return {
+        "event_type": "text",
+        "node": emission.node,
+        "display_name": _display_name(emission.node),
+        "content": emission.content,
+        "run_id": emission.run_id,
+        "timestamp": _utc_timestamp(),
+    }
+
+
 async def _build_checkpoint_payload(graph: Any, config: dict[str, Any], thread_id: str):
     snapshot = await graph.aget_state(config, subgraphs=True)
     configurable = snapshot.config.get("configurable", {})
@@ -321,6 +503,7 @@ async def _build_checkpoint_payload(graph: Any, config: dict[str, Any], thread_i
         "next_nodes": list(snapshot.next),
         "active_team": state_values.get("active_team"),
         "active_worker": state_values.get("active_worker"),
+        "response_mode": state_values.get("response_mode"),
         "streaming_status": state_values.get("streaming_status"),
         "message_count": len(state_values.get("messages", [])),
         "route_history_length": len(state_values.get("route_history", [])),
@@ -482,10 +665,9 @@ async def chat_stream(
             "configurable": {"thread_id": request.thread_id},
             "recursion_limit": settings.GRAPH_RECURSION_LIMIT,
         }
-        final_answer_chunks: list[str] = []
+        collector = _FinalResponseCollector()
         reasoning_chunks: list[str] = []
         trace_events = []
-        structured_content_states: dict[str, dict[str, Any]] = {}
         graph = None
         completed_payload_emitted = False
 
@@ -537,20 +719,9 @@ async def chat_stream(
                         text_chunk = _extract_text_content(
                             getattr(chunk, "content", "")
                         )
-                        normalized_text_chunk = _normalize_model_text_chunk(
-                            event, text_chunk, structured_content_states
-                        )
-                        if normalized_text_chunk:
-                            final_answer_chunks.append(normalized_text_chunk)
+                        for emission in collector.ingest_model_stream(event, text_chunk):
                             yield emit(
-                                {
-                                    "event_type": "text",
-                                    "node": event_node,
-                                    "display_name": _display_name(event_node),
-                                    "content": normalized_text_chunk,
-                                    "run_id": run_id,
-                                    "timestamp": _utc_timestamp(),
-                                },
+                                _text_payload_from_emission(emission),
                                 persist=False,
                             )
                         continue
@@ -624,24 +795,13 @@ async def chat_stream(
                                         )
                                     )
 
-                                direct_messages = update.get("messages") or []
-                                if direct_messages and status == "completed":
-                                    content_str = _extract_text_content(
-                                        getattr(direct_messages[-1], "content", "")
+                                for emission in collector.consume_head_supervisor_end(
+                                    update, goto=output.goto
+                                ):
+                                    yield emit(
+                                        _text_payload_from_emission(emission),
+                                        persist=False,
                                     )
-                                    if content_str and not final_answer_chunks:
-                                        for text_chunk in _chunk_text(content_str):
-                                            final_answer_chunks.append(text_chunk)
-                                            yield emit(
-                                                {
-                                                    "event_type": "text",
-                                                    "node": name,
-                                                    "display_name": _display_name(name),
-                                                    "content": text_chunk,
-                                                    "timestamp": _utc_timestamp(),
-                                                },
-                                                persist=False,
-                                            )
 
                             elif name == "finalizer":
                                 status = update.get("streaming_status")
@@ -655,6 +815,11 @@ async def chat_stream(
                                             message="Completed",
                                         )
                                     )
+                                for emission in collector.consume_finalizer_end(update):
+                                    yield emit(
+                                        _text_payload_from_emission(emission),
+                                        persist=False,
+                                    )
 
                 checkpoint_payload = await _build_checkpoint_payload(
                     graph, config, request.thread_id
@@ -664,21 +829,11 @@ async def chat_stream(
                 state_values = (
                     snapshot.values if isinstance(snapshot.values, dict) else {}
                 )
-                if not final_answer_chunks:
-                    fallback_answer = _extract_final_message_from_state(state_values)
-                    if fallback_answer:
-                        for text_chunk in _chunk_text(fallback_answer):
-                            final_answer_chunks.append(text_chunk)
-                            yield emit(
-                                {
-                                    "event_type": "text",
-                                    "node": "assistant",
-                                    "display_name": "Assistant",
-                                    "content": text_chunk,
-                                    "timestamp": _utc_timestamp(),
-                                },
-                                persist=False,
-                            )
+                for emission in collector.collect_state_fallback(state_values):
+                    yield emit(
+                        _text_payload_from_emission(emission),
+                        persist=False,
+                    )
 
                 yield emit(checkpoint_payload)
 
@@ -701,7 +856,7 @@ async def chat_stream(
                         )
                     )
 
-                final_answer = "".join(final_answer_chunks)
+                final_answer = collector.final_answer()
                 if final_answer:
                     await _run_cleanup_task(
                         "assistant message persist",
@@ -766,7 +921,7 @@ async def chat_stream(
                 request.thread_id,
                 trace_events,
                 reasoning_chunks,
-                final_answer_chunks,
+                collector.final_answer_chunks,
             )
             if trace_events:
                 await _run_cleanup_task(
@@ -859,10 +1014,9 @@ async def chat_resume_stream(
             "recursion_limit": settings.GRAPH_RECURSION_LIMIT,
         }
 
-        final_answer_chunks: list[str] = []
+        collector = _FinalResponseCollector()
         reasoning_chunks: list[str] = []
         trace_events = []
-        structured_content_states: dict[str, dict[str, Any]] = {}
         graph = None
         completed_payload_emitted = False
 
@@ -914,20 +1068,9 @@ async def chat_resume_stream(
                         text_chunk = _extract_text_content(
                             getattr(chunk, "content", "")
                         )
-                        normalized_text_chunk = _normalize_model_text_chunk(
-                            event, text_chunk, structured_content_states
-                        )
-                        if normalized_text_chunk:
-                            final_answer_chunks.append(normalized_text_chunk)
+                        for emission in collector.ingest_model_stream(event, text_chunk):
                             yield emit(
-                                {
-                                    "event_type": "text",
-                                    "node": event_node,
-                                    "display_name": _display_name(event_node),
-                                    "content": normalized_text_chunk,
-                                    "run_id": run_id,
-                                    "timestamp": _utc_timestamp(),
-                                },
+                                _text_payload_from_emission(emission),
                                 persist=False,
                             )
                         continue
@@ -1001,24 +1144,13 @@ async def chat_resume_stream(
                                         )
                                     )
 
-                                direct_messages = update.get("messages") or []
-                                if direct_messages and status == "completed":
-                                    content_str = _extract_text_content(
-                                        getattr(direct_messages[-1], "content", "")
+                                for emission in collector.consume_head_supervisor_end(
+                                    update, goto=output.goto
+                                ):
+                                    yield emit(
+                                        _text_payload_from_emission(emission),
+                                        persist=False,
                                     )
-                                    if content_str and not final_answer_chunks:
-                                        for text_chunk in _chunk_text(content_str):
-                                            final_answer_chunks.append(text_chunk)
-                                            yield emit(
-                                                {
-                                                    "event_type": "text",
-                                                    "node": name,
-                                                    "display_name": _display_name(name),
-                                                    "content": text_chunk,
-                                                    "timestamp": _utc_timestamp(),
-                                                },
-                                                persist=False,
-                                            )
 
                             elif name == "finalizer":
                                 status = update.get("streaming_status")
@@ -1032,6 +1164,11 @@ async def chat_resume_stream(
                                             message="Completed",
                                         )
                                     )
+                                for emission in collector.consume_finalizer_end(update):
+                                    yield emit(
+                                        _text_payload_from_emission(emission),
+                                        persist=False,
+                                    )
 
                 checkpoint_payload = await _build_checkpoint_payload(
                     graph, config, request.thread_id
@@ -1041,21 +1178,11 @@ async def chat_resume_stream(
                 state_values = (
                     snapshot.values if isinstance(snapshot.values, dict) else {}
                 )
-                if not final_answer_chunks:
-                    fallback_answer = _extract_final_message_from_state(state_values)
-                    if fallback_answer:
-                        for text_chunk in _chunk_text(fallback_answer):
-                            final_answer_chunks.append(text_chunk)
-                            yield emit(
-                                {
-                                    "event_type": "text",
-                                    "node": "assistant",
-                                    "display_name": "Assistant",
-                                    "content": text_chunk,
-                                    "timestamp": _utc_timestamp(),
-                                },
-                                persist=False,
-                            )
+                for emission in collector.collect_state_fallback(state_values):
+                    yield emit(
+                        _text_payload_from_emission(emission),
+                        persist=False,
+                    )
 
                 yield emit(checkpoint_payload)
 
@@ -1078,7 +1205,7 @@ async def chat_resume_stream(
                         )
                     )
 
-                final_answer = "".join(final_answer_chunks)
+                final_answer = collector.final_answer()
                 if final_answer:
                     await _run_cleanup_task(
                         "assistant message persist",
@@ -1138,7 +1265,7 @@ async def chat_resume_stream(
                 request.thread_id,
                 trace_events,
                 reasoning_chunks,
-                final_answer_chunks,
+                collector.final_answer_chunks,
             )
             if trace_events:
                 await _run_cleanup_task(

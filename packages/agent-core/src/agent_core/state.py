@@ -6,6 +6,7 @@ from typing_extensions import Annotated
 
 
 StreamingStatus = Literal["idle", "running", "completed", "errored"]
+ResponseMode = Literal["delegated", "direct", "finalizer"]
 
 
 class RouteEntry(TypedDict, total=False):
@@ -88,3 +89,4 @@ class BaseAgentState(MessagesState):
     active_worker: str | None
     active_tools: list[str] | None  # Optional list of tools allowed for current turn
     streaming_status: StreamingStatus
+    response_mode: ResponseMode | None

@@ -70,6 +70,7 @@ async def test_supervisor_routes_to_finish():
 
     assert command.goto == "__end__"
     assert command.update["streaming_status"] == "completed"
+    assert command.update["response_mode"] == "direct"
     assert command.update["active_team"] is None
     assert command.update["active_worker"] is None
     assert command.update["route_history"][0]["next"] == "FINISH"
@@ -101,6 +102,7 @@ async def test_supervisor_routes_to_vision_team():
     assert command.goto == "vision_team"
     assert command.update["active_team"] == "vision"
     assert command.update["active_worker"] is None
+    assert command.update["response_mode"] == "delegated"
     assert command.update["streaming_status"] == "running"
     assert command.update["route_history"][0]["team"] == "vision"
 
@@ -140,6 +142,7 @@ async def test_head_supervisor_routes_complex_finish_to_finalizer():
     command = await supervisor_func(state)
 
     assert command.goto == "finalizer"
+    assert command.update["response_mode"] == "finalizer"
     assert command.update["streaming_status"] == "running"
     assert command.update["route_history"][0]["next"] == "finalizer"
 
@@ -174,6 +177,7 @@ async def test_head_supervisor_uses_task_plan_stage_progression():
 
     assert command.goto == "writing_team"
     assert command.update["active_team"] == "writing"
+    assert command.update["response_mode"] == "delegated"
 
 
 @pytest.mark.asyncio
@@ -201,6 +205,7 @@ async def test_head_supervisor_robust_task_plan_regex():
     # Should match [ Research Team ] and normalize it to research_team
     assert command.goto == "research_team"
     assert command.update["active_team"] == "research"
+    assert command.update["response_mode"] == "delegated"
 
 
 @pytest.mark.asyncio
@@ -242,6 +247,7 @@ async def test_head_supervisor_clears_content_on_finish_override():
 
     # All planned stages are complete -> should override to FINISH (then finalizer)
     assert command.goto == "finalizer"
+    assert command.update["response_mode"] == "finalizer"
     # Content should be cleared! In supervisor.py, update_data['messages'] is only set if content is truthy.
     assert "messages" not in command.update or not command.update["messages"]
 

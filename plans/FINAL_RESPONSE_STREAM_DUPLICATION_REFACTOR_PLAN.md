@@ -1,5 +1,5 @@
 작성일시: 2026-03-24 09:49 KST
-최종 수정일시: 2026-03-24 10:01 KST
+최종 수정일시: 2026-03-24 10:20 KST
 
 # Final Response Stream Duplication Refactor Plan
 
@@ -120,46 +120,46 @@
 
 ### Phase 2. `/api/chat` 스트림 수집기 리팩토링
 
-- [ ] `final_answer_chunks` 직접 append 구조를 run-aware buffered collector 구조로 변경한다.
-- [ ] `run_id`, `node`, `route_decision`, `owner_status`, `buffered_text`를 묶어 관리하는 내부 구조를 도입한다.
-- [ ] `head_supervisor` stream은 `on_chain_end` 전까지 보류하도록 바꾼다.
-- [ ] `head_supervisor`가 direct terminal answer로 확정된 경우에만 buffer를 사용자에게 flush하도록 바꾼다.
-- [ ] `head_supervisor`가 `writing_team` 또는 `finalizer`로 reroute된 경우 buffer를 폐기하도록 바꾼다.
-- [ ] `finalizer` stream은 canonical owner로 채택하고, 같은 turn의 다른 owner 후보를 무효화하도록 바꾼다.
-- [ ] `direct_messages` fallback이 이미 flush된 owner와 중복 방출하지 않도록 조정한다.
-- [ ] `fallback_answer = _extract_final_message_from_state(...)` 경로가 앞선 stream flush와 중복되지 않도록 invariant를 세운다.
+- [x] `final_answer_chunks` 직접 append 구조를 run-aware buffered collector 구조로 변경한다.
+- [x] `run_id`, `node`, `route_decision`, `owner_status`, `buffered_text`를 묶어 관리하는 내부 구조를 도입한다.
+- [x] `head_supervisor` stream은 `on_chain_end` 전까지 보류하도록 바꾼다.
+- [x] `head_supervisor`가 direct terminal answer로 확정된 경우에만 buffer를 사용자에게 flush하도록 바꾼다.
+- [x] `head_supervisor`가 `writing_team` 또는 `finalizer`로 reroute된 경우 buffer를 폐기하도록 바꾼다.
+- [x] `finalizer` stream은 canonical owner로 채택하고, 같은 turn의 다른 owner 후보를 무효화하도록 바꾼다.
+- [x] `direct_messages` fallback이 이미 flush된 owner와 중복 방출하지 않도록 조정한다.
+- [x] `fallback_answer = _extract_final_message_from_state(...)` 경로가 앞선 stream flush와 중복되지 않도록 invariant를 세운다.
 
 ### Phase 3. `/api/chat/resume` 동일 계약 반영
 
-- [ ] `/api/chat`와 `/api/chat/resume`가 같은 stream collector 규칙을 공유하도록 공통화한다.
-- [ ] resume 경로에서도 `head_supervisor` speculative text가 누적되지 않음을 보장한다.
-- [ ] resume 경로의 `checkpoint` 복원 이후 direct/finalizer owner 판정이 동일하게 작동하는지 확인한다.
+- [x] `/api/chat`와 `/api/chat/resume`가 같은 stream collector 규칙을 공유하도록 공통화한다.
+- [x] resume 경로에서도 `head_supervisor` speculative text가 누적되지 않음을 보장한다.
+- [x] resume 경로의 `checkpoint` 복원 이후 direct/finalizer owner 판정이 동일하게 작동하는지 확인한다.
 
 ### Phase 4. `head_supervisor` 계약 보강
 
-- [ ] `supervisor.py`에서 plan override와 finalizer reroute가 필요한 경우 `content`를 더 이른 시점에 비우거나 무효화할 수 있는지 검토한다.
-- [ ] 현재처럼 LLM 응답을 받은 뒤에만 override하는 구조가 unavoidable하다면, backend collector가 이를 흡수하도록 명시한다.
-- [ ] 가능하면 `Command.update`에 direct answer 여부를 명시하는 내부 flag를 추가하는 방안을 검토한다.
-- [ ] `head_supervisor`의 `Response content:` 로그가 실제로 사용자에게 노출된 텍스트와 1:1 대응하도록 정리한다.
+- [x] `supervisor.py`에서 plan override와 finalizer reroute가 필요한 경우 `content`를 더 이른 시점에 비우거나 무효화할 수 있는지 검토한다.
+- [x] 현재처럼 LLM 응답을 받은 뒤에만 override하는 구조가 unavoidable하다면, backend collector가 이를 흡수하도록 명시한다.
+- [x] 가능하면 `Command.update`에 direct answer 여부를 명시하는 내부 flag를 추가하는 방안을 검토한다.
+- [x] `head_supervisor`의 `Response content:` 로그가 실제로 사용자에게 노출된 텍스트와 1:1 대응하도록 정리한다.
 
 ### Phase 5. persistence와 trace summary 정합성 보강
 
-- [ ] DB 저장용 `final_answer`는 selected owner의 canonical text만 사용하도록 보장한다.
-- [ ] `text_summary` trace도 canonical final answer 1개만 남기도록 보장한다.
-- [ ] final checkpoint state의 마지막 `assistant` message와 DB persisted content가 일치하는지 검증 경로를 만든다.
-- [ ] owner가 폐기된 speculative text를 debug log로 남길지, 아니면 완전히 무시할지 정책을 확정한다.
+- [x] DB 저장용 `final_answer`는 selected owner의 canonical text만 사용하도록 보장한다.
+- [x] `text_summary` trace도 canonical final answer 1개만 남기도록 보장한다.
+- [x] final checkpoint state의 마지막 `assistant` message와 DB persisted content가 일치하는지 검증 경로를 만든다.
+- [x] owner가 폐기된 speculative text를 debug log로 남길지, 아니면 완전히 무시할지 정책을 확정한다.
 
 ### Phase 6. 백엔드 테스트 보강
 
-- [ ] `apps/backend/tests/test_api.py`에 direct answer 회귀 테스트를 추가한다.
-- [ ] 단순 greeting/direct answer는 `head_supervisor` text가 1회만 방출되는지 검증한다.
-- [ ] plan 기반 질의에서 `head_supervisor`가 intermediate text를 생성해도 최종 응답 채널에는 노출되지 않는지 검증한다.
-- [ ] `research -> writing -> finalizer` 경로에서 최종 응답이 1회만 방출되는지 검증한다.
-- [ ] `head_supervisor` 2회 + `finalizer` 1회 상황을 mock으로 재현해도 최종 누적 결과는 1개 답변만 남는지 검증한다.
-- [ ] persisted `chat_messages.content`가 final checkpoint `assistant` content와 일치하는지 검증한다.
-- [ ] `text_summary` trace가 1개만 생성되는지 검증한다.
-- [ ] `/api/chat/resume`에도 동일한 테스트를 추가한다.
-- [ ] `apps/backend/tests/test_rope_validation.py`를 실제 버그 재현 방어용으로 강화한다.
+- [x] `apps/backend/tests/test_api.py`에 direct answer 회귀 테스트를 추가한다.
+- [x] 단순 greeting/direct answer는 `head_supervisor` text가 1회만 방출되는지 검증한다.
+- [x] plan 기반 질의에서 `head_supervisor`가 intermediate text를 생성해도 최종 응답 채널에는 노출되지 않는지 검증한다.
+- [x] `research -> writing -> finalizer` 경로에서 최종 응답이 1회만 방출되는지 검증한다.
+- [x] `head_supervisor` 2회 + `finalizer` 1회 상황을 mock으로 재현해도 최종 누적 결과는 1개 답변만 남는지 검증한다.
+- [x] persisted `chat_messages.content`가 final checkpoint `assistant` content와 일치하는지 검증한다.
+- [x] `text_summary` trace가 1개만 생성되는지 검증한다.
+- [x] `/api/chat/resume`에도 동일한 테스트를 추가한다.
+- [x] `apps/backend/tests/test_rope_validation.py`를 실제 버그 재현 방어용으로 강화한다.
 
 ### Phase 7. Playwright MCP 실브라우저 최종 검증
 
@@ -178,11 +178,11 @@
 
 ### 자동 검증 체크리스트
 
-- [ ] 관련 `pytest` 타깃을 실행한다.
-- [ ] direct answer 회귀가 없음을 확인한다.
-- [ ] delegated/finalizer 회귀가 없음을 확인한다.
-- [ ] DB persist와 checkpoint state 정합성이 보장되는지 확인한다.
-- [ ] resume 경로 회귀가 없음을 확인한다.
+- [x] 관련 `pytest` 타깃을 실행한다.
+- [x] direct answer 회귀가 없음을 확인한다.
+- [x] delegated/finalizer 회귀가 없음을 확인한다.
+- [x] DB persist와 checkpoint state 정합성이 보장되는지 확인한다.
+- [x] resume 경로 회귀가 없음을 확인한다.
 
 ### 실브라우저 검증 체크리스트
 

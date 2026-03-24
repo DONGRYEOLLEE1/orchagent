@@ -246,7 +246,13 @@ async def test_rope_algorithm_query_simulation(monkeypatch):
             "B", (), {"compile": lambda self, checkpointer: MockRopeGraph()}
         )(),
     )
-    monkeypatch.setattr(TraceService, "create_events", AsyncMock())
+    persisted_batches = []
+
+    async def mock_create_events(*args, **kwargs):
+        persisted_batches.append(args[1])
+        return args[1]
+
+    monkeypatch.setattr(TraceService, "create_events", mock_create_events)
     monkeypatch.setattr(LoggingService, "log_message", AsyncMock())
 
     # Execution
@@ -282,7 +288,14 @@ async def test_rope_algorithm_query_simulation(monkeypatch):
     final_text = "".join(te["content"] for te in text_events)
     assert "RoPE" in final_text
     assert "Rotary Positional Embedding" in final_text
+    assert final_text == "RoPE (Rotary Positional Embedding) is a method..."
 
     # 4. Check completion status
     status_events = [p for p in payloads if p["event_type"] == "status"]
     assert any(s["status"] == "completed" for s in status_events)
+
+    text_summaries = [
+        event for event in persisted_batches[0] if event.event_type == "text_summary"
+    ]
+    assert len(text_summaries) == 1
+    assert text_summaries[0].payload["content"] == final_text

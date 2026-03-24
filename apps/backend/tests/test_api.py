@@ -20,6 +20,19 @@ def _sse_payloads(response):
     return payloads
 
 
+class StructuredChunk:
+    def __init__(self, content, additional_kwargs=None):
+        self.content = content
+        self.additional_kwargs = additional_kwargs or {}
+
+
+class StructuredMessage:
+    def __init__(self, content, name="assistant", type="ai"):
+        self.content = content
+        self.name = name
+        self.type = type
+
+
 def test_health_check():
     """Health check endpoint should return 200 OK."""
     response = client.get("/api/health")
@@ -571,6 +584,202 @@ def test_chat_stream_suppresses_worker_text_from_final_answer_channel(monkeypatc
     assert "".join(text_payloads) == "final answer"
 
 
+def test_chat_stream_discards_speculative_supervisor_text_before_finalizer(monkeypatch):
+    class MockTuple:
+        tasks = ["dummy_task"]
+
+    class MockSaver:
+        async def setup(self):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def aget_tuple(self, config):
+            return MockTuple()
+
+    monkeypatch.setattr(AsyncPostgresSaver, "from_conn_string", lambda x: MockSaver())
+
+    canonical_answer = "final canonical answer"
+
+    class Snapshot:
+        config = {
+            "configurable": {
+                "thread_id": "dup_guard_1",
+                "checkpoint_id": "cp-dup-1",
+                "checkpoint_ns": "",
+            }
+        }
+        values = {
+            "messages": [StructuredMessage(content=canonical_answer, name="assistant")],
+            "route_history": [],
+            "streaming_status": "completed",
+        }
+        next = ()
+        created_at = "2026-03-11T00:00:00+00:00"
+
+    class MockGraph:
+        async def astream_events(self, *args, **kwargs):
+            for text in [
+                '{"reasoning":"research complete","next":"FINISH","content":"first speculative draft"}'
+            ]:
+                yield {
+                    "event": "on_chat_model_stream",
+                    "name": "ChatOpenAI",
+                    "metadata": {"langgraph_node": "head_supervisor"},
+                    "data": {"chunk": StructuredChunk(content=text)},
+                    "run_id": "head-run-1",
+                }
+            yield {
+                "event": "on_chain_end",
+                "name": "head_supervisor",
+                "data": {
+                    "output": Command(
+                        update={
+                            "active_team": "writing",
+                            "active_worker": None,
+                            "streaming_status": "running",
+                            "route_history": [
+                                build_route_entry(
+                                    layer="head",
+                                    node="head_supervisor",
+                                    next_node="writing_team",
+                                    team="writing",
+                                    status="running",
+                                )
+                            ],
+                        },
+                        goto="writing_team",
+                    )
+                },
+            }
+            for text in [
+                '{"reasoning":"writing complete","next":"FINISH","content":"second speculative draft"}'
+            ]:
+                yield {
+                    "event": "on_chat_model_stream",
+                    "name": "ChatOpenAI",
+                    "metadata": {"langgraph_node": "head_supervisor"},
+                    "data": {"chunk": StructuredChunk(content=text)},
+                    "run_id": "head-run-2",
+                }
+            yield {
+                "event": "on_chain_end",
+                "name": "head_supervisor",
+                "data": {
+                    "output": Command(
+                        update={
+                            "active_team": None,
+                            "active_worker": None,
+                            "response_mode": "finalizer",
+                            "streaming_status": "running",
+                            "route_history": [
+                                build_route_entry(
+                                    layer="head",
+                                    node="head_supervisor",
+                                    next_node="finalizer",
+                                    status="running",
+                                )
+                            ],
+                        },
+                        goto="finalizer",
+                    )
+                },
+            }
+            final_json = f'{{"content":"{canonical_answer}"}}'
+            for i in range(0, len(final_json), 6):
+                yield {
+                    "event": "on_chat_model_stream",
+                    "name": "ChatOpenAI",
+                    "metadata": {"langgraph_node": "finalizer"},
+                    "data": {"chunk": StructuredChunk(content=final_json[i : i + 6])},
+                    "run_id": "finalizer-run-1",
+                }
+            yield {
+                "event": "on_chain_end",
+                "name": "finalizer",
+                "data": {
+                    "output": Command(
+                        update={
+                            "streaming_status": "completed",
+                            "messages": [
+                                StructuredMessage(content=canonical_answer, name="assistant")
+                            ],
+                            "route_history": [
+                                build_route_entry(
+                                    layer="head",
+                                    node="finalizer",
+                                    next_node="FINISH",
+                                    status="completed",
+                                )
+                            ],
+                        },
+                        goto="__end__",
+                    )
+                },
+            }
+
+        async def aget_state(self, config, subgraphs=False):
+            return Snapshot()
+
+    monkeypatch.setattr(
+        "api.routes.chat.get_orchagent_graph",
+        lambda: type("B", (), {"compile": lambda self, checkpointer: MockGraph()})(),
+    )
+
+    persisted_batches = []
+    persisted_logs = []
+
+    async def mock_create_events(*args, **kwargs):
+        persisted_batches.append(args[1])
+        return args[1]
+
+    async def mock_log_message(*args, **kwargs):
+        persisted_logs.append(
+            {
+                "thread_id": args[1],
+                "role": kwargs.get("role", args[2] if len(args) > 2 else None),
+                "content": kwargs.get("content", args[3] if len(args) > 3 else None),
+            }
+        )
+
+    monkeypatch.setattr(TraceService, "create_events", mock_create_events)
+
+    from services.logging_service import LoggingService
+
+    monkeypatch.setattr(LoggingService, "log_message", mock_log_message)
+
+    with client.stream(
+        "POST", "/api/chat", json={"message": "hello", "thread_id": "dup_guard_1"}
+    ) as response:
+        payloads = _sse_payloads(response)
+
+    text_payloads = [
+        payload["content"] for payload in payloads if payload["event_type"] == "text"
+    ]
+    final_text = "".join(text_payloads)
+
+    assert response.status_code == 200
+    assert "first speculative draft" not in final_text
+    assert "second speculative draft" not in final_text
+    assert final_text == canonical_answer
+
+    assistant_logs = [entry for entry in persisted_logs if entry["role"] == "assistant"]
+    assert len(assistant_logs) == 1
+    assert assistant_logs[0]["content"] == canonical_answer
+
+    text_summaries = [
+        event
+        for event in persisted_batches[0]
+        if event.event_type == "text_summary"
+    ]
+    assert len(text_summaries) == 1
+    assert text_summaries[0].payload["content"] == canonical_answer
+
+
 def test_chat_stream_resume_same_thread_id_restores_checkpoint_state(monkeypatch):
     class MockTuple:
         tasks = ["dummy_task"]
@@ -675,6 +884,161 @@ def test_chat_stream_resume_same_thread_id_restores_checkpoint_state(monkeypatch
     assert second_checkpoint["thread_id"] == "resume_1"
     assert first_checkpoint["checkpoint_id"] != second_checkpoint["checkpoint_id"]
     assert second_checkpoint["message_count"] > first_checkpoint["message_count"]
+
+
+def test_chat_resume_discards_speculative_supervisor_text_before_finalizer(monkeypatch):
+    class MockTuple:
+        tasks = ["dummy_task"]
+
+    class MockSaver:
+        async def setup(self):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def aget_tuple(self, config):
+            return MockTuple()
+
+    monkeypatch.setattr(AsyncPostgresSaver, "from_conn_string", lambda x: MockSaver())
+
+    canonical_answer = "resume canonical answer"
+
+    class Snapshot:
+        config = {
+            "configurable": {
+                "thread_id": "resume_dup_1",
+                "checkpoint_id": "cp-resume-1",
+                "checkpoint_ns": "",
+            }
+        }
+        values = {
+            "messages": [StructuredMessage(content=canonical_answer, name="assistant")],
+            "route_history": [],
+            "streaming_status": "completed",
+        }
+        next = ()
+        created_at = "2026-03-11T00:00:00+00:00"
+
+    class ResumeGraph:
+        async def astream_events(self, *args, **kwargs):
+            yield {
+                "event": "on_chat_model_stream",
+                "name": "ChatOpenAI",
+                "metadata": {"langgraph_node": "head_supervisor"},
+                "data": {
+                    "chunk": StructuredChunk(
+                        content='{"reasoning":"resume","next":"FINISH","content":"resume speculative draft"}'
+                    )
+                },
+                "run_id": "resume-head-run",
+            }
+            yield {
+                "event": "on_chain_end",
+                "name": "head_supervisor",
+                "data": {
+                    "output": Command(
+                        update={
+                            "active_team": None,
+                            "active_worker": None,
+                            "response_mode": "finalizer",
+                            "streaming_status": "running",
+                            "route_history": [
+                                build_route_entry(
+                                    layer="head",
+                                    node="head_supervisor",
+                                    next_node="finalizer",
+                                    status="running",
+                                )
+                            ],
+                        },
+                        goto="finalizer",
+                    )
+                },
+            }
+            final_json = f'{{"content":"{canonical_answer}"}}'
+            for i in range(0, len(final_json), 5):
+                yield {
+                    "event": "on_chat_model_stream",
+                    "name": "ChatOpenAI",
+                    "metadata": {"langgraph_node": "finalizer"},
+                    "data": {"chunk": StructuredChunk(content=final_json[i : i + 5])},
+                    "run_id": "resume-finalizer-run",
+                }
+            yield {
+                "event": "on_chain_end",
+                "name": "finalizer",
+                "data": {
+                    "output": Command(
+                        update={
+                            "streaming_status": "completed",
+                            "messages": [
+                                StructuredMessage(content=canonical_answer, name="assistant")
+                            ],
+                            "route_history": [
+                                build_route_entry(
+                                    layer="head",
+                                    node="finalizer",
+                                    next_node="FINISH",
+                                    status="completed",
+                                )
+                            ],
+                        },
+                        goto="__end__",
+                    )
+                },
+            }
+
+        async def aget_state(self, config, subgraphs=False):
+            return Snapshot()
+
+    monkeypatch.setattr(
+        "api.routes.chat.get_orchagent_graph",
+        lambda: type("B", (), {"compile": lambda self, checkpointer: ResumeGraph()})(),
+    )
+
+    persisted_logs = []
+
+    async def mock_create_events(*args, **kwargs):
+        return args[1]
+
+    async def mock_log_message(*args, **kwargs):
+        persisted_logs.append(
+            {
+                "thread_id": args[1],
+                "role": kwargs.get("role", args[2] if len(args) > 2 else None),
+                "content": kwargs.get("content", args[3] if len(args) > 3 else None),
+            }
+        )
+
+    monkeypatch.setattr(TraceService, "create_events", mock_create_events)
+
+    from services.logging_service import LoggingService
+
+    monkeypatch.setattr(LoggingService, "log_message", mock_log_message)
+
+    with client.stream(
+        "POST",
+        "/api/chat/resume",
+        json={"action": "approve", "thread_id": "resume_dup_1", "feedback": "ok"},
+    ) as response:
+        payloads = _sse_payloads(response)
+
+    text_payloads = [
+        payload["content"] for payload in payloads if payload["event_type"] == "text"
+    ]
+    final_text = "".join(text_payloads)
+
+    assert response.status_code == 200
+    assert "resume speculative draft" not in final_text
+    assert final_text == canonical_answer
+
+    assistant_logs = [entry for entry in persisted_logs if entry["role"] == "assistant"]
+    assert len(assistant_logs) == 1
+    assert assistant_logs[0]["content"] == canonical_answer
 
 
 def test_chat_stream_interrupt_and_resume(monkeypatch):

@@ -8,6 +8,7 @@ from langgraph.graph import END
 
 from agent_core.state import (
     BaseAgentState,
+    ResponseMode,
     build_route_entry,
     normalize_team_name,
 )
@@ -251,11 +252,7 @@ def make_supervisor_node(
             or heuristic_requires_approval
         )
 
-        print(f"[Supervisor] Routing decision: {goto}", flush=True)
-        if reasoning:
-            print(f"[Supervisor] Reasoning: {reasoning}", flush=True)
-        if content:
-            print(f"[Supervisor] Response content: {content[:50]}...", flush=True)
+        discarded_content = ""
         if (state_requires_approval or heuristic_requires_approval) and not llm_requires_approval:
             print(
                 "[Supervisor] Heuristic approval guard forced interrupt for a risky user request.",
@@ -332,6 +329,8 @@ def make_supervisor_node(
                         f"[Supervisor] Overriding head route {next_node} -> {next_planned_stage} based on task plan progress.",
                         flush=True,
                     )
+                if content:
+                    discarded_content = content
                 next_node = next_planned_stage
                 content = ""
             else:
@@ -340,6 +339,8 @@ def make_supervisor_node(
                         f"[Supervisor] Overriding head route {next_node} -> FINISH because all planned stages are complete.",
                         flush=True,
                     )
+                if content:
+                    discarded_content = content
                 next_node = "FINISH"
                 content = ""  # Explicitly clear content when plan is complete to avoid mixing with finalizer
 
@@ -362,11 +363,33 @@ def make_supervisor_node(
 
         if should_use_finalizer:
             goto = final_node_name
+            if content:
+                discarded_content = content
             content = ""
         elif next_node == "FINISH":
             goto = END
         else:
             goto = next_node
+
+        response_mode: ResponseMode | None = None
+        if layer == "head":
+            if should_use_finalizer:
+                response_mode = "finalizer"
+            elif next_node == "FINISH":
+                response_mode = "direct"
+            else:
+                response_mode = "delegated"
+
+        print(f"[Supervisor] Routing decision: {goto}", flush=True)
+        if reasoning:
+            print(f"[Supervisor] Reasoning: {reasoning}", flush=True)
+        if content and response_mode == "direct":
+            print(f"[Supervisor] Response content: {content[:50]}...", flush=True)
+        elif discarded_content:
+            print(
+                "[Supervisor] Discarded speculative response content after route override.",
+                flush=True,
+            )
 
         update_data = {"next": goto}
 
@@ -386,6 +409,7 @@ def make_supervisor_node(
                 {
                     "active_team": next_team,
                     "active_worker": None,
+                    "response_mode": response_mode,
                     "streaming_status": status,
                     "route_history": [
                         build_route_entry(
