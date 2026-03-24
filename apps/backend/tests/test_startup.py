@@ -95,9 +95,13 @@ async def test_initialize_runtime_dependencies_once_bootstraps_admin(monkeypatch
             return DummySession()
 
     bootstrap_calls = []
+    pricing_calls = []
 
     async def fake_bootstrap_admin(db):
         bootstrap_calls.append(db)
+
+    async def fake_ensure_pricing(db):
+        pricing_calls.append(db)
 
     monkeypatch.setattr("main.engine", DummyEngine())
     monkeypatch.setattr(
@@ -110,9 +114,11 @@ async def test_initialize_runtime_dependencies_once_bootstraps_admin(monkeypatch
     )
     monkeypatch.setattr("main.AsyncSessionLocal", DummySessionFactory())
     monkeypatch.setattr("main.ensure_bootstrap_admin", fake_bootstrap_admin)
+    monkeypatch.setattr("main.LLMPricingService.ensure_default_pricing_snapshots", fake_ensure_pricing)
 
     await _initialize_runtime_dependencies_once()
 
     assert "create_all" in sync_calls
     assert "checkpointer.setup" in sync_calls
     assert len(bootstrap_calls) == 1
+    assert len(pricing_calls) == 1

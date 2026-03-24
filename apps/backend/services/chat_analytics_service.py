@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 import uuid
 from uuid import UUID
 
@@ -225,7 +225,7 @@ class ChatAnalyticsService:
             total_cost_microusd=params.total_cost_microusd,
             cost_is_estimated=params.cost_is_estimated,
             reasoning_cost_is_estimated=params.reasoning_cost_is_estimated,
-            created_at=params.created_at or datetime.utcnow(),
+            created_at=params.created_at or datetime.now(UTC),
         )
         db.add(usage_event)
         await db.commit()

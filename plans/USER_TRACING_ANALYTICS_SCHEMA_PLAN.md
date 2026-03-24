@@ -502,14 +502,14 @@ historical cost 안정성을 위한 가격 스냅샷 테이블.
 
 ## Phase 5. Cost snapshot 계산
 
-- [ ] pricing snapshot 저장 구조 구현
-- [ ] usage write 시 cost 계산
-- [ ] exact vs estimated reasoning cost 정책 구현
+- [x] pricing snapshot 저장 구조 구현
+- [x] usage write 시 cost 계산
+- [x] exact vs estimated reasoning cost 정책 구현
 
 검증:
 
-- [ ] pricing snapshot lookup test
-- [ ] cost math test
+- [x] pricing snapshot lookup test
+- [x] cost math test
 
 ## Phase 6. Dashboard query 계층
 

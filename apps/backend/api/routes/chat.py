@@ -33,6 +33,7 @@ from services.chat_analytics_service import (
     ToolExecutionFinishParams,
     ToolExecutionStartParams,
 )
+from services.llm_pricing_service import LLMPricingService
 from services.logging_service import LoggingService
 from services.file_logger import JsonLogger
 from services.storage_service import StorageService
@@ -722,7 +723,14 @@ async def _create_usage_event_with_fresh_session(
     params: LLMUsageWriteParams,
 ) -> None:
     async with AsyncSessionLocal() as db:
-        await ChatAnalyticsService.create_usage_event(db, params)
+        snapshot = await LLMPricingService.resolve_pricing_snapshot(
+            db,
+            provider=params.provider,
+            model=params.model,
+            at=params.created_at or datetime.now(UTC),
+        )
+        priced_params = LLMPricingService.apply_snapshot_to_usage(params, snapshot)
+        await ChatAnalyticsService.create_usage_event(db, priced_params)
 
 
 async def _create_tool_execution_with_fresh_session(
