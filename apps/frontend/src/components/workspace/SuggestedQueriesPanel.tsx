@@ -42,7 +42,7 @@ export function SuggestedQueriesPanel({
               key={query}
               type="button"
               onClick={() => onSelectQuery?.(query)}
-              className="rounded-[10px] border border-[rgba(255,255,255,0.04)] bg-[rgba(35,38,46,0.52)] px-3 py-2.5 text-left text-[11px] leading-5 text-[rgba(231,231,240,0.86)] transition hover:border-[rgba(143,245,255,0.22)] hover:bg-[rgba(35,38,46,0.66)] hover:text-[#e7e7f0]"
+              className="rounded-[10px] border border-[rgba(255,255,255,0.04)] bg-[rgba(35,38,46,0.52)] px-3 py-2.5 text-left text-[10px] leading-4 text-[rgba(231,231,240,0.86)] transition hover:border-[rgba(143,245,255,0.22)] hover:bg-[rgba(35,38,46,0.66)] hover:text-[#e7e7f0]"
             >
               {query}
             </button>
