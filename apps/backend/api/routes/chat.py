@@ -29,6 +29,9 @@ from services.chat_analytics_service import (
     ChatAnalyticsService,
     ChatTurnFinalizeParams,
     ChatTurnStartParams,
+    LLMUsageWriteParams,
+    ToolExecutionFinishParams,
+    ToolExecutionStartParams,
 )
 from services.logging_service import LoggingService
 from services.file_logger import JsonLogger
@@ -251,6 +254,104 @@ def _extract_reasoning_chunk(chunk: Any) -> str:
             return "".join(collected)
 
     return ""
+
+
+def _extract_usage_payload(output: Any) -> tuple[dict[str, Any] | None, Any]:
+    candidate = output
+    if isinstance(candidate, dict):
+        if isinstance(candidate.get("output"), list) and candidate["output"]:
+            candidate = candidate["output"][-1]
+        else:
+            candidate = candidate.get("output") or candidate.get("response") or candidate
+    elif isinstance(candidate, list) and candidate:
+        candidate = candidate[-1]
+
+    usage_metadata = getattr(candidate, "usage_metadata", None)
+    if usage_metadata is None and isinstance(candidate, dict):
+        usage_metadata = candidate.get("usage_metadata")
+
+    if usage_metadata is None:
+        return None, candidate
+
+    return _serialize_value(usage_metadata), candidate
+
+
+def _extract_model_name(event: dict[str, Any], message_like: Any) -> str:
+    metadata = event.get("metadata") or {}
+    if isinstance(metadata.get("ls_model_name"), str):
+        return metadata["ls_model_name"]
+    if isinstance(metadata.get("model_name"), str):
+        return metadata["model_name"]
+
+    response_metadata = getattr(message_like, "response_metadata", None)
+    if isinstance(response_metadata, dict):
+        model_name = response_metadata.get("model_name") or response_metadata.get("model")
+        if isinstance(model_name, str) and model_name:
+            return model_name
+
+    if isinstance(message_like, dict):
+        response_metadata = message_like.get("response_metadata") or {}
+        model_name = response_metadata.get("model_name") or response_metadata.get("model")
+        if isinstance(model_name, str) and model_name:
+            return model_name
+
+    return DEFAULT_LLM_MODEL
+
+
+def _build_usage_write_params(
+    *,
+    event: dict[str, Any],
+    user_id: str,
+    thread_id: str,
+    turn_id: UUID,
+    trace_id: str | None,
+) -> LLMUsageWriteParams | None:
+    usage_metadata, message_like = _extract_usage_payload(event.get("data", {}).get("output"))
+    if not usage_metadata:
+        return None
+
+    input_tokens = int(usage_metadata.get("input_tokens") or 0)
+    output_tokens = int(usage_metadata.get("output_tokens") or 0)
+    total_tokens = int(usage_metadata.get("total_tokens") or (input_tokens + output_tokens))
+    input_details = usage_metadata.get("input_token_details") or {}
+    output_details = usage_metadata.get("output_token_details") or {}
+    cache_read_input_tokens = int(
+        input_details.get("cache_read") or input_details.get("cached_tokens") or 0
+    )
+    cache_write_input_tokens = int(
+        input_details.get("cache_write")
+        or input_details.get("cache_creation")
+        or 0
+    )
+    reasoning_output_tokens = int(
+        output_details.get("reasoning") or output_details.get("reasoning_tokens") or 0
+    )
+    text_output_tokens = max(output_tokens - reasoning_output_tokens, 0)
+    run_id = event.get("run_id")
+    node_name = _event_node_name(event)
+
+    return LLMUsageWriteParams(
+        user_id=user_id,
+        thread_id=thread_id,
+        turn_id=turn_id,
+        run_id=run_id,
+        trace_id=trace_id,
+        span_id=run_id,
+        parent_span_id=None,
+        node_name=node_name,
+        provider="openai",
+        model=_extract_model_name(event, message_like),
+        request_role=node_name,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        total_tokens=total_tokens,
+        cache_read_input_tokens=cache_read_input_tokens,
+        cache_write_input_tokens=cache_write_input_tokens,
+        reasoning_output_tokens=reasoning_output_tokens,
+        text_output_tokens=text_output_tokens,
+        usage_metadata=usage_metadata,
+        created_at=datetime.now(UTC),
+    )
 
 
 def _chunk_text(text: str, chunk_size: int = 24) -> list[str]:
@@ -617,6 +718,27 @@ async def _finalize_turn_with_fresh_session(
         await ChatAnalyticsService.finalize_turn(db, params)
 
 
+async def _create_usage_event_with_fresh_session(
+    params: LLMUsageWriteParams,
+) -> None:
+    async with AsyncSessionLocal() as db:
+        await ChatAnalyticsService.create_usage_event(db, params)
+
+
+async def _create_tool_execution_with_fresh_session(
+    params: ToolExecutionStartParams,
+) -> None:
+    async with AsyncSessionLocal() as db:
+        await ChatAnalyticsService.create_tool_execution(db, params)
+
+
+async def _finish_tool_execution_with_fresh_session(
+    params: ToolExecutionFinishParams,
+) -> None:
+    async with AsyncSessionLocal() as db:
+        await ChatAnalyticsService.finish_tool_execution(db, params)
+
+
 async def _ensure_thread_owned_by_user(
     thread_id: str, user_id: str, *, allow_missing: bool
 ) -> None:
@@ -864,8 +986,43 @@ async def chat_stream(
                             yield await emit_text_emission(emission)
                         continue
 
+                    if kind == "on_chat_model_end" and trace_context.turn_id is not None:
+                        usage_params = _build_usage_write_params(
+                            event=event,
+                            user_id=user_id,
+                            thread_id=request.thread_id,
+                            turn_id=trace_context.turn_id,
+                            trace_id=trace_context.trace_id,
+                        )
+                        if usage_params is not None:
+                            await _run_cleanup_task(
+                                "usage event persist",
+                                _create_usage_event_with_fresh_session(usage_params),
+                            )
+                        continue
+
                     if kind == "on_tool_start":
                         tool_call_count += 1
+                        if trace_context.turn_id is not None:
+                            await _run_cleanup_task(
+                                "tool start persist",
+                                _create_tool_execution_with_fresh_session(
+                                    ToolExecutionStartParams(
+                                        user_id=user_id,
+                                        thread_id=request.thread_id,
+                                        turn_id=trace_context.turn_id,
+                                        run_id=run_id,
+                                        trace_id=trace_context.trace_id,
+                                        span_id=run_id,
+                                        parent_span_id=None,
+                                        node_name=name,
+                                        tool_name=name,
+                                        display_name=_display_name(name),
+                                        started_at=datetime.now(UTC),
+                                        input_summary=_serialize_value(data.get("input")),
+                                    )
+                                ),
+                            )
                         yield await emit(
                             {
                                 "event_type": "tool_start",
@@ -880,6 +1037,21 @@ async def chat_stream(
                         continue
 
                     if kind == "on_tool_end":
+                        if trace_context.turn_id is not None:
+                            await _run_cleanup_task(
+                                "tool end persist",
+                                _finish_tool_execution_with_fresh_session(
+                                    ToolExecutionFinishParams(
+                                        thread_id=request.thread_id,
+                                        turn_id=trace_context.turn_id,
+                                        run_id=run_id,
+                                        tool_name=name,
+                                        status="success",
+                                        ended_at=datetime.now(UTC),
+                                        output_summary=_serialize_value(data.get("output")),
+                                    )
+                                ),
+                            )
                         yield await emit(
                             {
                                 "event_type": "tool_end",
@@ -894,6 +1066,21 @@ async def chat_stream(
                         continue
 
                     if kind == "on_tool_error":
+                        if trace_context.turn_id is not None:
+                            await _run_cleanup_task(
+                                "tool error persist",
+                                _finish_tool_execution_with_fresh_session(
+                                    ToolExecutionFinishParams(
+                                        thread_id=request.thread_id,
+                                        turn_id=trace_context.turn_id,
+                                        run_id=run_id,
+                                        tool_name=name,
+                                        status="error",
+                                        ended_at=datetime.now(UTC),
+                                        error_summary=_serialize_value(data.get("error")),
+                                    )
+                                ),
+                            )
                         yield await emit(
                             {
                                 "event_type": "tool_error",
@@ -1308,8 +1495,43 @@ async def chat_resume_stream(
                             yield await emit_text_emission(emission)
                         continue
 
+                    if kind == "on_chat_model_end" and trace_context.turn_id is not None:
+                        usage_params = _build_usage_write_params(
+                            event=event,
+                            user_id=user_id,
+                            thread_id=request.thread_id,
+                            turn_id=trace_context.turn_id,
+                            trace_id=trace_context.trace_id,
+                        )
+                        if usage_params is not None:
+                            await _run_cleanup_task(
+                                "usage event persist",
+                                _create_usage_event_with_fresh_session(usage_params),
+                            )
+                        continue
+
                     if kind == "on_tool_start":
                         tool_call_count += 1
+                        if trace_context.turn_id is not None:
+                            await _run_cleanup_task(
+                                "tool start persist",
+                                _create_tool_execution_with_fresh_session(
+                                    ToolExecutionStartParams(
+                                        user_id=user_id,
+                                        thread_id=request.thread_id,
+                                        turn_id=trace_context.turn_id,
+                                        run_id=run_id,
+                                        trace_id=trace_context.trace_id,
+                                        span_id=run_id,
+                                        parent_span_id=None,
+                                        node_name=name,
+                                        tool_name=name,
+                                        display_name=_display_name(name),
+                                        started_at=datetime.now(UTC),
+                                        input_summary=_serialize_value(data.get("input")),
+                                    )
+                                ),
+                            )
                         yield await emit(
                             {
                                 "event_type": "tool_start",
@@ -1324,6 +1546,21 @@ async def chat_resume_stream(
                         continue
 
                     if kind == "on_tool_end":
+                        if trace_context.turn_id is not None:
+                            await _run_cleanup_task(
+                                "tool end persist",
+                                _finish_tool_execution_with_fresh_session(
+                                    ToolExecutionFinishParams(
+                                        thread_id=request.thread_id,
+                                        turn_id=trace_context.turn_id,
+                                        run_id=run_id,
+                                        tool_name=name,
+                                        status="success",
+                                        ended_at=datetime.now(UTC),
+                                        output_summary=_serialize_value(data.get("output")),
+                                    )
+                                ),
+                            )
                         yield await emit(
                             {
                                 "event_type": "tool_end",
@@ -1338,6 +1575,21 @@ async def chat_resume_stream(
                         continue
 
                     if kind == "on_tool_error":
+                        if trace_context.turn_id is not None:
+                            await _run_cleanup_task(
+                                "tool error persist",
+                                _finish_tool_execution_with_fresh_session(
+                                    ToolExecutionFinishParams(
+                                        thread_id=request.thread_id,
+                                        turn_id=trace_context.turn_id,
+                                        run_id=run_id,
+                                        tool_name=name,
+                                        status="error",
+                                        ended_at=datetime.now(UTC),
+                                        error_summary=_serialize_value(data.get("error")),
+                                    )
+                                ),
+                            )
                         yield await emit(
                             {
                                 "event_type": "tool_error",

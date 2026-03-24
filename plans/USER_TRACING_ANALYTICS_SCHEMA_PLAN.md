@@ -479,16 +479,16 @@ historical cost 안정성을 위한 가격 스냅샷 테이블.
 
 ## Phase 3. Exact usage_metadata 적재
 
-- [ ] `on_chat_model_end` 계측 추가
-- [ ] `usage_metadata` raw JSON 저장
-- [ ] `reasoning_output_tokens`, `cache_read_input_tokens` 정규화 저장
-- [ ] `run_id`, `node_name`, `model`과 연결
-- [ ] `trace/span` 식별자와 usage fact를 연결한다.
+- [x] `on_chat_model_end` 계측 추가
+- [x] `usage_metadata` raw JSON 저장
+- [x] `reasoning_output_tokens`, `cache_read_input_tokens` 정규화 저장
+- [x] `run_id`, `node_name`, `model`과 연결
+- [x] `trace/span` 식별자와 usage fact를 연결한다.
 
 검증:
 
-- [ ] mocked LangChain end event로 usage_metadata 적재 테스트
-- [ ] reasoning token breakdown 저장 테스트
+- [x] mocked LangChain end event로 usage_metadata 적재 테스트
+- [x] reasoning token breakdown 저장 테스트
 
 ## Phase 4. Tool execution 정규화
 
