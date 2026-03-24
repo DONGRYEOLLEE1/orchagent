@@ -25,6 +25,12 @@ export interface ThreadDetail {
   messages: ThreadMessage[];
 }
 
+export interface ThreadTelemetry {
+  thread_id: string;
+  reasoning_summary: string;
+  suggested_queries: string[];
+}
+
 export type ThreadLoadState = 'idle' | 'loading' | 'success' | 'error';
 export type ActiveThreadViewMode = 'draft' | 'live' | 'historical';
 

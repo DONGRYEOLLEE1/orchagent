@@ -1,5 +1,5 @@
 import type { AuthUser } from '@/types/auth';
-import type { ThreadDetail, ThreadSummary } from '@/types/thread';
+import type { ThreadDetail, ThreadSummary, ThreadTelemetry } from '@/types/thread';
 
 const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8002').replace(/\/$/, '');
 const CSRF_COOKIE_NAME = 'orch_csrf';
@@ -128,6 +128,10 @@ export async function fetchThreadDetail(threadId: string): Promise<ThreadDetail>
   return requestJson<ThreadDetail>(`/api/threads/${encodeURIComponent(threadId)}`);
 }
 
+export async function fetchThreadTelemetry(threadId: string): Promise<ThreadTelemetry> {
+  return requestJson<ThreadTelemetry>(`/api/threads/${encodeURIComponent(threadId)}/telemetry`);
+}
+
 export async function patchThread(params: {
   threadId: string;
   title?: string;
@@ -156,6 +160,18 @@ export async function generateAiThreadTitle(params: {
       message: params.message,
     },
   });
+}
+
+export async function generateSuggestedQueries(params: {
+  threadId: string;
+}): Promise<ThreadTelemetry> {
+  return requestJson<ThreadTelemetry>(
+    `/api/threads/${encodeURIComponent(params.threadId)}/suggested-queries`,
+    {
+      method: 'POST',
+      includeCsrf: true,
+    }
+  );
 }
 
 async function requestNoContent(

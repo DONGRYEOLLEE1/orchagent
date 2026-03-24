@@ -31,3 +31,9 @@ class ThreadListResponse(BaseModel):
 class ThreadDetailResponse(BaseModel):
     thread: ThreadSummaryResponse
     messages: list[ThreadMessageResponse]
+
+
+class ThreadTelemetryResponse(BaseModel):
+    thread_id: str
+    reasoning_summary: str = ""
+    suggested_queries: list[str] = []

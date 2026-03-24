@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     RESEARCH_TEAM_MAX_DISPATCHES: int = 5
     WRITING_TEAM_MAX_DISPATCHES: int = 5
     THREAD_TITLE_MODEL: str = "gpt-5-nano"
+    THREAD_SUGGESTIONS_MODEL: str = "gpt-5-nano"
 
     POSTGRES_USER: str = "postgres"
     POSTGRES_PASSWORD: str = "postgres"

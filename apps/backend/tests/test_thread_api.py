@@ -594,3 +594,112 @@ def test_generate_ai_thread_title_skips_existing_threads_after_first_user_turn(m
 
     assert response.status_code == 200
     assert response.json()["title"] == "기존 제목"
+
+
+def test_get_thread_telemetry_returns_reasoning_and_suggestions(monkeypatch):
+    from services.thread_service import ThreadService
+    from services.thread_telemetry_service import ThreadTelemetry, ThreadTelemetryService
+
+    async def mock_get_chat_session(db, thread_id, *, user_id=None):
+        assert thread_id == "thread-telemetry-1"
+        assert user_id == "test-user"
+        return type("Session", (), {"user_id": "test-user"})()
+
+    async def mock_get_thread_telemetry(db, thread_id):
+        assert thread_id == "thread-telemetry-1"
+        return ThreadTelemetry(
+            reasoning_summary="저장된 reasoning",
+            suggested_queries=["후속 질문 1", "후속 질문 2"],
+        )
+
+    app.dependency_overrides[get_db] = _override_get_db
+    monkeypatch.setattr(ThreadService, "get_chat_session", mock_get_chat_session)
+    monkeypatch.setattr(
+        ThreadTelemetryService,
+        "get_thread_telemetry",
+        mock_get_thread_telemetry,
+    )
+    try:
+        response = client.get("/api/threads/thread-telemetry-1/telemetry")
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "thread_id": "thread-telemetry-1",
+        "reasoning_summary": "저장된 reasoning",
+        "suggested_queries": ["후속 질문 1", "후속 질문 2"],
+    }
+
+
+def test_generate_suggested_queries_persists_summary_and_returns_telemetry(monkeypatch):
+    from services.thread_service import ThreadService, ThreadSuggestionContext
+    from services.thread_suggested_query_service import ThreadSuggestedQueryService
+    from services.thread_telemetry_service import ThreadTelemetry, ThreadTelemetryService
+    from services.trace_service import TraceService
+
+    async def mock_get_chat_session(db, thread_id, *, user_id=None):
+        assert thread_id == "thread-suggest-1"
+        assert user_id == "test-user"
+        return type("Session", (), {"user_id": "test-user"})()
+
+    async def mock_get_latest_suggestion_context(db, thread_id):
+        assert thread_id == "thread-suggest-1"
+        return ThreadSuggestionContext(
+            user_content="RoPE 논문 설명해줘",
+            assistant_content="RoPE 논문에 대한 최종 답변",
+        )
+
+    async def mock_generate_suggestions(*, user_message, assistant_message):
+        assert "RoPE" in user_message
+        assert "최종 답변" in assistant_message
+        return ["RoPE와 ALiBi 차이도 비교해줘", "대표 후속 연구 흐름도 정리해줘"]
+
+    async def mock_create_event(db, *, thread_id, event_type, node_name, payload):
+        assert thread_id == "thread-suggest-1"
+        assert event_type == "suggested_queries_summary"
+        assert node_name == "assistant"
+        assert payload["suggested_queries"] == [
+            "RoPE와 ALiBi 차이도 비교해줘",
+            "대표 후속 연구 흐름도 정리해줘",
+        ]
+        return object()
+
+    async def mock_get_thread_telemetry(db, thread_id):
+        assert thread_id == "thread-suggest-1"
+        return ThreadTelemetry(
+            reasoning_summary="reasoning summary",
+            suggested_queries=[
+                "RoPE와 ALiBi 차이도 비교해줘",
+                "대표 후속 연구 흐름도 정리해줘",
+            ],
+        )
+
+    app.dependency_overrides[get_db] = _override_get_db
+    monkeypatch.setattr(ThreadService, "get_chat_session", mock_get_chat_session)
+    monkeypatch.setattr(
+        ThreadService,
+        "get_latest_suggestion_context",
+        mock_get_latest_suggestion_context,
+    )
+    monkeypatch.setattr(
+        ThreadSuggestedQueryService,
+        "generate_suggestions",
+        mock_generate_suggestions,
+    )
+    monkeypatch.setattr(TraceService, "create_event", mock_create_event)
+    monkeypatch.setattr(
+        ThreadTelemetryService,
+        "get_thread_telemetry",
+        mock_get_thread_telemetry,
+    )
+    try:
+        response = client.post("/api/threads/thread-suggest-1/suggested-queries")
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+    assert response.status_code == 200
+    assert response.json()["suggested_queries"] == [
+        "RoPE와 ALiBi 차이도 비교해줘",
+        "대표 후속 연구 흐름도 정리해줘",
+    ]

@@ -42,6 +42,12 @@ class ThreadDetail:
     messages: list[ThreadMessage]
 
 
+@dataclass(slots=True)
+class ThreadSuggestionContext:
+    user_content: str
+    assistant_content: str
+
+
 class ThreadService:
     DEFAULT_LIMIT = 50
     TITLE_MAX_LENGTH = 80
@@ -313,6 +319,49 @@ class ThreadService:
             )
             for row in result.mappings().all()
         ]
+
+    @staticmethod
+    async def get_latest_suggestion_context(
+        db: AsyncSession, thread_id: str
+    ) -> ThreadSuggestionContext | None:
+        assistant_stmt = (
+            select(
+                ChatMessageLog.content.label("content"),
+                ChatMessageLog.created_at.label("created_at"),
+                ChatMessageLog.id.label("id"),
+            )
+            .where(
+                ChatMessageLog.session_id == thread_id,
+                ChatMessageLog.role == "assistant",
+            )
+            .order_by(ChatMessageLog.created_at.desc(), ChatMessageLog.id.desc())
+            .limit(1)
+        )
+        assistant_result = await db.execute(assistant_stmt)
+        assistant_row = assistant_result.mappings().first()
+        if assistant_row is None:
+            return None
+
+        user_stmt = (
+            select(ChatMessageLog.content.label("content"))
+            .where(
+                ChatMessageLog.session_id == thread_id,
+                ChatMessageLog.role == "user",
+                ChatMessageLog.created_at <= assistant_row["created_at"],
+                ~ChatMessageLog.content.like("[User Action]:%"),
+            )
+            .order_by(ChatMessageLog.created_at.desc(), ChatMessageLog.id.desc())
+            .limit(1)
+        )
+        user_result = await db.execute(user_stmt)
+        user_row = user_result.mappings().first()
+        if user_row is None:
+            return None
+
+        return ThreadSuggestionContext(
+            user_content=user_row["content"],
+            assistant_content=assistant_row["content"],
+        )
 
     @staticmethod
     async def get_thread_message_role_counts(

@@ -10,11 +10,15 @@ from schemas.thread import (
     ThreadListResponse,
     ThreadMessageResponse,
     ThreadSummaryResponse,
+    ThreadTelemetryResponse,
 )
 from services.logging_service import LoggingService
 from services.thread_profile_service import ThreadProfileService
+from services.thread_suggested_query_service import ThreadSuggestedQueryService
 from services.thread_service import ThreadService
+from services.thread_telemetry_service import ThreadTelemetryService
 from services.thread_title_service import ThreadTitleService
+from services.trace_service import TraceService
 
 router = APIRouter()
 
@@ -52,6 +56,26 @@ async def get_thread(
             ThreadMessageResponse.model_validate(message, from_attributes=True)
             for message in detail.messages
         ],
+    )
+
+
+@router.get("/threads/{thread_id}/telemetry", response_model=ThreadTelemetryResponse)
+async def get_thread_telemetry(
+    thread_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    session = await ThreadService.get_chat_session(
+        db, thread_id, user_id=current_user.id
+    )
+    if session is None:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    telemetry = await ThreadTelemetryService.get_thread_telemetry(db, thread_id)
+    return ThreadTelemetryResponse(
+        thread_id=thread_id,
+        reasoning_summary=telemetry.reasoning_summary,
+        suggested_queries=telemetry.suggested_queries,
     )
 
 
@@ -125,6 +149,48 @@ async def generate_ai_thread_title(
     if summary is None:
         raise HTTPException(status_code=404, detail="Thread not found")
     return ThreadSummaryResponse.model_validate(summary, from_attributes=True)
+
+
+@router.post(
+    "/threads/{thread_id}/suggested-queries", response_model=ThreadTelemetryResponse
+)
+async def generate_suggested_queries(
+    thread_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+    _: None = Depends(require_csrf),
+):
+    session = await ThreadService.get_chat_session(
+        db, thread_id, user_id=current_user.id
+    )
+    if session is None:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    context = await ThreadService.get_latest_suggestion_context(db, thread_id)
+    if context is not None:
+        suggestions = await ThreadSuggestedQueryService.generate_suggestions(
+            user_message=context.user_content,
+            assistant_message=context.assistant_content,
+        )
+        if suggestions:
+            await TraceService.create_event(
+                db,
+                thread_id=thread_id,
+                event_type="suggested_queries_summary",
+                node_name="assistant",
+                payload={
+                    "event_type": "suggested_queries_summary",
+                    "node": "assistant",
+                    "suggested_queries": suggestions,
+                },
+            )
+
+    telemetry = await ThreadTelemetryService.get_thread_telemetry(db, thread_id)
+    return ThreadTelemetryResponse(
+        thread_id=thread_id,
+        reasoning_summary=telemetry.reasoning_summary,
+        suggested_queries=telemetry.suggested_queries,
+    )
 
 
 @router.delete("/threads/{thread_id}", status_code=status.HTTP_204_NO_CONTENT)

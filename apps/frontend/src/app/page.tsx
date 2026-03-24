@@ -13,7 +13,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { changePasswordUser, deleteThread, fetchThreadDetail, fetchThreads, generateAiThreadTitle, patchThread, resumeChatStream, sendChatStream } from '@/lib/api';
+import { changePasswordUser, deleteThread, fetchThreadDetail, fetchThreadTelemetry, fetchThreads, generateAiThreadTitle, generateSuggestedQueries, patchThread, resumeChatStream, sendChatStream } from '@/lib/api';
 import { appendAssistantText, parseSseBlock, pushUniqueHistory, splitSseBlocks } from '@/lib/chat-stream';
 import {
   applyThreadSummaryToActiveThread,
@@ -237,6 +237,9 @@ function WorkspaceApp({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const toolIdCounterRef = useRef(0);
   const pendingTitleRequestIdsRef = useRef<Record<string, string>>({});
+  const pendingTelemetryRequestIdsRef = useRef<Record<string, string>>({});
+  const pendingSuggestionRequestIdsRef = useRef<Record<string, string>>({});
+  const activeThreadIdRef = useRef('');
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const actionSpaceRef = useRef<HTMLDivElement>(null);
@@ -245,6 +248,10 @@ function WorkspaceApp({
     streamSessionState.isInterrupted ||
     activeThreadState.detailLoadState === 'loading';
   const isHistoricalView = activeThreadState.viewMode === 'historical';
+
+  useEffect(() => {
+    activeThreadIdRef.current = activeThreadState.threadId;
+  }, [activeThreadState.threadId]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -343,6 +350,8 @@ function WorkspaceApp({
     setActiveThreadState(createInitialActiveThreadState());
     setStreamSessionState(createInitialStreamSessionState());
     setActionSpaceState(createInitialActionSpaceState());
+    pendingTelemetryRequestIdsRef.current = {};
+    pendingSuggestionRequestIdsRef.current = {};
     setMobileSidebarOpen(false);
     setAccountPanelOpen(false);
   };
@@ -353,6 +362,8 @@ function WorkspaceApp({
     }
 
     delete pendingTitleRequestIdsRef.current[threadId];
+    delete pendingTelemetryRequestIdsRef.current[threadId];
+    delete pendingSuggestionRequestIdsRef.current[threadId];
     setThreadCollectionState(prev => ({
       ...prev,
       threads: patchThreadSummary(prev.threads, threadId, { title: summary.title }),
@@ -362,6 +373,87 @@ function WorkspaceApp({
         ? { ...prev, title: summary.title || prev.title }
         : prev
     ));
+  };
+
+  const applyThreadTelemetry = (
+    threadId: string,
+    requestId: string,
+    telemetry: { reasoning_summary: string; suggested_queries: string[] }
+  ) => {
+    if (pendingTelemetryRequestIdsRef.current[threadId] !== requestId) {
+      return;
+    }
+
+    delete pendingTelemetryRequestIdsRef.current[threadId];
+    setActionSpaceState(prev => {
+      if (activeThreadIdRef.current !== threadId) {
+        return prev;
+      }
+      return {
+        ...prev,
+        reasoning: telemetry.reasoning_summary || prev.reasoning,
+        suggestedQueries: telemetry.suggested_queries,
+        suggestedQueriesState: telemetry.suggested_queries.length > 0 ? 'success' : 'idle',
+        suggestedQueriesError: '',
+      };
+    });
+  };
+
+  const loadHistoricalTelemetry = async (threadId: string) => {
+    const requestId = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    pendingTelemetryRequestIdsRef.current[threadId] = requestId;
+
+    try {
+      const telemetry = await fetchThreadTelemetry(threadId);
+      applyThreadTelemetry(threadId, requestId, telemetry);
+    } catch {
+      if (pendingTelemetryRequestIdsRef.current[threadId] === requestId) {
+        delete pendingTelemetryRequestIdsRef.current[threadId];
+      }
+      setActionSpaceState(prev => (
+        activeThreadIdRef.current === threadId
+          ? { ...prev, suggestedQueriesState: 'error', suggestedQueriesError: 'Failed to load historical telemetry.' }
+          : prev
+      ));
+    }
+  };
+
+  const requestSuggestedQueries = async (threadId: string) => {
+    const requestId = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    pendingSuggestionRequestIdsRef.current[threadId] = requestId;
+    setActionSpaceState(prev => (
+      activeThreadIdRef.current === threadId
+        ? { ...prev, suggestedQueriesState: 'loading', suggestedQueriesError: '' }
+        : prev
+    ));
+
+    try {
+      const telemetry = await generateSuggestedQueries({ threadId });
+      if (pendingSuggestionRequestIdsRef.current[threadId] !== requestId) {
+        return;
+      }
+
+      delete pendingSuggestionRequestIdsRef.current[threadId];
+      setActionSpaceState(prev => (
+        activeThreadIdRef.current === threadId
+          ? {
+              ...prev,
+              suggestedQueries: telemetry.suggested_queries,
+              suggestedQueriesState: telemetry.suggested_queries.length > 0 ? 'success' : 'idle',
+              suggestedQueriesError: '',
+            }
+          : prev
+      ));
+    } catch {
+      if (pendingSuggestionRequestIdsRef.current[threadId] === requestId) {
+        delete pendingSuggestionRequestIdsRef.current[threadId];
+      }
+      setActionSpaceState(prev => (
+        activeThreadIdRef.current === threadId
+          ? { ...prev, suggestedQueriesState: 'error', suggestedQueriesError: 'Failed to generate follow-up prompts.' }
+          : prev
+      ));
+    }
   };
 
   const handleRenameThread = async (threadId: string, title: string) => {
@@ -726,12 +818,16 @@ function WorkspaceApp({
       ...prev,
       detailLoadState: 'loading',
     }));
+    setActionSpaceState({
+      ...createInitialActionSpaceState(),
+      suggestedQueriesState: 'loading',
+    });
 
     try {
       const detail = await fetchThreadDetail(threadId);
+      activeThreadIdRef.current = threadId;
       setActiveThreadState(createActiveThreadStateFromDetail(detail));
       setStreamSessionState(createHistoricalStreamSessionState(detail.thread.latest_status));
-      setActionSpaceState(createInitialActionSpaceState());
       setThreadCollectionState(prev => ({
         ...prev,
         threads: patchThreadSummary(prev.threads, detail.thread.thread_id, detail.thread),
@@ -741,6 +837,7 @@ function WorkspaceApp({
       setSelectedImages([]);
       setMobileSidebarOpen(false);
       setAccountPanelOpen(false);
+      void loadHistoricalTelemetry(threadId);
     } catch (error) {
       setActiveThreadState(prev => ({
         ...prev,
@@ -772,6 +869,8 @@ function WorkspaceApp({
       content: submittedInput,
       existingThread,
     });
+    delete pendingTelemetryRequestIdsRef.current[thread_id];
+    delete pendingSuggestionRequestIdsRef.current[thread_id];
 
     setActiveThreadState(prev => ({
       ...prev,
@@ -789,6 +888,7 @@ function WorkspaceApp({
       threads: upsertThreadSummary(prev.threads, optimisticThread),
       error: '',
     }));
+    activeThreadIdRef.current = thread_id;
     setInput('');
     setSelectedImages([]);
     setMobileSidebarOpen(false);
@@ -826,6 +926,7 @@ function WorkspaceApp({
       const decoder = new TextDecoder();
       const assistantMsgId = Date.now().toString() + "_ai";
       let buffer = '';
+      let turnCompleted = false;
 
       while (true) {
         const { value, done } = await reader.read();
@@ -837,6 +938,9 @@ function WorkspaceApp({
         for (const block of blocks) {
           const payload = parseSseBlock(block) as StreamEvent | null;
           if (payload) {
+            if (payload.event_type === 'status' && payload.status === 'completed') {
+              turnCompleted = true;
+            }
             handleStreamEvent(payload, assistantMsgId, thread_id);
           }
         }
@@ -845,6 +949,9 @@ function WorkspaceApp({
           if (buffer.trim()) {
             const finalPayload = parseSseBlock(buffer) as StreamEvent | null;
             if (finalPayload) {
+              if (finalPayload.event_type === 'status' && finalPayload.status === 'completed') {
+                turnCompleted = true;
+              }
               handleStreamEvent(finalPayload, assistantMsgId, thread_id);
             }
           }
@@ -853,6 +960,9 @@ function WorkspaceApp({
             loading: false,
           }));
           await refreshThreadsSilently();
+          if (turnCompleted) {
+            void requestSuggestedQueries(thread_id);
+          }
           break;
         }
       }
@@ -931,6 +1041,7 @@ function WorkspaceApp({
       currentNode: 'Resuming...',
       streamError: '',
     }));
+    activeThreadIdRef.current = activeThreadState.threadId;
     let receivedStreamEvent = false;
 
     try {
@@ -944,6 +1055,7 @@ function WorkspaceApp({
       const decoder = new TextDecoder();
       const assistantMsgId = Date.now().toString() + "_ai_resume";
       let buffer = '';
+      let turnCompleted = false;
 
       while (true) {
         const { value, done } = await reader.read();
@@ -956,6 +1068,9 @@ function WorkspaceApp({
           const payload = parseSseBlock(block) as StreamEvent | null;
           if (payload) {
             receivedStreamEvent = true;
+            if (payload.event_type === 'status' && payload.status === 'completed') {
+              turnCompleted = true;
+            }
             handleStreamEvent(payload, assistantMsgId, activeThreadState.threadId);
           }
         }
@@ -965,6 +1080,9 @@ function WorkspaceApp({
             const finalPayload = parseSseBlock(buffer) as StreamEvent | null;
             if (finalPayload) {
               receivedStreamEvent = true;
+              if (finalPayload.event_type === 'status' && finalPayload.status === 'completed') {
+                turnCompleted = true;
+              }
               handleStreamEvent(finalPayload, assistantMsgId, activeThreadState.threadId);
             }
           }
@@ -973,6 +1091,9 @@ function WorkspaceApp({
             loading: false,
           }));
           await refreshThreadsSilently();
+          if (turnCompleted) {
+            void requestSuggestedQueries(activeThreadState.threadId);
+          }
           break;
         }
       }

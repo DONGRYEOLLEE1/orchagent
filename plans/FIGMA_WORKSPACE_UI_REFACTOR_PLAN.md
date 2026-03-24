@@ -2,7 +2,7 @@
 작업명: Figma Workspace UI Refactor Plan
 간단요약: Figma OrchAgent 메인 워크스페이스와 로그인 시안을 현재 프로젝트에 이식하고, reasoning summary·tool calling statuses·추천 질문 UX를 제품 기능과 맞물리게 재구성한다.
 작성일시: 2026-03-24 13:47 KST
-최종 수정일시: 2026-03-24 14:07 KST
+최종 수정일시: 2026-03-24 14:16 KST
 ---
 
 # Figma Workspace UI Refactor Plan
@@ -216,47 +216,47 @@
 - [x] `Action Space`를 폐기하거나 명칭을 제거하고 Figma식 telemetry sidebar로 교체한다.
 - [x] `AgentTimeline`을 Figma 카드 구조로 재작성한다.
 - [x] `ReasoningSummaryPanel`을 추가해 live reasoning chunk를 실시간 누적한다.
-- [ ] historical thread 선택 시 latest `reasoning_summary`를 hydrate하는 상태를 추가한다.
+- [x] historical thread 선택 시 latest `reasoning_summary`를 hydrate하는 상태를 추가한다.
 - [x] raw debug panel은 기본 숨김 보조 영역으로 축소하거나 개발자용 collapsible로 분리한다.
 - [x] `ProfilePanel`, `AdminStatusPanel`을 상단 프로필 액션으로 이동한다.
 
 검증:
 
 - [x] `npm run test -- src/app/page.test.tsx`
-- [ ] reasoning SSE가 panel에 누적되는지 단위 테스트 추가
-- [ ] historical thread 선택 시 reasoning summary fallback/hydration 확인
+- [x] reasoning SSE가 panel에 누적되는지 단위 테스트 추가
+- [x] historical thread 선택 시 reasoning summary fallback/hydration 확인
 
 ## Phase 5. Suggested Queries 백엔드/프런트 계약 구현
 
-- [ ] `packages/prompt-kit`에 추천 질문 생성 프롬프트를 추가한다.
-- [ ] 추천 질문 생성용 response schema를 정의한다.
-- [ ] 백엔드 service를 추가해 latest user/assistant pair 기준으로 3~4개 질문을 생성한다.
-- [ ] `init_chat_model` 기반 경량 모델 초기화 설정을 추가한다.
-- [ ] `POST /api/threads/{thread_id}/suggested-queries` 엔드포인트를 추가한다.
-- [ ] 생성 결과를 `trace_events`의 `suggested_queries_summary`로 저장한다.
-- [ ] historical hydrate용 조회 로직을 `ThreadService` 또는 별도 telemetry service에 추가한다.
-- [ ] 프런트에 추천 질문 상태와 요청 수명주기 관리를 추가한다.
-- [ ] 현재 active thread의 final answer 완료 후 추천 질문 생성 요청을 비동기로 시작한다.
-- [ ] 추천 질문 생성 실패 시 메인 대화 UX에는 영향이 없도록 한다.
-- [ ] thread 전환, 새 질문 시작, 삭제 시 stale suggestion response를 폐기한다.
+- [x] `packages/prompt-kit`에 추천 질문 생성 프롬프트를 추가한다.
+- [x] 추천 질문 생성용 response schema를 정의한다.
+- [x] 백엔드 service를 추가해 latest user/assistant pair 기준으로 3~4개 질문을 생성한다.
+- [x] `init_chat_model` 기반 경량 모델 초기화 설정을 추가한다.
+- [x] `POST /api/threads/{thread_id}/suggested-queries` 엔드포인트를 추가한다.
+- [x] 생성 결과를 `trace_events`의 `suggested_queries_summary`로 저장한다.
+- [x] historical hydrate용 조회 로직을 `ThreadService` 또는 별도 telemetry service에 추가한다.
+- [x] 프런트에 추천 질문 상태와 요청 수명주기 관리를 추가한다.
+- [x] 현재 active thread의 final answer 완료 후 추천 질문 생성 요청을 비동기로 시작한다.
+- [x] 추천 질문 생성 실패 시 메인 대화 UX에는 영향이 없도록 한다.
+- [x] thread 전환, 새 질문 시작, 삭제 시 stale suggestion response를 폐기한다.
 
 검증:
 
-- [ ] backend pytest: service normalization, authorization, latest-pair selection, trace persistence
-- [ ] frontend test: completion 후에만 호출되는지, stale response 무시되는지, 클릭 시 입력 반영되는지
-- [ ] `npm run build`
+- [x] backend pytest: service normalization, authorization, latest-pair selection, trace persistence
+- [x] frontend test: completion 후에만 호출되는지, stale response 무시되는지, 클릭 시 입력 반영되는지
+- [x] `npm run build`
 
 ## Phase 6. Thread Detail 및 Historical Telemetry Hydration
 
-- [ ] `GET /api/threads/{thread_id}` 응답 확장 또는 별도 telemetry endpoint를 설계한다.
-- [ ] historical selection 시 reasoning summary와 suggested queries를 복원한다.
-- [ ] v1에서 historical tool execution full replay를 하지 않을 경우, 명확한 empty/fallback copy를 정의한다.
-- [ ] live thread와 historical thread UI copy를 구분해 오해를 줄인다.
+- [x] `GET /api/threads/{thread_id}` 응답 확장 또는 별도 telemetry endpoint를 설계한다.
+- [x] historical selection 시 reasoning summary와 suggested queries를 복원한다.
+- [x] v1에서 historical tool execution full replay를 하지 않을 경우, 명확한 empty/fallback copy를 정의한다.
+- [x] live thread와 historical thread UI copy를 구분해 오해를 줄인다.
 
 검증:
 
-- [ ] backend pytest: historical telemetry retrieval
-- [ ] frontend test: thread selection 시 sidebar hydrate
+- [x] backend pytest: historical telemetry retrieval
+- [x] frontend test: thread selection 시 sidebar hydrate
 
 ## Phase 7. 로그인/회원가입 화면 시안 적용
 

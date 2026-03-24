@@ -72,6 +72,28 @@ function deferredSseResponse() {
   };
 }
 
+function defaultTelemetryPayload(threadId: string) {
+  return {
+    thread_id: threadId,
+    reasoning_summary: '',
+    suggested_queries: [],
+  };
+}
+
+function maybeHandleTelemetryRequest(url: string): Response | null {
+  const telemetryMatch = url.match(/\/api\/threads\/([^/]+)\/telemetry$/);
+  if (telemetryMatch) {
+    return jsonResponse(defaultTelemetryPayload(decodeURIComponent(telemetryMatch[1])));
+  }
+
+  const suggestionsMatch = url.match(/\/api\/threads\/([^/]+)\/suggested-queries$/);
+  if (suggestionsMatch) {
+    return jsonResponse(defaultTelemetryPayload(decodeURIComponent(suggestionsMatch[1])));
+  }
+
+  return null;
+}
+
 function renderWorkspace() {
   return render(
     <AuthProvider>
@@ -84,6 +106,10 @@ test('hydrates a selected thread and resets to a draft with New Chat', async () 
   const user = userEvent.setup();
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
+    const telemetryResponse = maybeHandleTelemetryRequest(url);
+    if (telemetryResponse) {
+      return telemetryResponse;
+    }
 
     if (url.includes('/api/auth/me')) {
       return jsonResponse({
@@ -167,11 +193,104 @@ test('hydrates a selected thread and resets to a draft with New Chat', async () 
   expect(screen.getAllByText('draft_session').length).toBeGreaterThan(0);
 });
 
+test('hydrates historical reasoning summary and suggested queries for a selected thread', async () => {
+  const user = userEvent.setup();
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+
+    if (url.includes('/api/auth/me')) {
+      return jsonResponse({
+        id: 'user-1',
+        login_id: 'tester',
+        role: 'user',
+        status: 'active',
+        display_name: null,
+        email: null,
+        must_change_password: false,
+      });
+    }
+
+    if (url.includes('/api/threads?limit=50')) {
+      return jsonResponse({
+        threads: [
+          {
+            thread_id: 'thread-telemetry',
+            title: 'Telemetry thread',
+            preview: 'Saved answer',
+            created_at: '2026-03-22T10:00:00Z',
+            last_activity_at: '2026-03-22T10:15:00Z',
+            message_count: 2,
+            latest_status: 'completed',
+            checkpoint_id: 'cp-1',
+            pinned: false,
+            archived: false,
+          },
+        ],
+      });
+    }
+
+    if (url.includes('/api/threads/thread-telemetry/telemetry')) {
+      return jsonResponse({
+        thread_id: 'thread-telemetry',
+        reasoning_summary: '저장된 reasoning summary',
+        suggested_queries: ['후속 질문 A', '후속 질문 B'],
+      });
+    }
+
+    if (url.includes('/api/threads/thread-telemetry')) {
+      return jsonResponse({
+        thread: {
+          thread_id: 'thread-telemetry',
+          title: 'Telemetry thread',
+          preview: 'Saved answer',
+          created_at: '2026-03-22T10:00:00Z',
+          last_activity_at: '2026-03-22T10:15:00Z',
+          message_count: 2,
+          latest_status: 'completed',
+          checkpoint_id: 'cp-1',
+          pinned: false,
+          archived: false,
+        },
+        messages: [
+          {
+            id: 'm-1',
+            role: 'user',
+            content: 'Saved user question',
+            created_at: '2026-03-22T10:00:00Z',
+          },
+          {
+            id: 'm-2',
+            role: 'assistant',
+            content: 'Saved assistant answer',
+            created_at: '2026-03-22T10:01:00Z',
+          },
+        ],
+      });
+    }
+
+    throw new Error(`Unhandled fetch: ${url}`);
+  });
+
+  vi.stubGlobal('fetch', fetchMock);
+
+  renderWorkspace();
+
+  await user.click(await screen.findByRole('button', { name: /open thread telemetry thread/i }));
+
+  expect(await screen.findByText('저장된 reasoning summary')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '후속 질문 A' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '후속 질문 B' })).toBeInTheDocument();
+});
+
 test('reuses the selected thread id for follow-up sends and disables switching while streaming', async () => {
   const user = userEvent.setup();
   const deferred = deferredSseResponse();
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+    const telemetryResponse = maybeHandleTelemetryRequest(url);
+    if (telemetryResponse) {
+      return telemetryResponse;
+    }
 
     if (url.includes('/api/auth/me')) {
       return jsonResponse({
@@ -312,6 +431,10 @@ test('starts ai title generation in parallel for a new thread and patches the ti
 
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+    const telemetryResponse = maybeHandleTelemetryRequest(url);
+    if (telemetryResponse) {
+      return telemetryResponse;
+    }
 
     if (url.includes('/api/auth/me')) {
       return jsonResponse({
@@ -428,6 +551,198 @@ test('starts ai title generation in parallel for a new thread and patches the ti
   expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/ai-title'))).toBe(true);
 });
 
+test('generates suggested queries after a completed answer and injects the clicked prompt', async () => {
+  const user = userEvent.setup();
+  const deferred = deferredSseResponse();
+  let generatedThreadId = '';
+
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+
+    if (url.includes('/api/auth/me')) {
+      return jsonResponse({
+        id: 'user-1',
+        login_id: 'tester',
+        role: 'user',
+        status: 'active',
+        display_name: null,
+        email: null,
+        must_change_password: false,
+      });
+    }
+
+    if (url.includes('/api/threads?limit=50')) {
+      return jsonResponse({ threads: [] });
+    }
+
+    if (url.endsWith('/api/chat')) {
+      const body = JSON.parse(String(init?.body || '{}'));
+      generatedThreadId = body.thread_id;
+      return deferred.response;
+    }
+
+    if (url.endsWith('/ai-title')) {
+      return jsonResponse({
+        thread_id: generatedThreadId,
+        title: 'RoPE 논문 탐색',
+        preview: '응답 대기 중',
+        created_at: '2026-03-22T10:00:00Z',
+        last_activity_at: '2026-03-22T10:00:00Z',
+        message_count: 1,
+        latest_status: 'running',
+        checkpoint_id: null,
+        pinned: false,
+        archived: false,
+      });
+    }
+
+    if (url.endsWith('/suggested-queries')) {
+      return jsonResponse({
+        thread_id: generatedThreadId,
+        reasoning_summary: 'live reasoning',
+        suggested_queries: ['RoPE와 ALiBi 차이도 비교해줘'],
+      });
+    }
+
+    throw new Error(`Unhandled fetch: ${url}`);
+  });
+
+  Object.defineProperty(document, 'cookie', {
+    configurable: true,
+    get: () => 'orch_csrf=csrf-token',
+  });
+  vi.stubGlobal('fetch', fetchMock);
+
+  renderWorkspace();
+
+  await user.type(await screen.findByPlaceholderText(/message orchagent/i), 'RoPE 논문 설명해줘');
+  await user.click(screen.getByRole('button', { name: /send message/i }));
+
+  expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/suggested-queries'))).toBe(false);
+
+  deferred.complete([
+    {
+      event_type: 'status',
+      status: 'running',
+      thread_id: generatedThreadId,
+      node: 'head_supervisor',
+      display_name: 'Head Supervisor',
+      timestamp: '2026-03-22T10:20:00Z',
+    },
+    {
+      event_type: 'text',
+      node: 'assistant',
+      content: '최종 응답',
+      timestamp: '2026-03-22T10:20:01Z',
+    },
+    {
+      event_type: 'checkpoint',
+      thread_id: generatedThreadId,
+      checkpoint_id: 'cp-1',
+      timestamp: '2026-03-22T10:20:02Z',
+    },
+    {
+      event_type: 'status',
+      status: 'completed',
+      thread_id: generatedThreadId,
+      node: 'assistant',
+      display_name: 'Completed',
+      timestamp: '2026-03-22T10:20:03Z',
+    },
+  ]);
+
+  const suggestionButton = await screen.findByRole('button', {
+    name: 'RoPE와 ALiBi 차이도 비교해줘',
+  });
+  expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/suggested-queries'))).toBe(true);
+
+  await user.click(suggestionButton);
+  expect(screen.getByDisplayValue('RoPE와 ALiBi 차이도 비교해줘')).toBeInTheDocument();
+});
+
+test('streams reasoning summary content into the inner monologue panel', async () => {
+  const user = userEvent.setup();
+  const deferred = deferredSseResponse();
+  let generatedThreadId = '';
+
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+
+    if (url.includes('/api/auth/me')) {
+      return jsonResponse({
+        id: 'user-1',
+        login_id: 'tester',
+        role: 'user',
+        status: 'active',
+        display_name: null,
+        email: null,
+        must_change_password: false,
+      });
+    }
+
+    if (url.includes('/api/threads?limit=50')) {
+      return jsonResponse({ threads: [] });
+    }
+
+    if (url.endsWith('/api/chat')) {
+      const body = JSON.parse(String(init?.body || '{}'));
+      generatedThreadId = body.thread_id;
+      return deferred.response;
+    }
+
+    if (url.endsWith('/ai-title')) {
+      return jsonResponse({
+        thread_id: generatedThreadId,
+        title: 'reasoning 테스트',
+        preview: '응답 대기 중',
+        created_at: '2026-03-22T10:00:00Z',
+        last_activity_at: '2026-03-22T10:00:00Z',
+        message_count: 1,
+        latest_status: 'running',
+        checkpoint_id: null,
+        pinned: false,
+        archived: false,
+      });
+    }
+
+    if (url.endsWith('/suggested-queries')) {
+      return jsonResponse(defaultTelemetryPayload(generatedThreadId));
+    }
+
+    throw new Error(`Unhandled fetch: ${url}`);
+  });
+
+  Object.defineProperty(document, 'cookie', {
+    configurable: true,
+    get: () => 'orch_csrf=csrf-token',
+  });
+  vi.stubGlobal('fetch', fetchMock);
+
+  renderWorkspace();
+
+  await user.type(await screen.findByPlaceholderText(/message orchagent/i), 'reasoning 테스트');
+  await user.click(screen.getByRole('button', { name: /send message/i }));
+
+  deferred.complete([
+    {
+      event_type: 'reasoning',
+      node: 'head_supervisor',
+      content: '이 turn은 research보다 synthesis가 먼저 필요하다.',
+      timestamp: '2026-03-22T10:20:00Z',
+    },
+    {
+      event_type: 'status',
+      status: 'completed',
+      thread_id: generatedThreadId,
+      node: 'assistant',
+      display_name: 'Completed',
+      timestamp: '2026-03-22T10:20:03Z',
+    },
+  ]);
+
+  expect(await screen.findByText(/research보다 synthesis가 먼저 필요하다/i)).toBeInTheDocument();
+});
+
 test('keeps a manual rename when a delayed ai title response arrives later', async () => {
   const user = userEvent.setup();
   const deferred = deferredSseResponse();
@@ -436,6 +751,10 @@ test('keeps a manual rename when a delayed ai title response arrives later', asy
 
   const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+    const telemetryResponse = maybeHandleTelemetryRequest(url);
+    if (telemetryResponse) {
+      return Promise.resolve(telemetryResponse);
+    }
 
     if (url.includes('/api/auth/me')) {
       return Promise.resolve(jsonResponse({
@@ -593,6 +912,10 @@ test('keeps the optimistic fallback title when ai title generation fails', async
 
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+    const telemetryResponse = maybeHandleTelemetryRequest(url);
+    if (telemetryResponse) {
+      return telemetryResponse;
+    }
 
     if (url.includes('/api/auth/me')) {
       return jsonResponse({
@@ -680,6 +1003,10 @@ test('marks a thread as errored when a send request fails before streaming start
   const user = userEvent.setup();
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+    const telemetryResponse = maybeHandleTelemetryRequest(url);
+    if (telemetryResponse) {
+      return telemetryResponse;
+    }
 
     if (url.includes('/api/auth/me')) {
       return jsonResponse({
@@ -772,6 +1099,10 @@ test('restores interrupted resume state when resume fails before streaming start
   const user = userEvent.setup();
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
+    const telemetryResponse = maybeHandleTelemetryRequest(url);
+    if (telemetryResponse) {
+      return telemetryResponse;
+    }
 
     if (url.includes('/api/auth/me')) {
       return jsonResponse({
@@ -863,6 +1194,10 @@ test('renames and pins a thread optimistically', async () => {
   const user = userEvent.setup();
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+    const telemetryResponse = maybeHandleTelemetryRequest(url);
+    if (telemetryResponse) {
+      return telemetryResponse;
+    }
 
     if (url.includes('/api/auth/me')) {
       return jsonResponse({
@@ -966,6 +1301,10 @@ test('toggles a thread pin state independently', async () => {
   const user = userEvent.setup();
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+    const telemetryResponse = maybeHandleTelemetryRequest(url);
+    if (telemetryResponse) {
+      return telemetryResponse;
+    }
 
     if (url.includes('/api/auth/me')) {
       return jsonResponse({
@@ -1061,6 +1400,10 @@ test('returns an unpinned thread to activity order after unpin', async () => {
   const user = userEvent.setup();
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+    const telemetryResponse = maybeHandleTelemetryRequest(url);
+    if (telemetryResponse) {
+      return telemetryResponse;
+    }
 
     if (url.includes('/api/auth/me')) {
       return jsonResponse({
@@ -1156,6 +1499,10 @@ test('deletes a thread and returns to draft when the active thread is removed', 
   const user = userEvent.setup();
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+    const telemetryResponse = maybeHandleTelemetryRequest(url);
+    if (telemetryResponse) {
+      return telemetryResponse;
+    }
 
     if (url.includes('/api/auth/me')) {
       return jsonResponse({

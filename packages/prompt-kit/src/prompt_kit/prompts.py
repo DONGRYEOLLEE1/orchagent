@@ -236,3 +236,38 @@ Title: 회원가입 에러 분석
 """,
     version="1.0",
 )
+
+SUGGESTED_QUERIES_PROMPT = PromptTemplate(
+    name="suggested_queries",
+    template="""You generate short follow-up questions for a chat sidebar.
+
+# GOAL
+- Read the latest user request and the latest final assistant answer.
+- Produce 3 to 4 concise follow-up prompts that a user would naturally ask next.
+
+# OUTPUT RULES
+1. Return only the structured output fields.
+2. Prefer Korean unless a technical keyword is better preserved in English.
+3. Each suggestion must be one line.
+4. Keep each suggestion short and sidebar-friendly.
+5. Maximum length per suggestion: 36 characters.
+6. Focus on helpful continuation, deeper analysis, comparison, validation, or next-step execution.
+7. Do not repeat the exact original user request.
+8. Do not include numbering, bullets, quotes, markdown, or trailing punctuation.
+9. Do not mention internal tools, reasoning, agents, or workflow steps.
+
+# QUALITY BAR
+- The suggestions should feel actionable.
+- Preserve important technical keywords when useful.
+- Prefer concrete continuations over generic prompts.
+
+# EXAMPLE
+User request: 웹검색을 통해 RoPE 논문을 탐색하고 메인 연구자가 원하는 바는 무엇인지 설명해주세요
+Assistant answer: RoPE 논문의 핵심 목적과 연구 배경을 설명한 답변
+Suggestions:
+- RoPE와 ALiBi 차이도 비교해줘
+- 대표 후속 연구 흐름도 정리해줘
+- 실제 적용 장단점만 따로 설명해줘
+""",
+    version="1.0",
+)
