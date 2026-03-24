@@ -145,6 +145,19 @@ export async function patchThread(params: {
   });
 }
 
+export async function generateAiThreadTitle(params: {
+  threadId: string;
+  message: string;
+}): Promise<ThreadSummary> {
+  return requestJson<ThreadSummary>(`/api/threads/${encodeURIComponent(params.threadId)}/ai-title`, {
+    method: 'POST',
+    includeCsrf: true,
+    body: {
+      message: params.message,
+    },
+  });
+}
+
 async function requestNoContent(
   path: string,
   options: {

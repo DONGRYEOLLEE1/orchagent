@@ -1,5 +1,5 @@
 작성일시: 2026-03-24 10:57 KST
-최종 수정일시: 2026-03-24 11:09 KST
+최종 수정일시: 2026-03-24 11:14 KST
 
 # AI Thread Title Summarization Plan
 
@@ -184,37 +184,37 @@
 
 ### Phase 3. 프런트 병렬화 구현
 
-- [ ] `apps/frontend/src/lib/api.ts`에 AI 제목 생성 API 함수를 추가한다.
-- [ ] `handleSubmit()`에서 새 draft thread 여부를 판별한다.
-- [ ] 새 thread일 때 `sendChatStream(...)`과 `generateAiThreadTitle(...)`를 병렬 시작한다.
-- [ ] 제목 요청은 chat stream completion을 기다리지 않도록 만든다.
-- [ ] 제목 응답 성공 시 해당 thread summary의 `title`을 patch한다.
-- [ ] active thread가 같은 thread일 경우 중앙 헤더의 title도 함께 갱신한다.
-- [ ] 제목 요청 실패 시 사용자 대화는 계속 진행되고 fallback title을 유지한다.
+- [x] `apps/frontend/src/lib/api.ts`에 AI 제목 생성 API 함수를 추가한다.
+- [x] `handleSubmit()`에서 새 draft thread 여부를 판별한다.
+- [x] 새 thread일 때 `sendChatStream(...)`과 `generateAiThreadTitle(...)`를 병렬 시작한다.
+- [x] 제목 요청은 chat stream completion을 기다리지 않도록 만든다.
+- [x] 제목 응답 성공 시 해당 thread summary의 `title`을 patch한다.
+- [x] active thread가 같은 thread일 경우 중앙 헤더의 title도 함께 갱신한다.
+- [x] 제목 요청 실패 시 사용자 대화는 계속 진행되고 fallback title을 유지한다.
 
 ### Phase 4. 충돌/경계 케이스 보강
 
-- [ ] 사용자가 AI 제목 생성 완료 전에 수동 rename한 경우 AI 제목 응답을 무시하도록 한다.
-- [ ] 기존 thread 후속 질문에서는 AI 제목 생성을 호출하지 않도록 한다.
-- [ ] 비어 있거나 너무 짧은 질문은 fallback title을 유지하도록 한다.
-- [ ] 한국어가 아닌 질문도 목록 친화적인 짧은 title이 나오도록 규칙을 정의한다.
-- [ ] 매우 긴 질문에서도 title이 잘리는 대신 의도가 보존되는지 확인한다.
+- [x] 사용자가 AI 제목 생성 완료 전에 수동 rename한 경우 AI 제목 응답을 무시하도록 한다.
+- [x] 기존 thread 후속 질문에서는 AI 제목 생성을 호출하지 않도록 한다.
+- [x] 비어 있거나 너무 짧은 질문은 fallback title을 유지하도록 한다.
+- [x] 한국어가 아닌 질문도 목록 친화적인 짧은 title이 나오도록 규칙을 정의한다.
+- [x] 매우 긴 질문에서도 title이 잘리는 대신 의도가 보존되는지 확인한다.
 
 ### Phase 5. 테스트
 
-- [ ] backend service 단위 테스트를 추가한다.
-- [ ] 제목 정규화 테스트
-- [ ] 최대 길이 제한 테스트
-- [ ] 빈 출력 fallback 테스트
-- [ ] backend API 테스트를 추가한다.
-- [ ] 첫 질문에서만 생성되는지
-- [ ] 기존 `title_override` 존재 시 skip 되는지
-- [ ] 수동 rename 선점 시 overwrite 되지 않는지
-- [ ] frontend 테스트를 추가한다.
-- [ ] 새 thread 전송 시 제목 생성 API와 chat stream이 병렬 시작되는지
-- [ ] 제목 응답이 나중에 와도 목록 title이 patch 되는지
-- [ ] 제목 생성 실패 시 질문 truncate title이 유지되는지
-- [ ] 기존 thread 후속 질문 시 제목 생성 요청이 발생하지 않는지
+- [x] backend service 단위 테스트를 추가한다.
+- [x] 제목 정규화 테스트
+- [x] 최대 길이 제한 테스트
+- [x] 빈 출력 fallback 테스트
+- [x] backend API 테스트를 추가한다.
+- [x] 첫 질문에서만 생성되는지
+- [x] 기존 `title_override` 존재 시 skip 되는지
+- [x] 수동 rename 선점 시 overwrite 되지 않는지
+- [x] frontend 테스트를 추가한다.
+- [x] 새 thread 전송 시 제목 생성 API와 chat stream이 병렬 시작되는지
+- [x] 제목 응답이 나중에 와도 목록 title이 patch 되는지
+- [x] 제목 생성 실패 시 질문 truncate title이 유지되는지
+- [x] 기존 thread 후속 질문 시 제목 생성 요청이 발생하지 않는지
 
 ### Phase 6. 수동 검증
 
@@ -236,10 +236,10 @@
 
 ### 자동 검증 체크리스트
 
-- [ ] backend 단위 테스트 통과
-- [ ] backend API 테스트 통과
-- [ ] frontend 병렬화 테스트 통과
-- [ ] 제목 생성 실패 fallback 테스트 통과
+- [x] backend 단위 테스트 통과
+- [x] backend API 테스트 통과
+- [x] frontend 병렬화 테스트 통과
+- [x] 제목 생성 실패 fallback 테스트 통과
 
 ### 실브라우저 검증 체크리스트
 
@@ -250,7 +250,7 @@
 
 ## 10. 완료 조건
 
-- 새 thread 첫 전송 시 `gpt-5.4-nano` 기반 AI 제목 생성이 병렬로 시작된다.
+- 새 thread 첫 전송 시 `gpt-5-nano` 기반 AI 제목 생성이 병렬로 시작된다.
 - 목록 title이 질문 원문 truncate보다 더 짧고 의도 중심적인 형태로 바뀐다.
 - 메인 에이전트 답변 스트림은 title 생성 여부와 무관하게 정상 동작한다.
 - 수동 rename과 충돌하지 않는다.

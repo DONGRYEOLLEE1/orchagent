@@ -13,7 +13,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { changePasswordUser, deleteThread, fetchThreadDetail, fetchThreads, patchThread, resumeChatStream, sendChatStream } from '@/lib/api';
+import { changePasswordUser, deleteThread, fetchThreadDetail, fetchThreads, generateAiThreadTitle, patchThread, resumeChatStream, sendChatStream } from '@/lib/api';
 import { appendAssistantText, parseSseBlock, pushUniqueHistory, splitSseBlocks } from '@/lib/chat-stream';
 import {
   applyThreadSummaryToActiveThread,
@@ -347,6 +347,7 @@ function WorkspaceApp({
   const [actionSpaceState, setActionSpaceState] = useState<ActionSpaceState>(() => createInitialActionSpaceState());
   const fileInputRef = useRef<HTMLInputElement>(null);
   const toolIdCounterRef = useRef(0);
+  const pendingTitleRequestIdsRef = useRef<Record<string, string>>({});
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const actionSpaceRef = useRef<HTMLDivElement>(null);
@@ -456,11 +457,30 @@ function WorkspaceApp({
     setMobileSidebarOpen(false);
   };
 
+  const applyGeneratedThreadTitle = (threadId: string, requestId: string, summary: { title: string }) => {
+    if (pendingTitleRequestIdsRef.current[threadId] !== requestId) {
+      return;
+    }
+
+    delete pendingTitleRequestIdsRef.current[threadId];
+    setThreadCollectionState(prev => ({
+      ...prev,
+      threads: patchThreadSummary(prev.threads, threadId, { title: summary.title }),
+    }));
+    setActiveThreadState(prev => (
+      prev.threadId === threadId
+        ? { ...prev, title: summary.title || prev.title }
+        : prev
+    ));
+  };
+
   const handleRenameThread = async (threadId: string, title: string) => {
     const existingThread = threadCollectionState.threads.find((thread) => thread.thread_id === threadId);
     if (!existingThread) {
       return;
     }
+
+    delete pendingTitleRequestIdsRef.current[threadId];
 
     setThreadCollectionState((prev) => ({
       ...prev,
@@ -525,6 +545,8 @@ function WorkspaceApp({
     if (!existingThread) {
       return;
     }
+
+    delete pendingTitleRequestIdsRef.current[threadId];
 
     const nextThreads = threadCollectionState.threads.filter((thread) => thread.thread_id !== threadId);
     const deletingActiveThread = activeThreadState.threadId === threadId;
@@ -849,6 +871,7 @@ function WorkspaceApp({
     if ((!input.trim() && selectedImages.length === 0) || isInteractionLocked) return;
 
     const submittedInput = input;
+    const isNewThread = !activeThreadState.threadId;
     const thread_id = activeThreadState.threadId || `thread_${Date.now()}`;
     const userMessage: ChatMessage = { role: 'user', content: submittedInput, id: Date.now().toString() };
 
@@ -894,6 +917,23 @@ function WorkspaceApp({
         threadId: thread_id,
         images: base64Images,
       });
+
+      if (isNewThread) {
+        const titleRequestId = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+        pendingTitleRequestIdsRef.current[thread_id] = titleRequestId;
+        void generateAiThreadTitle({
+          threadId: thread_id,
+          message: submittedInput,
+        })
+          .then((summary) => {
+            applyGeneratedThreadTitle(thread_id, titleRequestId, summary);
+          })
+          .catch(() => {
+            if (pendingTitleRequestIdsRef.current[thread_id] === titleRequestId) {
+              delete pendingTitleRequestIdsRef.current[thread_id];
+            }
+          });
+      }
 
       const reader = stream.getReader();
       const decoder = new TextDecoder();
