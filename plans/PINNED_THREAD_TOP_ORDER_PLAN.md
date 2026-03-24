@@ -1,5 +1,5 @@
 작성일시: 2026-03-24 11:55 KST
-최종 수정일시: 2026-03-24 13:08 KST
+최종 수정일시: 2026-03-24 13:17 KST
 
 # Pinned Thread Top Order Plan
 
@@ -76,58 +76,58 @@
 
 ### Phase 1. 백엔드 정렬 보강
 
-- [ ] `ThreadService`에 summary 정렬용 helper를 추가한다.
-- [ ] helper는 `pinned`, `last_activity_at`, `created_at` 순으로 정렬한다.
-- [ ] `list_thread_summaries()`에서 profile override 적용 후 정렬 helper를 호출한다.
-- [ ] `get_thread_summary()`는 단일 row 조회이므로 정렬 영향이 없음을 확인한다.
+- [x] `ThreadService`에 summary 정렬용 helper를 추가한다.
+- [x] helper는 `pinned`, `last_activity_at`, `created_at` 순으로 정렬한다.
+- [x] `list_thread_summaries()`에서 profile override 적용 후 정렬 helper를 호출한다.
+- [x] `get_thread_summary()`는 단일 row 조회이므로 정렬 영향이 없음을 확인한다.
 
 ### Phase 2. 프런트 정렬 보강
 
-- [ ] `workspace-state.ts`에 thread summary 정렬 helper를 추가한다.
-- [ ] `upsertThreadSummary()`가 pinned-top order를 유지하도록 수정한다.
-- [ ] `patchThreadSummary()`가 pinned-top order를 유지하도록 수정한다.
-- [ ] 필요 시 delete rollback 경로도 같은 helper를 재사용하도록 정리한다.
+- [x] `workspace-state.ts`에 thread summary 정렬 helper를 추가한다.
+- [x] `upsertThreadSummary()`가 pinned-top order를 유지하도록 수정한다.
+- [x] `patchThreadSummary()`가 pinned-top order를 유지하도록 수정한다.
+- [x] 필요 시 delete rollback 경로도 같은 helper를 재사용하도록 정리한다.
 
 ### Phase 3. UI 동작 검증
 
-- [ ] pin 버튼 클릭 직후 optimistic하게 최상단으로 이동하는지 확인한다.
-- [ ] unpin 직후 해당 thread가 최근 활동순 위치로 되돌아가는지 확인한다.
-- [ ] pinned thread가 여러 개일 때 그 내부 순서가 최근 활동순인지 확인한다.
-- [ ] pinned thread가 새 메시지를 받아도 pinned 그룹 안에서만 순서가 바뀌는지 확인한다.
+- [x] pin 버튼 클릭 직후 optimistic하게 최상단으로 이동하는지 확인한다.
+- [x] unpin 직후 해당 thread가 최근 활동순 위치로 되돌아가는지 확인한다.
+- [x] pinned thread가 여러 개일 때 그 내부 순서가 최근 활동순인지 확인한다.
+- [x] pinned thread가 새 메시지를 받아도 pinned 그룹 안에서만 순서가 바뀌는지 확인한다.
 
 ### Phase 4. 테스트
 
-- [ ] backend test를 추가한다.
-- [ ] pinned summary가 unpinned summary보다 앞에 오는지
-- [ ] pinned thread끼리 최근 활동순이 유지되는지
-- [ ] frontend helper test를 추가한다.
-- [ ] `upsertThreadSummary()` pinned ordering test
-- [ ] `patchThreadSummary()` pinned ordering test
-- [ ] page interaction test를 추가한다.
-- [ ] pin 토글 후 최상단 이동
-- [ ] unpin 후 일반 정렬 복귀
-- [ ] 새로고침(fetchThreads 재반영) 후 순서 유지
+- [x] backend test를 추가한다.
+- [x] pinned summary가 unpinned summary보다 앞에 오는지
+- [x] pinned thread끼리 최근 활동순이 유지되는지
+- [x] frontend helper test를 추가한다.
+- [x] `upsertThreadSummary()` pinned ordering test
+- [x] `patchThreadSummary()` pinned ordering test
+- [x] page interaction test를 추가한다.
+- [x] pin 토글 후 최상단 이동
+- [x] unpin 후 일반 정렬 복귀
+- [x] 새로고침(fetchThreads 재반영) 후 순서 유지
 
 ### Phase 5. 수동 검증
 
-- [ ] thread 여러 개를 준비한다.
-- [ ] 중간 위치의 thread를 pin하면 즉시 최상단으로 이동하는지 확인한다.
-- [ ] 여러 pinned thread가 있을 때 최근 활동순 정렬이 유지되는지 확인한다.
-- [ ] 새로고침 후에도 pinned thread가 여전히 위에 있는지 확인한다.
+- [x] thread 여러 개를 준비한다.
+- [x] 중간 위치의 thread를 pin하면 즉시 최상단으로 이동하는지 확인한다.
+- [x] 여러 pinned thread가 있을 때 최근 활동순 정렬이 유지되는지 확인한다.
+- [x] 새로고침 후에도 pinned thread가 여전히 위에 있는지 확인한다.
 
 ## 7. 검증 체크리스트
 
 ### 자동 검증 체크리스트
 
-- [ ] backend ordering test 통과
-- [ ] frontend helper ordering test 통과
-- [ ] page interaction test 통과
+- [x] backend ordering test 통과
+- [x] frontend helper ordering test 통과
+- [x] page interaction test 통과
 
 ### 수동 검증 체크리스트
 
-- [ ] pin 직후 최상단 이동
-- [ ] unpin 후 정상 위치 복귀
-- [ ] 새로고침 후 순서 유지
+- [x] pin 직후 최상단 이동
+- [x] unpin 후 정상 위치 복귀
+- [x] 새로고침 후 순서 유지
 
 ## 8. 완료 조건
 
