@@ -56,6 +56,9 @@ export interface StreamSessionState {
 export interface ActionSpaceState {
   toolExecutions: ToolExecution[];
   reasoning: string;
+  suggestedQueries: string[];
+  suggestedQueriesState: 'idle' | 'loading' | 'success' | 'error';
+  suggestedQueriesError: string;
   rawTraces: StreamEvent[];
   showDebug: boolean;
 }

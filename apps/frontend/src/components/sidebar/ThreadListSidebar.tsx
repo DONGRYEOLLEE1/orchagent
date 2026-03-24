@@ -27,19 +27,28 @@ export function ThreadListSidebar({
   onDeleteThread?: (threadId: string) => void | Promise<void>;
 }) {
   return (
-    <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-800/70 bg-slate-900/30">
-      <div className="border-b border-slate-800/70 px-4 py-4">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-sm font-semibold text-slate-300">
-            <MessageSquareText size={16} className="text-blue-400" />
-            <span>Threads</span>
-          </div>
+    <section className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="px-6 pb-6 pt-2">
+        <div className="mb-1 flex items-center gap-2 text-[18px] font-bold text-[#e7e7f0]">
+          <span className="font-[var(--font-display)]">Threads</span>
+        </div>
+        <p className="mb-5 text-[12px] text-[rgba(170,170,179,0.68)]">
+          AI Orchestration History
+        </p>
 
+        <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-300">
+          <MessageSquareText size={16} className="text-[#8ff5ff]" />
+          <span className="text-[12px] uppercase tracking-[0.18em] text-[rgba(170,170,179,0.7)]">
+            Active Threads
+          </span>
+        </div>
+
+        <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={onNewChat}
             disabled={disabled}
-            className="inline-flex items-center gap-2 rounded-xl border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-xs font-semibold text-blue-300 transition-colors hover:bg-blue-500/20 disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-slate-900 disabled:text-slate-600"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-[12px] bg-gradient-to-r from-[#8ff5ff] to-[#00deec] px-4 py-3 text-[12px] font-bold text-[#005359] shadow-[0px_10px_15px_-3px_rgba(143,245,255,0.12),0px_4px_6px_-4px_rgba(143,245,255,0.12)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:bg-slate-900 disabled:text-slate-600"
           >
             <Plus size={14} />
             <span>New Chat</span>
@@ -53,22 +62,22 @@ export function ThreadListSidebar({
         ) : null}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
         {loadState === 'loading' && threads.length === 0 ? (
-          <div className="flex h-full min-h-48 flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-slate-800 bg-black/10 text-slate-500">
-            <Loader2 size={18} className="animate-spin text-blue-400" />
+          <div className="flex h-full min-h-48 flex-col items-center justify-center gap-3 rounded-[12px] border border-dashed border-[rgba(255,255,255,0.06)] bg-[rgba(29,31,40,0.28)] text-[rgba(170,170,179,0.78)]">
+            <Loader2 size={18} className="animate-spin text-[#8ff5ff]" />
             <span className="text-xs uppercase tracking-[0.18em]">Loading threads</span>
           </div>
         ) : null}
 
         {loadState !== 'loading' && threads.length === 0 ? (
-          <div className="flex h-full min-h-48 flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-slate-800 bg-black/10 px-6 text-center">
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-3 text-slate-400">
+          <div className="flex h-full min-h-48 flex-col items-center justify-center gap-3 rounded-[12px] border border-dashed border-[rgba(255,255,255,0.06)] bg-[rgba(29,31,40,0.28)] px-6 text-center">
+            <div className="rounded-[12px] border border-[rgba(255,255,255,0.06)] bg-[rgba(35,38,46,0.42)] p-3 text-[rgba(170,170,179,0.85)]">
               <MessageSquareText size={20} />
             </div>
             <div>
-              <div className="text-sm font-semibold text-slate-300">No saved threads yet</div>
-              <p className="mt-1 text-xs leading-5 text-slate-500">
+              <div className="text-sm font-semibold text-[#e7e7f0]">No saved threads yet</div>
+              <p className="mt-1 text-xs leading-5 text-[rgba(170,170,179,0.72)]">
                 Start a new chat and this panel will become your session archive.
               </p>
             </div>
@@ -76,7 +85,7 @@ export function ThreadListSidebar({
         ) : null}
 
         {threads.length > 0 ? (
-          <div className="space-y-3">
+          <div className="space-y-2">
             {threads.map((thread) => (
               <ThreadListItem
                 key={thread.thread_id}

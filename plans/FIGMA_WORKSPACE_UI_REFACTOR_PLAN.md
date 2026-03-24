@@ -2,7 +2,7 @@
 작업명: Figma Workspace UI Refactor Plan
 간단요약: Figma OrchAgent 메인 워크스페이스와 로그인 시안을 현재 프로젝트에 이식하고, reasoning summary·tool calling statuses·추천 질문 UX를 제품 기능과 맞물리게 재구성한다.
 작성일시: 2026-03-24 13:47 KST
-최종 수정일시: 2026-03-24 13:53 KST
+최종 수정일시: 2026-03-24 14:07 KST
 ---
 
 # Figma Workspace UI Refactor Plan
@@ -168,61 +168,61 @@
 
 ## Phase 1. 디자인 토큰과 레이아웃 셸 정비
 
-- [ ] `apps/frontend/src/app/layout.tsx`와 `globals.css`를 Figma 톤에 맞는 전역 토큰 구조로 재편한다.
-- [ ] 기본 타이포그래피 체계를 정리한다.
-- [ ] 워크스페이스 3열 레이아웃 토대를 만든다.
-- [ ] 모바일 drawer와 데스크톱 고정 레일의 공통 구조를 만든다.
-- [ ] 상단 브랜드/프로필/세션 chrome을 Figma 톤에 맞게 재배치한다.
-- [ ] 상단 메뉴는 `Chat`만 실구현하고, 나머지는 실제 네비게이션 기능을 연결하지 않는다.
-- [ ] 향후 채택 여부가 미정인 메뉴는 disabled 또는 non-interactive visual state로만 처리한다.
+- [x] `apps/frontend/src/app/layout.tsx`와 `globals.css`를 Figma 톤에 맞는 전역 토큰 구조로 재편한다.
+- [x] 기본 타이포그래피 체계를 정리한다.
+- [x] 워크스페이스 3열 레이아웃 토대를 만든다.
+- [x] 모바일 drawer와 데스크톱 고정 레일의 공통 구조를 만든다.
+- [x] 상단 브랜드/프로필/세션 chrome을 Figma 톤에 맞게 재배치한다.
+- [x] 상단 메뉴는 `Chat`만 실구현하고, 나머지는 실제 네비게이션 기능을 연결하지 않는다.
+- [x] 향후 채택 여부가 미정인 메뉴는 disabled 또는 non-interactive visual state로만 처리한다.
 
 검증:
 
-- [ ] `npm run lint`
-- [ ] `npm run test -- src/app/page.test.tsx`
-- [ ] `npm run build`
+- [x] `npm run lint`
+- [x] `npm run test -- src/app/page.test.tsx`
+- [x] `npm run build`
 
 ## Phase 2. 좌측 Threads 레일 리팩토링
 
-- [ ] `ThreadListSidebar`를 Figma 좌측 레일 밀도와 계층으로 재구성한다.
-- [ ] 현재 스레드명 좌측 아이콘은 추가하지 않는다.
-- [ ] AI 생성 스레드명이 가장 잘 읽히도록 타이포와 여백을 재조정한다.
-- [ ] `New Chat`, pinned state, hover actions, selection state를 시안 톤에 맞춘다.
-- [ ] 스크롤 영역과 empty state를 Figma 스타일에 맞게 조정한다.
-- [ ] 현재 pin-to-top 동작과 rename/delete 메뉴를 유지한다.
+- [x] `ThreadListSidebar`를 Figma 좌측 레일 밀도와 계층으로 재구성한다.
+- [x] 현재 스레드명 좌측 아이콘은 추가하지 않는다.
+- [x] AI 생성 스레드명이 가장 잘 읽히도록 타이포와 여백을 재조정한다.
+- [x] `New Chat`, pinned state, hover actions, selection state를 시안 톤에 맞춘다.
+- [x] 스크롤 영역과 empty state를 Figma 스타일에 맞게 조정한다.
+- [x] 현재 pin-to-top 동작과 rename/delete 메뉴를 유지한다.
 
 검증:
 
-- [ ] `npm run test -- src/components/sidebar/ThreadListSidebar.test.tsx src/app/page.test.tsx`
+- [x] `npm run test -- src/components/sidebar/ThreadListSidebar.test.tsx src/app/page.test.tsx`
 - [ ] 수동 브라우저 확인: hover, rename, pin, delete, mobile drawer
 
 ## Phase 3. 중앙 Chat Workspace 리팩토링
 
-- [ ] 사용자/assistant message 레이아웃을 Figma 스타일로 재정렬한다.
-- [ ] assistant 응답 컨테이너를 Figma의 integrated response card 스타일로 재구성한다.
-- [ ] `LiveToolStatusStrip` 컴포넌트를 추가한다.
-- [ ] 입력창, 첨부 버튼, send 버튼을 Figma의 검은 입력 바와 청록 CTA 톤으로 정렬한다.
-- [ ] 현재 markdown/code/table 렌더링이 새 레이아웃에서도 깨지지 않도록 조정한다.
-- [ ] interrupt/resume panel이 새 채팅 컬럼 안에서 어색하지 않게 보이도록 재배치한다.
+- [x] 사용자/assistant message 레이아웃을 Figma 스타일로 재정렬한다.
+- [x] assistant 응답 컨테이너를 Figma의 integrated response card 스타일로 재구성한다.
+- [x] `LiveToolStatusStrip` 컴포넌트를 추가한다.
+- [x] 입력창, 첨부 버튼, send 버튼을 Figma의 검은 입력 바와 청록 CTA 톤으로 정렬한다.
+- [x] 현재 markdown/code/table 렌더링이 새 레이아웃에서도 깨지지 않도록 조정한다.
+- [x] interrupt/resume panel이 새 채팅 컬럼 안에서 어색하지 않게 보이도록 재배치한다.
 
 검증:
 
-- [ ] `npm run test -- src/app/page.test.tsx src/lib/chat-stream.test.mjs`
+- [x] `npm run test -- src/app/page.test.tsx src/components/sidebar/ThreadListSidebar.test.tsx src/lib/workspace-state.test.ts`
 - [ ] 복합 질의 스트림 중 tool status 줄이 실시간 갱신되는지 수동 확인
 - [ ] direct completion과 finalizer 경로 모두 assistant card가 정상 표출되는지 확인
 
 ## Phase 4. 우측 Telemetry Sidebar 구현
 
-- [ ] `Action Space`를 폐기하거나 명칭을 제거하고 Figma식 telemetry sidebar로 교체한다.
-- [ ] `AgentTimeline`을 Figma 카드 구조로 재작성한다.
-- [ ] `ReasoningSummaryPanel`을 추가해 live reasoning chunk를 실시간 누적한다.
+- [x] `Action Space`를 폐기하거나 명칭을 제거하고 Figma식 telemetry sidebar로 교체한다.
+- [x] `AgentTimeline`을 Figma 카드 구조로 재작성한다.
+- [x] `ReasoningSummaryPanel`을 추가해 live reasoning chunk를 실시간 누적한다.
 - [ ] historical thread 선택 시 latest `reasoning_summary`를 hydrate하는 상태를 추가한다.
-- [ ] raw debug panel은 기본 숨김 보조 영역으로 축소하거나 개발자용 collapsible로 분리한다.
-- [ ] `ProfilePanel`, `AdminStatusPanel`을 상단 프로필 액션으로 이동한다.
+- [x] raw debug panel은 기본 숨김 보조 영역으로 축소하거나 개발자용 collapsible로 분리한다.
+- [x] `ProfilePanel`, `AdminStatusPanel`을 상단 프로필 액션으로 이동한다.
 
 검증:
 
-- [ ] `npm run test -- src/app/page.test.tsx`
+- [x] `npm run test -- src/app/page.test.tsx`
 - [ ] reasoning SSE가 panel에 누적되는지 단위 테스트 추가
 - [ ] historical thread 선택 시 reasoning summary fallback/hydration 확인
 

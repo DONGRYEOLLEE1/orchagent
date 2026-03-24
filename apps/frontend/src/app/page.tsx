@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Send, Terminal, Loader2, Bot, User, Activity, Image as ImageIcon, X, ChevronDown, Menu } from 'lucide-react';
+import { Send, Terminal, Loader2, Bot, Image as ImageIcon, X, ChevronDown, Menu, Bell, PanelRightOpen } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import NextImage from 'next/image';
@@ -29,11 +29,13 @@ import {
   upsertThreadSummary,
 } from '@/lib/workspace-state';
 import { useAuth } from '@/components/auth/AuthProvider';
-import { AdminStatusPanel } from '@/components/auth/AdminStatusPanel';
-import { ProfilePanel } from '@/components/auth/ProfilePanel';
 import { HITLPanel } from '@/components/HITLPanel';
 import { AgentTimeline } from '@/components/sidebar/AgentTimeline';
 import { ThreadListSidebar } from '@/components/sidebar/ThreadListSidebar';
+import { LiveToolStatusStrip } from '@/components/workspace/LiveToolStatusStrip';
+import { ReasoningSummaryPanel } from '@/components/workspace/ReasoningSummaryPanel';
+import { SuggestedQueriesPanel } from '@/components/workspace/SuggestedQueriesPanel';
+import { AccountDrawer } from '@/components/workspace/AccountDrawer';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -97,121 +99,6 @@ const fileToBase64 = (file: File): Promise<string> => {
 };
 
 // --- Components ---
-
-const ToolCard = ({ tool }: { tool: ToolExecution }) => {
-  const [open, setOpen] = useState(false);
-  const isRunning = tool.status === 'running';
-  const duration = tool.endTime ? ((tool.endTime - tool.startTime) / 1000).toFixed(1) : null;
-
-  return (
-    <div className={cn(
-      "backdrop-blur-lg bg-slate-900/40 p-4 rounded-2xl border transition-all duration-500 animate-in fade-in slide-in-from-right-4",
-      isRunning ? "border-blue-500/50 shadow-[0_0_15px_rgba(59,130,246,0.2)]" : "border-slate-800/50"
-    )}>
-      <button
-        type="button"
-        onClick={() => setOpen(prev => !prev)}
-        className="w-full text-left"
-      >
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <div className={cn(
-              "w-2 h-2 rounded-full",
-              isRunning ? "bg-blue-400 animate-pulse" : tool.status === 'success' ? "bg-emerald-400" : "bg-red-400"
-            )} />
-            <span className="text-[10px] font-mono uppercase tracking-widest text-slate-400">Tool Call</span>
-          </div>
-          <div className="flex items-center gap-2">
-            {duration && <span className="text-[10px] font-mono text-slate-500">{duration}s</span>}
-            <ChevronDown
-              size={14}
-              className={cn("text-slate-500 transition-transform", open && "rotate-180")}
-            />
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-slate-800/50 rounded-lg text-blue-400">
-            <Terminal size={14} />
-          </div>
-          <h4 className="text-sm font-bold text-slate-200">{tool.name}</h4>
-        </div>
-      </button>
-
-      {open && (
-        <>
-          {!!tool.input && (
-            <div className="mt-3 space-y-1">
-              <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-tighter">Input</p>
-              <pre className="text-[11px] bg-black/30 p-2 rounded-lg text-slate-400 overflow-x-auto font-mono max-h-24">
-                {typeof tool.input === 'string' ? tool.input : JSON.stringify(tool.input, null, 2)}
-              </pre>
-            </div>
-          )}
-
-          {!!tool.output && (
-            <div className="mt-3 space-y-1">
-              <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-tighter">Output</p>
-              <div className="text-[11px] bg-blue-500/5 border border-blue-500/10 p-2 rounded-lg text-slate-300 overflow-x-auto font-mono max-h-32">
-                {typeof tool.output === 'string' ? tool.output : JSON.stringify(tool.output, null, 2)}
-              </div>
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-};
-
-const AgentThought = ({ content, isThinking }: { content: string, isThinking: boolean }) => {
-  if (!content && !isThinking) return null;
-
-  return (
-    <div className="backdrop-blur-xl bg-blue-500/5 border border-blue-500/10 rounded-2xl p-4 mb-4 animate-in fade-in slide-in-from-top-2">
-      <div className="flex items-center gap-2 mb-2">
-        <Activity size={14} className="text-blue-400" />
-        <span className="text-[10px] font-bold uppercase tracking-widest text-blue-400">
-          {isThinking ? "Internal Reasoning" : "Thought Summary"}
-        </span>
-      </div>
-      <div className="text-xs text-slate-300 leading-relaxed font-mono whitespace-pre-wrap">
-        {content}
-        {isThinking && <span className="inline-block w-1.5 h-3 ml-1 bg-blue-400 animate-pulse" />}
-      </div>
-    </div>
-  );
-};
-
-const ToolPanel = ({
-  toolExecutions,
-  emptyMessage = 'Waiting for tool execution...',
-}: {
-  toolExecutions: ToolExecution[];
-  emptyMessage?: string;
-}) => (
-  <div className="flex flex-col gap-4">
-    <div className="flex items-center justify-between">
-      <h3 className="text-sm font-semibold text-slate-400 flex items-center gap-2">
-        <Terminal size={16} /> Tool Activity
-      </h3>
-      <span className="text-[10px] bg-slate-800 px-2 py-0.5 rounded text-slate-500 font-mono">
-        {toolExecutions.length} calls
-      </span>
-    </div>
-    <div className="flex flex-col gap-3">
-      {toolExecutions.length === 0 ? (
-        <div className="p-8 border border-dashed border-slate-800 rounded-2xl flex flex-col items-center justify-center text-center opacity-30">
-          <Terminal size={24} className="mb-2" />
-          <span className="text-xs italic tracking-tighter text-slate-400">{emptyMessage}</span>
-        </div>
-      ) : (
-        [...toolExecutions].reverse().map((tool) => (
-          <ToolCard key={tool.id} tool={tool} />
-        ))
-      )}
-    </div>
-  </div>
-);
 
 const AuthLoadingScreen = ({ message }: { message: string }) => (
   <main className="flex min-h-screen items-center justify-center bg-slate-950 px-6 text-slate-100">
@@ -342,6 +229,7 @@ function WorkspaceApp({
   const [input, setInput] = useState('');
   const [selectedImages, setSelectedImages] = useState<File[]>([]);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [accountPanelOpen, setAccountPanelOpen] = useState(false);
   const [threadCollectionState, setThreadCollectionState] = useState<ThreadCollectionState>(() => createInitialThreadCollectionState());
   const [activeThreadState, setActiveThreadState] = useState<ActiveThreadState>(() => createInitialActiveThreadState());
   const [streamSessionState, setStreamSessionState] = useState<StreamSessionState>(() => createInitialStreamSessionState());
@@ -456,6 +344,7 @@ function WorkspaceApp({
     setStreamSessionState(createInitialStreamSessionState());
     setActionSpaceState(createInitialActionSpaceState());
     setMobileSidebarOpen(false);
+    setAccountPanelOpen(false);
   };
 
   const applyGeneratedThreadTitle = (threadId: string, requestId: string, summary: { title: string }) => {
@@ -851,6 +740,7 @@ function WorkspaceApp({
       setInput('');
       setSelectedImages([]);
       setMobileSidebarOpen(false);
+      setAccountPanelOpen(false);
     } catch (error) {
       setActiveThreadState(prev => ({
         ...prev,
@@ -1126,51 +1016,47 @@ function WorkspaceApp({
     }
   };
 
+  const latestAssistantMessageId = [...activeThreadState.messages]
+    .reverse()
+    .find((message) => message.role === 'assistant')?.id;
+
+  const handleSuggestedQuerySelect = (query: string) => {
+    setInput(query);
+  };
+
   const sidebarContent = (
-    <>
-      <div className="flex flex-col gap-4">
-        <AgentTimeline
-          history={streamSessionState.history}
-          currentNode={streamSessionState.currentNode}
-          loading={streamSessionState.loading}
-          historicalView={isHistoricalView}
-        />
-
-      </div>
-
-      <ThreadListSidebar
-        threads={threadCollectionState.threads}
-        loadState={threadCollectionState.loadState}
-        error={threadCollectionState.error}
-        selectedThreadId={activeThreadState.threadId}
-        disabled={isInteractionLocked}
-        onNewChat={handleStartNewChat}
-        onSelectThread={handleSelectThread}
-        onRenameThread={handleRenameThread}
-        onTogglePinnedThread={handleTogglePinnedThread}
-        onDeleteThread={handleDeleteThread}
-      />
-    </>
+    <ThreadListSidebar
+      threads={threadCollectionState.threads}
+      loadState={threadCollectionState.loadState}
+      error={threadCollectionState.error}
+      selectedThreadId={activeThreadState.threadId}
+      disabled={isInteractionLocked}
+      onNewChat={handleStartNewChat}
+      onSelectThread={handleSelectThread}
+      onRenameThread={handleRenameThread}
+      onTogglePinnedThread={handleTogglePinnedThread}
+      onDeleteThread={handleDeleteThread}
+    />
   );
 
   return (
-    <main className="flex h-screen bg-slate-950 text-slate-100 overflow-hidden font-sans relative">
-      {/* Decorative Background Elements */}
-      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600/10 blur-[120px] rounded-full pointer-events-none" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-600/10 blur-[120px] rounded-full pointer-events-none" />
+    <main className="relative flex h-screen overflow-hidden bg-[var(--oa-bg)] text-[var(--oa-copy)]">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute left-[-10%] top-[-8%] h-[32rem] w-[32rem] rounded-full bg-[rgba(143,245,255,0.08)] blur-[120px]" />
+        <div className="absolute bottom-[-16%] right-[-8%] h-[28rem] w-[28rem] rounded-full bg-[rgba(172,137,255,0.12)] blur-[120px]" />
+      </div>
 
-      {/* Left Sidebar: Session Info & History */}
-      <aside className="hidden lg:flex lg:w-80 flex-col gap-4 border-r border-slate-800/50 bg-slate-950/50 p-4 backdrop-blur-xl z-10">
-        <div className="flex items-center gap-3 mb-4 justify-center lg:justify-start">
-          <div className="p-2 bg-blue-600 rounded-lg shadow-lg shadow-blue-500/20">
-            <Bot className="text-white" />
-          </div>
-          <h1 className="text-xl font-bold tracking-tight text-slate-200">OrchAgent</h1>
-        </div>
+      {accountPanelOpen ? (
+        <AccountDrawer
+          user={currentUser}
+          onClose={() => setAccountPanelOpen(false)}
+          onLogout={onLogout}
+          onUserUpdated={onUserUpdated}
+        />
+      ) : null}
 
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
-          {sidebarContent}
-        </div>
+      <aside className="hidden h-full w-64 shrink-0 border-r border-[rgba(255,255,255,0.05)] bg-[rgba(17,19,26,0.96)] py-6 lg:flex lg:flex-col">
+        {sidebarContent}
       </aside>
 
       {mobileSidebarOpen ? (
@@ -1179,192 +1065,241 @@ function WorkspaceApp({
             type="button"
             aria-label="Close thread sidebar"
             onClick={() => setMobileSidebarOpen(false)}
-            className="absolute inset-0 bg-slate-950/75 backdrop-blur-sm"
+            className="absolute inset-0 bg-[rgba(7,9,13,0.78)] backdrop-blur-sm"
           />
 
-          <div className="absolute inset-y-0 left-0 flex w-[min(24rem,92vw)] flex-col border-r border-slate-800/70 bg-slate-950/95 p-4 shadow-2xl shadow-black/50">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="rounded-lg bg-blue-600 p-2 shadow-lg shadow-blue-500/20">
-                  <Bot className="text-white" />
+          <div className="absolute inset-y-0 left-0 flex w-[min(24rem,92vw)] flex-col border-r border-[rgba(255,255,255,0.06)] bg-[rgba(17,19,26,0.98)] py-6 shadow-2xl shadow-black/50">
+            <div className="mb-4 flex items-center justify-between px-6">
+              <div>
+                <div className="font-[var(--font-display)] text-[20px] font-bold text-[#00f0ff]">
+                  OrchAgent
                 </div>
-                <h1 className="text-lg font-bold tracking-tight text-slate-200">OrchAgent</h1>
+                <div className="text-[10px] uppercase tracking-[0.22em] text-[rgba(170,170,179,0.7)]">
+                  Chat Workspace
+                </div>
               </div>
-
               <button
                 type="button"
                 onClick={() => setMobileSidebarOpen(false)}
-                className="rounded-xl border border-slate-800 bg-slate-900/60 p-2 text-slate-400 transition-colors hover:border-slate-700 hover:text-slate-200"
+                className="rounded-[12px] border border-[rgba(255,255,255,0.06)] bg-[rgba(35,38,46,0.4)] p-2 text-[rgba(170,170,179,0.82)] transition hover:text-[#e7e7f0]"
               >
                 <X size={16} />
               </button>
             </div>
-
-            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
-              {sidebarContent}
-            </div>
+            {sidebarContent}
           </div>
         </div>
       ) : null}
 
-      {/* Center Content: Chat Workspace */}
-      <section className="flex-1 flex flex-col relative z-10 bg-transparent">
-        <header className="flex h-16 items-center justify-between border-b border-slate-800/50 bg-slate-950/20 px-8 backdrop-blur-sm">
-          <div className="flex items-center gap-3 text-sm font-medium text-slate-400">
+      <section className="relative z-10 flex min-w-0 flex-1 flex-col">
+        <header className="flex h-16 items-center justify-between border-b border-[rgba(255,255,255,0.05)] bg-[rgba(12,14,20,0.82)] px-6 backdrop-blur-xl md:px-8">
+          <div className="flex min-w-0 items-center gap-4">
             <button
               type="button"
               onClick={() => setMobileSidebarOpen(true)}
-              className="inline-flex rounded-xl border border-slate-800 bg-slate-900/60 p-2 text-slate-400 transition-colors hover:border-slate-700 hover:text-slate-200 lg:hidden"
+              className="inline-flex rounded-[12px] border border-[rgba(255,255,255,0.06)] bg-[rgba(35,38,46,0.4)] p-2 text-[rgba(170,170,179,0.82)] transition hover:text-[#e7e7f0] lg:hidden"
             >
               <Menu size={16} />
             </button>
-            <span>Thread</span>
-            <span className="text-slate-600">/</span>
-            <span className="hidden text-slate-300 sm:inline">
-              {activeThreadState.title || 'New Chat'}
-            </span>
-            <span className="hidden text-slate-600 sm:inline">/</span>
-            <span className="text-blue-400 font-mono text-xs bg-blue-400/10 px-2 py-0.5 rounded border border-blue-400/20">
-              {activeThreadState.threadId || 'draft_session'}
-            </span>
+
+            <div className="hidden items-center gap-8 md:flex">
+              <div className="font-[var(--font-display)] text-[24px] font-bold tracking-[-0.04em] text-[#00f0ff]">
+                OrchAgent
+              </div>
+
+              <nav className="flex items-center gap-5 text-[14px]">
+                <span className="border-b-2 border-[#00f0ff] pb-1 font-[var(--font-display)] text-[#00f0ff]">
+                  Chat
+                </span>
+                <span className="cursor-default text-[rgba(148,163,184,0.7)]">Dashboard</span>
+                <span className="cursor-default text-[rgba(148,163,184,0.7)]">Agents</span>
+                <span className="cursor-default text-[rgba(148,163,184,0.7)]">Logs</span>
+                <span className="cursor-default text-[rgba(148,163,184,0.7)]">Settings</span>
+              </nav>
+            </div>
+
+            <div className="md:hidden">
+              <div className="font-[var(--font-display)] text-[18px] font-bold text-[#00f0ff]">
+                OrchAgent
+              </div>
+            </div>
           </div>
 
-          <div className="hidden items-center gap-3 sm:flex">
-            <div className="rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1.5 text-xs text-slate-400">
-              <span className="mr-2 uppercase tracking-[0.2em] text-slate-500">User</span>
-              <span className="font-mono text-slate-200">
-                {currentUser.display_name || currentUser.login_id}
-              </span>
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="hidden min-w-0 items-center gap-3 rounded-[12px] border border-[rgba(255,255,255,0.06)] bg-[rgba(29,31,40,0.45)] px-3 py-2 sm:flex">
+              <div className="min-w-0">
+                <div className="truncate text-[12px] font-semibold text-[#e7e7f0]">
+                  {activeThreadState.title || 'New Chat'}
+                </div>
+                <div className="truncate text-[10px] uppercase tracking-[0.22em] text-[rgba(170,170,179,0.72)]">
+                  {activeThreadState.threadId || 'draft_session'}
+                </div>
+              </div>
             </div>
+
             <button
               type="button"
-              onClick={() => void onLogout()}
-              className="rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-2 text-xs font-medium text-slate-300 transition hover:border-slate-700 hover:text-slate-100"
+              aria-label="Notifications"
+              className="hidden rounded-[12px] border border-[rgba(255,255,255,0.06)] bg-[rgba(29,31,40,0.45)] p-2 text-[rgba(170,170,179,0.82)] transition hover:text-[#e7e7f0] sm:inline-flex"
             >
-              Log Out
+              <Bell size={16} />
+            </button>
+
+            <button
+              type="button"
+              aria-label="Open account drawer"
+              onClick={() => setAccountPanelOpen(true)}
+              className="inline-flex items-center gap-2 rounded-[12px] border border-[rgba(143,245,255,0.16)] bg-[rgba(29,31,40,0.45)] px-3 py-2 text-[12px] text-[#e7e7f0] transition hover:border-[rgba(143,245,255,0.28)]"
+            >
+              <PanelRightOpen size={15} className="text-[#8ff5ff]" />
+              <span className="hidden font-semibold sm:inline">
+                {currentUser.display_name || currentUser.login_id}
+              </span>
             </button>
           </div>
         </header>
 
-        <div
-          ref={scrollRef}
-          className="flex-1 overflow-y-auto p-8 space-y-6 scrollbar-thin scrollbar-thumb-slate-800"
-        >
-          {activeThreadState.detailLoadState === 'loading' && (
-            <div className="flex h-full min-h-[16rem] items-center justify-center">
-              <div className="rounded-2xl border border-slate-800 bg-slate-900/60 px-6 py-5 text-sm text-slate-300 shadow-xl">
-                <div className="flex items-center gap-3">
-                  <Loader2 size={18} className="animate-spin text-blue-400" />
-                  <span>Loading thread history...</span>
+        <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-6 md:px-8">
+          <div className="mx-auto flex w-full max-w-[720px] flex-col gap-8">
+            {activeThreadState.detailLoadState === 'loading' ? (
+              <div className="flex min-h-[16rem] items-center justify-center">
+                <div className="rounded-[16px] border border-[rgba(255,255,255,0.06)] bg-[rgba(29,31,40,0.5)] px-6 py-5 text-sm text-[rgba(231,231,240,0.88)] shadow-xl">
+                  <div className="flex items-center gap-3">
+                    <Loader2 size={18} className="animate-spin text-[#8ff5ff]" />
+                    <span>Loading thread history...</span>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            ) : null}
 
-          {activeThreadState.detailLoadState !== 'loading' && activeThreadState.messages.length === 0 && (
-            <div className="h-full flex flex-col items-center justify-center text-center max-w-md mx-auto opacity-50">
-              <div className="w-20 h-20 bg-slate-900 border border-slate-800 rounded-3xl flex items-center justify-center mb-6 shadow-xl">
-                <Bot size={40} className="text-slate-400" />
+            {activeThreadState.detailLoadState !== 'loading' && activeThreadState.messages.length === 0 ? (
+              <div className="mx-auto flex min-h-[26rem] max-w-md flex-col items-center justify-center text-center">
+                <div className="mb-8 flex h-20 w-20 items-center justify-center rounded-[20px] border border-[rgba(255,255,255,0.06)] bg-[rgba(29,31,40,0.5)] shadow-xl">
+                  <Bot size={36} className="text-[#8ff5ff]" />
+                </div>
+                <h2 className="font-[var(--font-display)] text-[28px] font-bold text-[#e7e7f0]">
+                  System Ready
+                </h2>
+                <p className="mt-3 text-[14px] leading-7 text-[rgba(170,170,179,0.78)]">
+                  Initiate a hierarchical task. The orchestration workspace will reveal reasoning summaries, tool activity, and follow-up prompts in context.
+                </p>
               </div>
-              <h2 className="text-2xl font-bold mb-2 text-slate-200">System Ready</h2>
-              <p className="text-slate-400 text-sm">
-                Initiate a hierarchical task. The multi-agent team is standing by for coordination.
-              </p>
-            </div>
-          )}
+            ) : null}
 
-          {activeThreadState.detailLoadState !== 'loading' && activeThreadState.messages.map((m) => (
-            <div key={m.id} className={cn(
-              "flex gap-4 max-w-3xl animate-in fade-in slide-in-from-bottom-2 duration-300",
-              m.role === 'user' ? "ml-auto flex-row-reverse" : ""
-            )}>
-              <div className={cn(
-                "w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-sm",
-                m.role === 'user' ? "bg-slate-700" : "bg-blue-600"
-              )}>
-                {m.role === 'user' ? <User size={16} /> : <Bot size={16} />}
-              </div>
-              <div className={cn(
-                "p-4 rounded-2xl leading-relaxed text-sm shadow-sm",
-                m.role === 'user'
-                  ? "bg-blue-600/10 border border-blue-500/20 text-slate-100"
-                  : "bg-slate-900/80 border border-slate-800 text-slate-200 backdrop-blur-md"
-              )}>
-                {m.role === 'user' ? m.content : <MarkdownContent content={m.content} />}
-              </div>            </div>
-          ))}
+            {activeThreadState.detailLoadState !== 'loading'
+              ? activeThreadState.messages.map((message) => {
+                  const isUser = message.role === 'user';
+                  const showToolStatuses =
+                    !isUser &&
+                    !isHistoricalView &&
+                    message.id === latestAssistantMessageId &&
+                    actionSpaceState.toolExecutions.length > 0;
 
-          {streamSessionState.loading && (
-            <div className="flex gap-4 max-w-3xl animate-pulse">
-              <div className="w-8 h-8 rounded-full bg-blue-600/50 flex items-center justify-center shrink-0">
-                <Bot size={16} />
-              </div>
-              <div className="p-4 rounded-2xl bg-slate-900/50 border border-slate-800 text-slate-400 text-sm italic">
-                {streamSessionState.currentNode || 'Coordinating team...'}
-              </div>
-            </div>
-          )}
+                  return (
+                    <div
+                      key={message.id}
+                      className={cn(
+                        'animate-in fade-in slide-in-from-bottom-2 duration-300',
+                        isUser ? 'ml-auto flex w-full justify-end' : 'flex w-full justify-start'
+                      )}
+                    >
+                      {isUser ? (
+                        <div className="max-w-[540px] rounded-bl-[16px] rounded-br-[16px] rounded-tl-[16px] border border-[rgba(143,245,255,0.2)] bg-[rgba(35,38,46,0.4)] px-5 py-4 text-[14px] leading-7 text-[#e7e7f0] backdrop-blur-md">
+                          {message.content}
+                        </div>
+                      ) : (
+                        <div className="flex w-full max-w-[680px] items-start gap-4">
+                          <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] bg-[#7000ff] text-white shadow-[0px_0px_0px_2px_rgba(172,137,255,0.2)]">
+                            <Bot size={14} />
+                          </div>
+                          <div className="flex min-w-0 flex-1 flex-col gap-3">
+                            {showToolStatuses ? (
+                              <LiveToolStatusStrip toolExecutions={actionSpaceState.toolExecutions} />
+                            ) : null}
+                            <div className="rounded-bl-[16px] rounded-br-[16px] rounded-tr-[16px] border border-[rgba(143,245,255,0.1)] bg-[rgba(35,38,46,0.4)] px-6 py-5 text-[14px] leading-7 text-[#e7e7f0] backdrop-blur-md">
+                              <MarkdownContent content={message.content} />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              : null}
 
-          {streamSessionState.isInterrupted && (
-            <div className="flex gap-4 max-w-3xl">
-              <div className="w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
-                <Bot size={16} />
+            {streamSessionState.loading ? (
+              <div className="flex w-full justify-start">
+                <div className="flex w-full max-w-[680px] items-start gap-4">
+                  <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] bg-[#7000ff] text-white shadow-[0px_0px_0px_2px_rgba(172,137,255,0.2)]">
+                    <Bot size={14} />
+                  </div>
+                  <div className="rounded-bl-[16px] rounded-br-[16px] rounded-tr-[16px] border border-[rgba(143,245,255,0.1)] bg-[rgba(35,38,46,0.35)] px-6 py-5 text-[14px] italic text-[rgba(170,170,179,0.9)] backdrop-blur-md">
+                    {streamSessionState.currentNode || 'Coordinating team...'}
+                  </div>
+                </div>
               </div>
-              <div className="w-full">
-                <HITLPanel onAction={handleResume} loading={streamSessionState.loading} />
-              </div>
-            </div>
-          )}
+            ) : null}
 
-          {!!streamSessionState.streamError && !streamSessionState.loading && (
-            <div className="flex gap-4 max-w-3xl">
-              <div className="w-8 h-8 rounded-full bg-red-500/20 text-red-300 flex items-center justify-center shrink-0">
-                <Bot size={16} />
+            {streamSessionState.isInterrupted ? (
+              <div className="flex w-full justify-start">
+                <div className="flex w-full max-w-[680px] items-start gap-4">
+                  <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] bg-[rgba(245,158,11,0.14)] text-amber-300">
+                    <Bot size={14} />
+                  </div>
+                  <div className="w-full">
+                    <HITLPanel onAction={handleResume} loading={streamSessionState.loading} />
+                  </div>
+                </div>
               </div>
-              <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-200 text-sm">
-                {streamSessionState.streamError}
+            ) : null}
+
+            {!!streamSessionState.streamError && !streamSessionState.loading ? (
+              <div className="flex w-full justify-start">
+                <div className="flex w-full max-w-[680px] items-start gap-4">
+                  <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] bg-[rgba(239,68,68,0.14)] text-red-300">
+                    <Bot size={14} />
+                  </div>
+                  <div className="rounded-[16px] border border-red-500/20 bg-red-500/10 px-5 py-4 text-sm text-red-200">
+                    {streamSessionState.streamError}
+                  </div>
+                </div>
               </div>
-            </div>
-          )}
+            ) : null}
+          </div>
         </div>
 
-        {/* Input Bar */}
-        <div className="p-8 pt-0">
-          <form
-            onSubmit={handleSubmit}
-            className="max-w-3xl mx-auto relative group"
-          >
-            {/* Image Previews */}
-            {selectedImages.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-2 p-2 bg-slate-900/50 border border-slate-800/50 rounded-xl backdrop-blur-md">
+        <div className="border-t border-[rgba(255,255,255,0.05)] bg-[rgba(29,31,40,0.8)] px-6 py-6 backdrop-blur-xl md:px-8">
+          <form onSubmit={handleSubmit} className="mx-auto flex w-full max-w-[720px] flex-col gap-3">
+            {selectedImages.length > 0 ? (
+              <div className="flex flex-wrap gap-2 rounded-[12px] border border-[rgba(255,255,255,0.06)] bg-[rgba(29,31,40,0.4)] p-3">
                 {selectedImages.map((file, i) => (
-                  <div key={i} className="relative w-16 h-16 rounded-lg overflow-hidden border border-slate-700">
+                  <div key={i} className="relative h-16 w-16 overflow-hidden rounded-[10px] border border-[rgba(255,255,255,0.08)]">
                     <NextImage
                       src={URL.createObjectURL(file)}
                       alt="preview"
                       width={64}
                       height={64}
-                      className="w-full h-full object-cover"
+                      className="h-full w-full object-cover"
                       unoptimized
                     />
                     <button
                       type="button"
                       onClick={() => removeImage(i)}
-                      className="absolute top-0.5 right-0.5 p-0.5 bg-slate-950/80 text-white rounded-full hover:bg-red-500 transition-colors"
+                      className="absolute right-1 top-1 rounded-full bg-[rgba(7,9,13,0.84)] p-1 text-white transition hover:bg-red-500"
                     >
                       <X size={10} />
                     </button>
                   </div>
                 ))}
               </div>
-            )}
+            ) : null}
 
             <div className="relative">
               <input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Message OrchAgent..."
-                className="w-full bg-slate-900/50 border border-slate-800/50 rounded-2xl py-4 pl-14 pr-14 text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-600/30 transition-all placeholder:text-slate-600 backdrop-blur-md"
+                className="w-full rounded-[16px] border border-[rgba(255,255,255,0.1)] bg-black px-14 py-4 pr-32 text-[14px] text-[#e7e7f0] outline-none transition placeholder:text-[rgba(170,170,179,0.42)] focus:border-[rgba(143,245,255,0.3)]"
                 disabled={isInteractionLocked}
               />
               <button
@@ -1372,9 +1307,9 @@ function WorkspaceApp({
                 aria-label="Attach image"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isInteractionLocked}
-                className="absolute left-3 top-1/2 -translate-y-1/2 p-2 text-slate-500 hover:text-blue-400 disabled:text-slate-800 transition-colors"
+                className="absolute left-3 top-1/2 -translate-y-1/2 p-2 text-[rgba(170,170,179,0.72)] transition hover:text-[#8ff5ff] disabled:text-slate-800"
               >
-                <ImageIcon size={20} />
+                <ImageIcon size={18} />
               </button>
               <input
                 type="file"
@@ -1388,96 +1323,89 @@ function WorkspaceApp({
                 type="submit"
                 aria-label="Send message"
                 disabled={isInteractionLocked || (!input.trim() && selectedImages.length === 0)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-600 text-white rounded-xl transition-colors shadow-lg shadow-blue-600/20"
+                className="absolute right-3 top-1/2 inline-flex -translate-y-1/2 items-center justify-center rounded-[12px] bg-[#8ff5ff] px-5 py-2.5 text-[12px] font-bold uppercase tracking-[0.18em] text-[#005d63] shadow-[0px_10px_15px_-3px_rgba(143,245,255,0.2),0px_4px_6px_-4px_rgba(143,245,255,0.2)] transition hover:brightness-105 disabled:bg-slate-800 disabled:text-slate-600"
               >
-                {streamSessionState.loading ? <Loader2 className="animate-spin" size={20} /> : <Send size={20} />}
+                {streamSessionState.loading ? <Loader2 className="animate-spin" size={16} /> : 'Send'}
               </button>
             </div>
           </form>
         </div>
       </section>
 
-      {/* Right Sidebar: Agent Action Space (Action Space) */}
       <aside
         ref={actionSpaceRef}
-        className="hidden xl:flex w-96 border-l border-slate-800/50 bg-slate-950/30 backdrop-blur-2xl flex-col p-6 overflow-y-auto z-10 scrollbar-none"
+        className="hidden w-[320px] shrink-0 border-l border-[rgba(255,255,255,0.05)] bg-[rgba(12,14,20,0.78)] px-6 py-6 backdrop-blur-xl xl:flex xl:flex-col xl:overflow-y-auto"
       >
-        <div className="flex items-center gap-2 mb-6">
-          <Terminal size={18} className="text-blue-400" />
-          <h2 className="text-sm font-bold uppercase tracking-widest text-slate-300">Action Space</h2>
-        </div>
-
         <div className="space-y-6">
-          <ProfilePanel user={currentUser} onUserUpdated={onUserUpdated} />
-          {currentUser.role === 'admin' ? <AdminStatusPanel /> : null}
-
-          {isHistoricalView ? (
-            <div className="rounded-2xl border border-amber-500/20 bg-amber-500/8 px-4 py-4 text-sm text-amber-100/90">
-              Historical thread selected. Tool activity, reasoning, and raw events are not hydrated in v1.
-            </div>
-          ) : null}
-
-          <AgentThought content={actionSpaceState.reasoning} isThinking={streamSessionState.loading} />
-
-          <ToolPanel
-            toolExecutions={actionSpaceState.toolExecutions}
-            emptyMessage={
-              isHistoricalView
-                ? 'Historical tool activity is not restored in v1.'
-                : 'Waiting for tool execution...'
-            }
+          <AgentTimeline
+            history={streamSessionState.history}
+            currentNode={streamSessionState.currentNode}
+            loading={streamSessionState.loading}
+            historicalView={isHistoricalView}
           />
 
-          {/* Debug Panel Toggle */}
-          <div className="mt-8 border-t border-slate-800/30 pt-4">
+          <ReasoningSummaryPanel
+            content={actionSpaceState.reasoning}
+            isThinking={streamSessionState.loading}
+            historicalView={isHistoricalView}
+          />
+
+          <SuggestedQueriesPanel
+            queries={actionSpaceState.suggestedQueries}
+            loadState={actionSpaceState.suggestedQueriesState}
+            onSelectQuery={handleSuggestedQuerySelect}
+            historicalView={isHistoricalView}
+          />
+
+          <div className="border-t border-[rgba(255,255,255,0.06)] pt-4">
             <button
               onClick={() => setActionSpaceState(prev => ({ ...prev, showDebug: !prev.showDebug }))}
-              className="flex items-center justify-between w-full px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-500 hover:text-slate-300 transition-colors group"
+              className="flex w-full items-center justify-between px-1 py-2 text-[10px] font-bold uppercase tracking-[0.24em] text-[rgba(170,170,179,0.76)] transition hover:text-[#e7e7f0]"
             >
               <span className="flex items-center gap-2">
-                <Terminal size={14} className="group-hover:text-blue-400" />
+                <Terminal size={14} className="text-[#8ff5ff]" />
                 Raw Events ({actionSpaceState.rawTraces.length})
               </span>
-              <ChevronDown size={14} className={cn("transition-transform duration-300", actionSpaceState.showDebug ? "rotate-180" : "")} />
+              <ChevronDown size={14} className={cn('transition-transform duration-300', actionSpaceState.showDebug ? 'rotate-180' : '')} />
             </button>
 
-            {actionSpaceState.showDebug && (
-              <div className="mt-3 bg-black/40 rounded-xl border border-slate-800/50 p-3 max-h-96 overflow-y-auto font-mono text-[9px] text-slate-400 space-y-2 scrollbar-none animate-in fade-in slide-in-from-top-2">
+            {actionSpaceState.showDebug ? (
+              <div className="mt-3 max-h-96 space-y-2 overflow-y-auto rounded-[12px] border border-[rgba(255,255,255,0.06)] bg-[rgba(0,0,0,0.24)] p-3 font-mono text-[9px] text-[rgba(170,170,179,0.84)]">
                 {actionSpaceState.rawTraces.length === 0 ? (
-                  <div className="text-center py-4 text-slate-600 italic">No events recorded yet.</div>
+                  <div className="py-4 text-center italic text-[rgba(170,170,179,0.58)]">
+                    No events recorded yet.
+                  </div>
                 ) : (
                   [...actionSpaceState.rawTraces].reverse().map((trace, i) => (
-                    <div key={i} className="border-b border-slate-800/30 pb-2 last:border-0 last:pb-0">
-                      <div className="flex justify-between items-center mb-1">
+                    <div key={i} className="border-b border-[rgba(255,255,255,0.05)] pb-2 last:border-0 last:pb-0">
+                      <div className="mb-1 flex items-center justify-between">
                         <span className={cn(
-                          "px-1.5 py-0.5 rounded uppercase font-bold text-[8px]",
-                          trace.event_type === 'error' ? "bg-red-500/20 text-red-400" :
-                          trace.event_type === 'status' ? "bg-blue-500/20 text-blue-400" :
-                          trace.event_type === 'tool_start' ? "bg-emerald-500/20 text-emerald-400" :
-                          "bg-slate-800 text-slate-400"
+                          'rounded px-1.5 py-0.5 text-[8px] font-bold uppercase',
+                          trace.event_type === 'error' ? 'bg-red-500/20 text-red-300' :
+                          trace.event_type === 'status' ? 'bg-blue-500/20 text-blue-300' :
+                          trace.event_type === 'tool_start' ? 'bg-emerald-500/20 text-emerald-300' :
+                          'bg-[rgba(255,255,255,0.06)] text-[rgba(170,170,179,0.9)]'
                         )}>
                           {trace.event_type}
                         </span>
-                        <span className="text-[8px] opacity-50">{new Date(trace.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                        <span className="opacity-50">
+                          {new Date(trace.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                        </span>
                       </div>
-                      <pre className="whitespace-pre-wrap break-all opacity-80">
+                      <pre className="whitespace-pre-wrap break-all opacity-85">
                         {JSON.stringify({ ...trace, timestamp: undefined, event_type: undefined }, (key, value) =>
-                          typeof value === 'string' && value.length > 100 ? value.substring(0, 100) + '...' : value
+                          typeof value === 'string' && value.length > 100 ? `${value.substring(0, 100)}...` : value
                         , 1)}
                       </pre>
                     </div>
                   ))
                 )}
               </div>
-            )}
-            <div className="mt-4 px-2">
-              <p className="text-[11px] text-slate-500 italic leading-relaxed">
-                Real-time tool execution logs and internal reasoning will be streamed here.
-              </p>
-            </div>
+            ) : null}
           </div>
         </div>
-      </aside>    </main>
+      </aside>
+    </main>
   );
 }
 

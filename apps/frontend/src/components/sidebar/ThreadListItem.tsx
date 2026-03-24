@@ -41,10 +41,10 @@ export function ThreadListItem({
   const interactive = Boolean(onSelect);
   const hasActions = Boolean(onRename || onTogglePinned || onDelete);
   const baseClassName = [
-    'group relative w-full rounded-2xl border p-3 text-left transition-all duration-200',
+    'group relative w-full rounded-[12px] border px-4 py-3 text-left transition-all duration-200',
     selected
-      ? 'border-blue-500/50 bg-blue-500/10 shadow-[0_0_20px_rgba(59,130,246,0.12)]'
-      : 'border-slate-800/70 bg-slate-900/30 hover:border-slate-700 hover:bg-slate-900/50',
+      ? 'border-[rgba(143,245,255,0.24)] bg-[rgba(29,31,40,0.95)] shadow-[0_0_0_1px_rgba(143,245,255,0.08)]'
+      : 'border-transparent bg-transparent hover:border-[rgba(255,255,255,0.05)] hover:bg-[rgba(29,31,40,0.6)]',
     interactive && !disabled ? 'cursor-pointer' : '',
     disabled ? 'cursor-not-allowed opacity-80' : '',
   ]
@@ -101,13 +101,13 @@ export function ThreadListItem({
               disabled={disabled}
             />
           ) : (
-            <div className="line-clamp-2 text-sm font-semibold leading-5 text-slate-100">
+            <div className="line-clamp-2 text-[14px] font-semibold leading-5 text-[#e7e7f0]">
               {thread.title}
             </div>
           )}
 
           {thread.pinned ? (
-            <span className="mt-2 inline-flex rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-200">
+            <span className="mt-2 inline-flex rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.18em] text-amber-200">
               Pinned
             </span>
           ) : null}
@@ -126,7 +126,7 @@ export function ThreadListItem({
               aria-haspopup="menu"
               aria-expanded={menuOpen}
               className={[
-                'rounded-lg border border-slate-800 bg-black/20 p-1.5 text-slate-500 transition hover:border-slate-700 hover:text-slate-200',
+                'rounded-[10px] border border-[rgba(255,255,255,0.05)] bg-[rgba(0,0,0,0.16)] p-1.5 text-[rgba(170,170,179,0.74)] transition hover:border-[rgba(255,255,255,0.08)] hover:text-[#e7e7f0]',
                 menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100',
                 disabled ? 'cursor-not-allowed opacity-50' : '',
               ]
@@ -139,7 +139,7 @@ export function ThreadListItem({
             {menuOpen ? (
               <div
                 role="menu"
-                className="absolute right-0 top-10 z-10 flex min-w-36 flex-col rounded-xl border border-slate-800 bg-slate-950/95 p-1.5 shadow-2xl shadow-black/40 backdrop-blur-xl"
+                className="absolute right-0 top-10 z-10 flex min-w-40 flex-col rounded-[12px] border border-[rgba(255,255,255,0.06)] bg-[rgba(12,14,20,0.96)] p-1.5 shadow-2xl shadow-black/40 backdrop-blur-xl"
                 onClick={(e) => e.stopPropagation()}
               >
                 {onRename ? (
@@ -153,7 +153,7 @@ export function ThreadListItem({
                     }}
                     disabled={disabled}
                     aria-label={`Rename ${thread.title}`}
-                    className="inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-200 transition hover:bg-slate-900/80 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex items-center gap-2 rounded-[10px] px-2.5 py-2 text-left text-xs text-[#e7e7f0] transition hover:bg-[rgba(35,38,46,0.8)] disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <Edit3 size={12} />
                     <span>스레드명 수정</span>
@@ -170,7 +170,7 @@ export function ThreadListItem({
                     }}
                     disabled={disabled}
                     aria-label={thread.pinned ? `Unpin ${thread.title}` : `Pin ${thread.title}`}
-                    className="inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-200 transition hover:bg-slate-900/80 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex items-center gap-2 rounded-[10px] px-2.5 py-2 text-left text-xs text-[#e7e7f0] transition hover:bg-[rgba(35,38,46,0.8)] disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {thread.pinned ? <PinOff size={12} /> : <Pin size={12} />}
                     <span>{thread.pinned ? '핀 해제' : '핀'}</span>
@@ -187,7 +187,7 @@ export function ThreadListItem({
                     }}
                     disabled={disabled}
                     aria-label={`Delete ${thread.title}`}
-                    className="inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-red-200 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex items-center gap-2 rounded-[10px] px-2.5 py-2 text-left text-xs text-red-200 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <Trash2 size={12} />
                     <span>삭제</span>
