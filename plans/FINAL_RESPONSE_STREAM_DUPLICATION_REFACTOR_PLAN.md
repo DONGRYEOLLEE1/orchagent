@@ -109,14 +109,14 @@
 
 ### Phase 1. 단일 최종 응답 계약 설계
 
-- [ ] final text owner 판정 규칙을 명시한다.
-- [ ] `head_supervisor` direct answer 경로를 “팀 위임 없음, finalizer 미사용, 즉시 종료”로 고정한다.
-- [ ] `finalizer` answer 경로를 “plan 존재 또는 팀 위임 이력 존재 또는 finalizer reroute 발생”으로 고정한다.
-- [ ] `FINAL_TEXT_STREAM_NODES`의 단순 집합 기반 계약을 owner-aware collector 계약으로 대체할지 결정한다.
-- [ ] `head_supervisor` text를 즉시 방출하지 않고 buffer 후 승인하는 정책을 채택할지 확정한다.
-- [ ] canonical final answer source를 확정한다.
-- [ ] 권장 canonical source를 “selected owner의 flushed stream”으로 사용할지 확정한다.
-- [ ] fallback canonical source를 “final checkpoint state의 마지막 assistant message”로 사용할지 확정한다.
+- [x] final text owner 판정 규칙을 명시한다.
+- [x] `head_supervisor` direct answer 경로를 “팀 위임 없음, finalizer 미사용, 즉시 종료”로 고정한다.
+- [x] `finalizer` answer 경로를 “plan 존재 또는 팀 위임 이력 존재 또는 finalizer reroute 발생”으로 고정한다.
+- [x] `FINAL_TEXT_STREAM_NODES`의 단순 집합 기반 계약을 owner-aware collector 계약으로 대체할지 결정한다.
+- [x] `head_supervisor` text를 즉시 방출하지 않고 buffer 후 승인하는 정책을 채택할지 확정한다.
+- [x] canonical final answer source를 확정한다.
+- [x] 권장 canonical source를 “selected owner의 flushed stream”으로 사용할지 확정한다.
+- [x] fallback canonical source를 “final checkpoint state의 마지막 assistant message”로 사용할지 확정한다.
 
 ### Phase 2. `/api/chat` 스트림 수집기 리팩토링
 
