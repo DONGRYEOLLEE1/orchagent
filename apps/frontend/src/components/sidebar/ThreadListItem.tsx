@@ -1,60 +1,8 @@
-import { Clock3, Edit3, MessageSquareText, Pin, PinOff, Trash2 } from 'lucide-react';
+import { Edit3, MoreHorizontal, Pin, PinOff, Trash2 } from 'lucide-react';
 
 import React, { useState } from 'react';
 
 import type { ThreadSummary } from '@/types/thread';
-
-function formatLastActivity(value: string | null): string {
-  if (!value) {
-    return 'No activity';
-  }
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return 'Recent';
-  }
-
-  const now = new Date();
-  const sameDay = now.toDateString() === date.toDateString();
-
-  if (sameDay) {
-    return date.toLocaleTimeString([], {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    });
-  }
-
-  if (now.getFullYear() === date.getFullYear()) {
-    return date.toLocaleDateString([], {
-      month: 'short',
-      day: 'numeric',
-    });
-  }
-
-  return date.toLocaleDateString([], {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
-}
-
-function statusTone(status: string | null): string {
-  if (status === 'completed') {
-    return 'bg-emerald-400';
-  }
-  if (status === 'interrupted') {
-    return 'bg-amber-400';
-  }
-  if (status === 'errored') {
-    return 'bg-red-400';
-  }
-  if (status === 'running') {
-    return 'bg-blue-400';
-  }
-
-  return 'bg-slate-600';
-}
 
 export function ThreadListItem({
   thread,
@@ -75,6 +23,7 @@ export function ThreadListItem({
 }) {
   const [editing, setEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState(thread.title);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const submitRename = async () => {
     const normalized = draftTitle.trim();
@@ -85,15 +34,18 @@ export function ThreadListItem({
     }
 
     setEditing(false);
+    setMenuOpen(false);
     await onRename?.(thread.thread_id, normalized);
   };
 
   const interactive = Boolean(onSelect);
+  const hasActions = Boolean(onRename || onTogglePinned || onDelete);
   const baseClassName = [
-    'w-full rounded-2xl border p-3 text-left transition-all duration-200',
+    'group relative w-full rounded-2xl border p-3 text-left transition-all duration-200',
     selected
       ? 'border-blue-500/50 bg-blue-500/10 shadow-[0_0_20px_rgba(59,130,246,0.12)]'
       : 'border-slate-800/70 bg-slate-900/30 hover:border-slate-700 hover:bg-slate-900/50',
+    interactive && !disabled ? 'cursor-pointer' : '',
     disabled ? 'cursor-not-allowed opacity-80' : '',
   ]
     .filter(Boolean)
@@ -108,7 +60,10 @@ export function ThreadListItem({
       aria-disabled={interactive && disabled ? 'true' : undefined}
       onClick={
         interactive && !disabled
-          ? () => onSelect?.(thread.thread_id)
+          ? () => {
+              setMenuOpen(false);
+              onSelect?.(thread.thread_id);
+            }
           : undefined
       }
       onKeyDown={
@@ -122,8 +77,8 @@ export function ThreadListItem({
           : undefined
       }
     >
-      <div className="mb-2 flex items-start justify-between gap-3">
-        <div className="min-w-0">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
           {editing ? (
             <input
               aria-label={`Rename thread ${thread.thread_id}`}
@@ -146,76 +101,102 @@ export function ThreadListItem({
               disabled={disabled}
             />
           ) : (
-            <div className="truncate text-sm font-semibold text-slate-100">
+            <div className="line-clamp-2 text-sm font-semibold leading-5 text-slate-100">
               {thread.title}
             </div>
           )}
-          <div className="mt-1 line-clamp-2 text-xs leading-5 text-slate-400">
-            {thread.preview || 'No preview available yet.'}
-          </div>
-        </div>
 
-        <div className="mt-0.5 flex shrink-0 items-center gap-2">
           {thread.pinned ? (
-            <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-200">
+            <span className="mt-2 inline-flex rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-200">
               Pinned
             </span>
           ) : null}
-          <span className={`h-2.5 w-2.5 rounded-full ${statusTone(thread.latest_status)}`} />
-          <span className="rounded-full border border-slate-700/80 bg-black/20 px-2 py-0.5 text-[10px] font-medium text-slate-500">
-            {thread.message_count}
-          </span>
         </div>
-      </div>
 
-      <div className="flex items-center justify-between gap-3 text-[11px] text-slate-500">
-        <span className="inline-flex items-center gap-1.5">
-          <Clock3 size={12} className="shrink-0" />
-          <span>{formatLastActivity(thread.last_activity_at)}</span>
-        </span>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setDraftTitle(thread.title);
-              setEditing(true);
-            }}
-            disabled={disabled || !onRename}
-            aria-label={`Rename ${thread.title}`}
-            className="rounded-lg border border-slate-800 bg-black/20 p-1.5 text-slate-500 transition hover:border-slate-700 hover:text-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Edit3 size={12} />
-          </button>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              void onTogglePinned?.(thread.thread_id, !thread.pinned);
-            }}
-            disabled={disabled || !onTogglePinned}
-            aria-label={thread.pinned ? `Unpin ${thread.title}` : `Pin ${thread.title}`}
-            className="rounded-lg border border-slate-800 bg-black/20 p-1.5 text-slate-500 transition hover:border-slate-700 hover:text-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {thread.pinned ? <PinOff size={12} /> : <Pin size={12} />}
-          </button>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              void onDelete?.(thread.thread_id);
-            }}
-            disabled={disabled || !onDelete}
-            aria-label={`Delete ${thread.title}`}
-            className="rounded-lg border border-slate-800 bg-black/20 p-1.5 text-slate-500 transition hover:border-red-500/40 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Trash2 size={12} />
-          </button>
-          <span className="inline-flex items-center gap-1.5 uppercase tracking-[0.18em]">
-            <MessageSquareText size={12} className="shrink-0" />
-            <span>{thread.latest_status || 'saved'}</span>
-          </span>
-        </div>
+        {hasActions ? (
+          <div className="relative shrink-0">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setMenuOpen((prev) => !prev);
+              }}
+              disabled={disabled}
+              aria-label={`Thread actions ${thread.title}`}
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              className={[
+                'rounded-lg border border-slate-800 bg-black/20 p-1.5 text-slate-500 transition hover:border-slate-700 hover:text-slate-200',
+                menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100',
+                disabled ? 'cursor-not-allowed opacity-50' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+            >
+              <MoreHorizontal size={14} />
+            </button>
+
+            {menuOpen ? (
+              <div
+                role="menu"
+                className="absolute right-0 top-10 z-10 flex min-w-36 flex-col rounded-xl border border-slate-800 bg-slate-950/95 p-1.5 shadow-2xl shadow-black/40 backdrop-blur-xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {onRename ? (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDraftTitle(thread.title);
+                      setEditing(true);
+                      setMenuOpen(false);
+                    }}
+                    disabled={disabled}
+                    aria-label={`Rename ${thread.title}`}
+                    className="inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-200 transition hover:bg-slate-900/80 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Edit3 size={12} />
+                    <span>스레드명 수정</span>
+                  </button>
+                ) : null}
+
+                {onTogglePinned ? (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setMenuOpen(false);
+                      void onTogglePinned?.(thread.thread_id, !thread.pinned);
+                    }}
+                    disabled={disabled}
+                    aria-label={thread.pinned ? `Unpin ${thread.title}` : `Pin ${thread.title}`}
+                    className="inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-200 transition hover:bg-slate-900/80 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {thread.pinned ? <PinOff size={12} /> : <Pin size={12} />}
+                    <span>{thread.pinned ? '핀 해제' : '핀'}</span>
+                  </button>
+                ) : null}
+
+                {onDelete ? (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setMenuOpen(false);
+                      void onDelete?.(thread.thread_id);
+                    }}
+                    disabled={disabled}
+                    aria-label={`Delete ${thread.title}`}
+                    className="inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-red-200 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Trash2 size={12} />
+                    <span>삭제</span>
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </div>
   );

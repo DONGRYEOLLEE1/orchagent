@@ -39,11 +39,14 @@ test('renders saved thread items and forwards selection', async () => {
     />
   );
 
-  await user.click(screen.getByRole('button', { name: /open thread first thread/i }));
+  const threadButton = screen.getByRole('button', { name: /open thread first thread/i });
+  await user.hover(threadButton);
+  await user.click(threadButton);
+  await user.click(screen.getByRole('button', { name: /thread actions first thread/i }));
   await user.click(screen.getByRole('button', { name: /delete first thread/i }));
 
   expect(screen.getByText('First thread')).toBeInTheDocument();
-  expect(screen.getByText('A saved preview')).toBeInTheDocument();
+  expect(screen.queryByText('A saved preview')).not.toBeInTheDocument();
   expect(onSelectThread).toHaveBeenCalledWith('thread-1');
   expect(onDeleteThread).toHaveBeenCalledWith('thread-1');
 });
