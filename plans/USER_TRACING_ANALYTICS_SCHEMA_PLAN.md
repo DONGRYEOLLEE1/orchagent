@@ -492,13 +492,13 @@ historical cost 안정성을 위한 가격 스냅샷 테이블.
 
 ## Phase 4. Tool execution 정규화
 
-- [ ] tool start row 생성
-- [ ] tool end / tool error update
-- [ ] `duration_ms` 계산
+- [x] tool start row 생성
+- [x] tool end / tool error update
+- [x] `duration_ms` 계산
 
 검증:
 
-- [ ] tool success/error pytest 추가
+- [x] tool success/error pytest 추가
 
 ## Phase 5. Cost snapshot 계산
 
