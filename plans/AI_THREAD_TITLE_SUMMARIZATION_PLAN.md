@@ -1,5 +1,5 @@
 작성일시: 2026-03-24 10:57 KST
-최종 수정일시: 2026-03-24 10:57 KST
+최종 수정일시: 2026-03-24 11:05 KST
 
 # AI Thread Title Summarization Plan
 
@@ -162,15 +162,15 @@
 
 ### Phase 1. 프롬프트와 title service 설계
 
-- [ ] `packages/prompt-kit`에 제목 요약용 prompt template를 추가한다.
-- [ ] 제목 요약용 Pydantic schema를 정의한다.
-- [ ] `gpt-5.4-nano`를 `init_chat_model`로 초기화하는 전용 service를 설계한다.
-- [ ] service는 입력 질문을 받아 정규화된 title string을 반환하도록 만든다.
-- [ ] 출력 정규화 로직을 별도 함수로 분리한다.
-- [ ] 공백 정리
-- [ ] 한 줄 강제
-- [ ] 최대 길이 제한
-- [ ] 빈 결과 시 fallback 처리
+- [x] `packages/prompt-kit`에 제목 요약용 prompt template를 추가한다.
+- [x] 제목 요약용 Pydantic schema를 정의한다.
+- [x] `gpt-5-nano`를 `init_chat_model`로 초기화하는 전용 service를 설계한다.
+- [x] service는 입력 질문을 받아 정규화된 title string을 반환하도록 만든다.
+- [x] 출력 정규화 로직을 별도 함수로 분리한다.
+- [x] 공백 정리
+- [x] 한 줄 강제
+- [x] 최대 길이 제한
+- [x] 빈 결과 시 fallback 처리
 
 ### Phase 2. 백엔드 API 추가
 

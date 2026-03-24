@@ -201,3 +201,38 @@ VISION_ANALYST_PROMPT = PromptTemplate(
 """,
     version="1.0",
 )
+
+THREAD_TITLE_SUMMARIZER_PROMPT = PromptTemplate(
+    name="thread_title_summarizer",
+    template="""You create short thread titles for a chat sidebar.
+
+# GOAL
+- Read the user's first message and produce a short, intuitive title that makes the main task obvious at a glance.
+
+# OUTPUT RULES
+1. Return only the final title text.
+2. Prefer Korean unless the key technical term is better kept in English.
+3. Keep the title to one line.
+4. Keep it concise and list-friendly.
+5. Maximum length: 24 characters.
+6. Preserve important technical keywords like RoPE, ALiBi, JWT, OAuth, SQL when helpful.
+7. Remove polite phrasing, question endings, and unnecessary detail.
+8. Do not include quotes, markdown, bullets, colons, or trailing punctuation.
+
+# STYLE
+- Focus on the user's main intent.
+- Prefer a compact noun phrase or task phrase.
+- Make the purpose more prominent than the wording.
+
+# EXAMPLES
+User: 웹검색을 통해 RoPE 논문을 탐색하고 메인 연구자가 원하는 바는 무엇인지 설명해주세요.
+Title: RoPE 논문 탐색
+
+User: JWT와 세션 쿠키의 차이를 비교하고 우리 서비스에 더 적합한 방식을 추천해줘
+Title: JWT vs 세션 쿠키
+
+User: 회원가입 실패 로그를 보고 왜 validation error가 나는지 찾아줘
+Title: 회원가입 에러 분석
+""",
+    version="1.0",
+)
