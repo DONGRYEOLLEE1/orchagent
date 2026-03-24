@@ -453,18 +453,18 @@ historical cost 안정성을 위한 가격 스냅샷 테이블.
 
 ## Phase 1. DB schema 추가
 
-- [ ] `chat_turns` 모델 추가
-- [ ] `llm_usage_events` 모델 추가
-- [ ] `tool_execution_events` 모델 추가
-- [ ] `llm_pricing_snapshots` 모델 추가
-- [ ] `trace_events` 확장 컬럼 추가 여부 결정 및 반영
-- [ ] `trace_id` / `span_id` / `parent_span_id` 또는 이에 준하는 식별자 전략을 고정한다.
-- [ ] startup `create_all` 환경에서 신규 테이블 생성 확인
+- [x] `chat_turns` 모델 추가
+- [x] `llm_usage_events` 모델 추가
+- [x] `tool_execution_events` 모델 추가
+- [x] `llm_pricing_snapshots` 모델 추가
+- [x] `trace_events` 확장 컬럼 추가 여부 결정 및 반영
+- [x] `trace_id` / `span_id` / `parent_span_id` 또는 이에 준하는 식별자 전략을 고정한다.
+- [x] startup `create_all` 환경에서 신규 테이블 생성 확인
 
 검증:
 
-- [ ] 모델 import / metadata 등록 확인
-- [ ] startup test 또는 schema smoke test 추가
+- [x] 모델 import / metadata 등록 확인
+- [x] startup test 또는 schema smoke test 추가
 
 ## Phase 2. Turn lifecycle 계측
 

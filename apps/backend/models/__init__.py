@@ -1,4 +1,11 @@
 from core.database import Base
+from models.analytics import (
+    ChatTurn,
+    LLMUsageEvent,
+    LLMPricingSnapshot,
+    ToolExecutionEvent,
+    UserDailyUsageRollup,
+)
 from models.auth import AuthSession, AuthUser
 from models.trace import TraceEvent
 from models.logging import ChatSession, ChatMessageLog
@@ -11,7 +18,12 @@ __all__ = [
     "TraceEvent",
     "ChatSession",
     "ChatMessageLog",
+    "ChatTurn",
     "AuthUser",
     "AuthSession",
+    "LLMUsageEvent",
+    "LLMPricingSnapshot",
     "ThreadProfile",
+    "ToolExecutionEvent",
+    "UserDailyUsageRollup",
 ]
