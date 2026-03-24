@@ -137,6 +137,56 @@ def test_list_threads_preserves_service_order_and_summary_fields(monkeypatch):
     assert body["threads"][1]["latest_status"] == "interrupted"
 
 
+def test_list_threads_returns_pinned_threads_first(monkeypatch):
+    base_time = datetime(2026, 3, 22, 10, 0, 0, tzinfo=timezone.utc)
+    summaries = [
+        ThreadSummary(
+            thread_id="thread-pinned",
+            title="Pinned thread",
+            preview="older preview",
+            created_at=base_time,
+            last_activity_at=base_time,
+            message_count=1,
+            latest_status="completed",
+            checkpoint_id="cp-pinned",
+            pinned=True,
+            archived=False,
+        ),
+        ThreadSummary(
+            thread_id="thread-unpinned",
+            title="Unpinned thread",
+            preview="newer preview",
+            created_at=base_time,
+            last_activity_at=base_time.replace(hour=11),
+            message_count=2,
+            latest_status="completed",
+            checkpoint_id="cp-unpinned",
+            pinned=False,
+            archived=False,
+        ),
+    ]
+
+    async def mock_list_thread_summaries(db, *, user_id, limit):
+        assert user_id == "test-user"
+        return summaries
+
+    from services.thread_service import ThreadService
+
+    app.dependency_overrides[get_db] = _override_get_db
+    monkeypatch.setattr(ThreadService, "list_thread_summaries", mock_list_thread_summaries)
+    try:
+        response = client.get("/api/threads")
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [thread["thread_id"] for thread in body["threads"]] == [
+        "thread-pinned",
+        "thread-unpinned",
+    ]
+
+
 def test_get_thread_returns_detail(monkeypatch):
     created_at = datetime(2026, 3, 22, 10, 0, 0, tzinfo=timezone.utc)
     message_id = uuid4()

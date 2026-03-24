@@ -71,6 +71,79 @@ def test_derive_status_prefers_status_trace_over_checkpoint_status():
     assert ThreadService._derive_status(None, None) is None
 
 
+def test_sort_thread_summaries_prioritizes_pinned_then_recent_activity():
+    base_time = datetime(2026, 3, 21, 9, 0, 0)
+    summaries = [
+        ThreadService._apply_profile_overrides(
+            ThreadService._build_summary(
+                {
+                    "thread_id": "thread-unpinned-new",
+                    "first_user_content": "unpinned newer",
+                    "latest_assistant_content": "answer",
+                    "latest_user_content": "question",
+                    "created_at": base_time,
+                    "last_activity_at": base_time + timedelta(hours=3),
+                    "message_count": 2,
+                    "latest_status": "completed",
+                    "checkpoint_status": None,
+                    "checkpoint_id": "cp-1",
+                }
+            ),
+            None,
+        ),
+        ThreadService._apply_profile_overrides(
+            ThreadService._build_summary(
+                {
+                    "thread_id": "thread-pinned-older",
+                    "first_user_content": "pinned older",
+                    "latest_assistant_content": "answer",
+                    "latest_user_content": "question",
+                    "created_at": base_time,
+                    "last_activity_at": base_time + timedelta(hours=1),
+                    "message_count": 2,
+                    "latest_status": "completed",
+                    "checkpoint_status": None,
+                    "checkpoint_id": "cp-2",
+                }
+            ),
+            SimpleNamespace(
+                title_override=None,
+                pinned=True,
+                archived=False,
+            ),
+        ),
+        ThreadService._apply_profile_overrides(
+            ThreadService._build_summary(
+                {
+                    "thread_id": "thread-pinned-newer",
+                    "first_user_content": "pinned newer",
+                    "latest_assistant_content": "answer",
+                    "latest_user_content": "question",
+                    "created_at": base_time,
+                    "last_activity_at": base_time + timedelta(hours=2),
+                    "message_count": 2,
+                    "latest_status": "completed",
+                    "checkpoint_status": None,
+                    "checkpoint_id": "cp-3",
+                }
+            ),
+            SimpleNamespace(
+                title_override=None,
+                pinned=True,
+                archived=False,
+            ),
+        ),
+    ]
+
+    ordered = ThreadService._sort_thread_summaries(summaries)
+
+    assert [summary.thread_id for summary in ordered] == [
+        "thread-pinned-newer",
+        "thread-pinned-older",
+        "thread-unpinned-new",
+    ]
+
+
 @pytest.mark.asyncio
 async def test_list_thread_summaries_executes_single_query_and_maps_rows():
     created_at = datetime(2026, 3, 21, 9, 0, 0)
@@ -165,6 +238,64 @@ async def test_list_thread_summaries_preserves_latest_first_order_and_counts():
     assert summaries[0].message_count == 4
     assert summaries[1].preview == "older question follow-up"
     assert summaries[1].latest_status == "interrupted"
+
+
+@pytest.mark.asyncio
+async def test_list_thread_summaries_places_pinned_threads_at_top():
+    created_at = datetime(2026, 3, 21, 9, 0, 0)
+    rows = [
+        {
+            "thread_id": "thread-unpinned",
+            "first_user_content": "newer question",
+            "latest_assistant_content": "newer answer",
+            "latest_user_content": "newer question",
+            "created_at": created_at,
+            "last_activity_at": created_at + timedelta(hours=3),
+            "message_count": 2,
+            "latest_status": "completed",
+            "checkpoint_status": None,
+            "checkpoint_id": "cp-unpinned",
+        },
+        {
+            "thread_id": "thread-pinned",
+            "first_user_content": "older pinned",
+            "latest_assistant_content": "older pinned answer",
+            "latest_user_content": "older pinned",
+            "created_at": created_at,
+            "last_activity_at": created_at + timedelta(hours=1),
+            "message_count": 2,
+            "latest_status": "completed",
+            "checkpoint_status": None,
+            "checkpoint_id": "cp-pinned",
+        },
+    ]
+
+    result = SimpleNamespace(mappings=lambda: SimpleNamespace(all=lambda: rows))
+    db = AsyncMock()
+    db.execute = AsyncMock(return_value=result)
+
+    original_get_thread_profiles_map = ThreadProfileService.get_thread_profiles_map
+    ThreadProfileService.get_thread_profiles_map = AsyncMock(
+        return_value={
+            "thread-pinned": SimpleNamespace(
+                title_override=None,
+                pinned=True,
+                archived=False,
+            )
+        }
+    )
+
+    try:
+        summaries = await ThreadService.list_thread_summaries(
+            db, user_id="user-1", limit=5
+        )
+    finally:
+        ThreadProfileService.get_thread_profiles_map = original_get_thread_profiles_map
+
+    assert [summary.thread_id for summary in summaries] == [
+        "thread-pinned",
+        "thread-unpinned",
+    ]
 
 
 @pytest.mark.asyncio

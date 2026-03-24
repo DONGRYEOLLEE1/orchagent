@@ -120,6 +120,18 @@ class ThreadService:
         )
 
     @staticmethod
+    def _sort_thread_summaries(summaries: list[ThreadSummary]) -> list[ThreadSummary]:
+        return sorted(
+            summaries,
+            key=lambda summary: (
+                summary.pinned,
+                summary.last_activity_at or summary.created_at or datetime.min,
+                summary.created_at or datetime.min,
+            ),
+            reverse=True,
+        )
+
+    @staticmethod
     def _thread_summary_stmt(*, thread_id: str | None = None, limit: int | None = None):
         last_message_at = (
             select(func.max(ChatMessageLog.created_at))
@@ -254,12 +266,13 @@ class ThreadService:
             [summary.thread_id for summary in summaries],
             user_id,
         )
-        return [
+        decorated = [
             ThreadService._apply_profile_overrides(
                 summary, profiles.get(summary.thread_id)
             )
             for summary in summaries
         ]
+        return ThreadService._sort_thread_summaries(decorated)
 
     @staticmethod
     async def get_thread_summary(
