@@ -304,7 +304,7 @@ function MustChangePasswordView({
               disabled={submitting}
             />
             <p className="mt-2 text-xs italic leading-5 text-slate-500">
-              Password must be at least 15 characters and include lowercase letters and numbers.
+              Password must be at least 4 characters and include lowercase letters and numbers.
             </p>
           </div>
 

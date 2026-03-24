@@ -35,12 +35,12 @@ def test_hash_password_round_trip_verification():
 
 def test_validate_password_policy_requires_lowercase_and_number():
     with pytest.raises(Exception):
-        validate_password_policy("A" * 15)
+        validate_password_policy("AAAA")
 
     with pytest.raises(Exception):
-        validate_password_policy("abcdefghijklmno")
+        validate_password_policy("abcd")
 
-    validate_password_policy("abcdefghijklmn1")
+    validate_password_policy("abc1")
 
 
 def test_auth_allowed_origins_parses_csv():

@@ -67,7 +67,7 @@ test('signup form validates confirmation and shows helper text', async () => {
 
   renderWithAuth(<SignupPage />);
 
-  expect(await screen.findByText(/Password must be at least 15 characters/i)).toBeInTheDocument();
+  expect(await screen.findByText(/Password must be at least 4 characters/i)).toBeInTheDocument();
   await user.type(screen.getByLabelText(/login id/i), 'user1');
   await user.type(screen.getByLabelText(/^password$/i), 'abcdefghijklmn1');
   await user.type(screen.getByLabelText(/confirm password/i), 'mismatch');
