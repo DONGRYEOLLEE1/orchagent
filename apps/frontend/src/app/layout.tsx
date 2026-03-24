@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist_Mono, Inter, Space_Grotesk } from "next/font/google";
 
 import { AuthProvider } from "@/components/auth/AuthProvider";
+import "katex/dist/katex.min.css";
 import "./globals.css";
 
 const inter = Inter({

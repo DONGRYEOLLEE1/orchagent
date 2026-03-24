@@ -29,10 +29,10 @@ export function AuthScaffold({
 
       <div className="relative z-10 w-full max-w-[448px] rounded-[24px] border border-[rgba(255,255,255,0.06)] bg-[rgba(29,31,40,0.82)] px-10 py-10 shadow-2xl shadow-black/40 backdrop-blur-xl">
         <div className="mb-10 text-center">
-          <div className="mx-auto mb-8 flex h-[58px] w-16 items-center justify-center rounded-[18px] border border-[rgba(143,245,255,0.16)] bg-[rgba(35,38,46,0.75)] text-[#8ff5ff]">
+          <div className="mx-auto mb-8 flex h-[58px] w-16 items-center justify-center rounded-[18px] border border-[rgba(172,137,255,0.18)] bg-[rgba(35,38,46,0.75)] text-[#ac89ff]">
             <Bot size={28} />
           </div>
-          <div className="text-[11px] uppercase tracking-[0.26em] text-[rgba(143,245,255,0.78)]">
+          <div className="text-[11px] uppercase tracking-[0.26em] text-[rgba(172,137,255,0.84)]">
             OrchAgent
           </div>
           <h1 className="mt-4 font-[var(--font-display)] text-[30px] font-bold text-[#e7e7f0]">

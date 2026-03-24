@@ -45,7 +45,7 @@ export function LiveToolStatusStrip({
   }
 
   return (
-    <div className="flex flex-col gap-2 rounded-[16px] border border-[rgba(143,245,255,0.08)] bg-[rgba(35,38,46,0.3)] px-4 py-3">
+    <div className="flex flex-col gap-1.5 rounded-[14px] border border-[rgba(143,245,255,0.08)] bg-[rgba(35,38,46,0.26)] px-3.5 py-2.5">
       {items.map((tool) => {
         const isRunning = tool.status === 'running';
         const isSuccess = tool.status === 'success';
@@ -54,7 +54,7 @@ export function LiveToolStatusStrip({
         return (
           <div
             key={tool.id}
-            className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[rgba(143,245,255,0.78)]"
+            className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[rgba(143,245,255,0.78)]"
           >
             {isRunning ? (
               <Loader2 size={10} className="shrink-0 animate-spin text-[#8ff5ff]" />

@@ -41,6 +41,11 @@ textarea {
   font: inherit;
 }
 
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]) {
+  cursor: pointer;
+}
+
 ::selection {
   background: rgba(143, 245, 255, 0.24);
   color: #f8fbff;

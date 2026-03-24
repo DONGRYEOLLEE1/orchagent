@@ -220,11 +220,29 @@ def _extract_text_content(content: Any) -> str:
 
 def _extract_reasoning_chunk(chunk: Any) -> str:
     additional_kwargs = getattr(chunk, "additional_kwargs", {}) or {}
-    return (
+    additional_reasoning = (
         additional_kwargs.get("reasoning_summary_text")
         or additional_kwargs.get("reasoning_content")
-        or ""
     )
+    if additional_reasoning:
+        return str(additional_reasoning)
+
+    content = getattr(chunk, "content", None)
+    if isinstance(content, list):
+        collected: list[str] = []
+        for item in content:
+            if not isinstance(item, dict):
+                continue
+            item_type = item.get("type")
+            if item_type not in {"reasoning", "reasoning_summary"}:
+                continue
+            text_value = item.get("text") or item.get("summary")
+            if isinstance(text_value, str) and text_value.strip():
+                collected.append(text_value)
+        if collected:
+            return "".join(collected)
+
+    return ""
 
 
 def _chunk_text(text: str, chunk_size: int = 24) -> list[str]:

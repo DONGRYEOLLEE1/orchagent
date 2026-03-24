@@ -11,20 +11,20 @@ export function ReasoningSummaryPanel({
   historicalView: boolean;
   fallbackSummary?: string;
 }) {
-  const resolvedContent = content.trim() || (isThinking ? fallbackSummary || '' : '');
+  const resolvedContent = content.trim() || fallbackSummary || '';
   const hasContent = Boolean(resolvedContent.trim());
 
   return (
     <section className="rounded-[12px] border border-[rgba(143,245,255,0.1)] bg-[rgba(35,38,46,0.4)] px-6 py-6 backdrop-blur-md">
       <div className="mb-4 flex items-center gap-3">
-        <div className="rounded-[4px] bg-[rgba(143,245,255,0.1)] p-2 text-[#8ff5ff]">
+        <div className="rounded-[4px] bg-[rgba(172,137,255,0.14)] p-2 text-[#ac89ff]">
           <BrainCircuit size={15} />
         </div>
         <div>
           <h3 className="font-[var(--font-display)] text-[14px] font-bold text-[#e7e7f0]">
             Inner Monologue
           </h3>
-          <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-[rgba(143,245,255,0.7)]">
+          <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-[rgba(172,137,255,0.76)]">
             {isThinking ? 'Reasoning Summary Live' : historicalView ? 'Saved Summary' : 'Reasoning Summary'}
           </p>
         </div>

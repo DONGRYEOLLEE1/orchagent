@@ -743,6 +743,90 @@ test('streams reasoning summary content into the inner monologue panel', async (
   expect(await screen.findByText(/research보다 synthesis가 먼저 필요하다/i)).toBeInTheDocument();
 });
 
+test('shows a live fallback summary when no reasoning chunk is streamed', async () => {
+  const user = userEvent.setup();
+  const deferred = deferredSseResponse();
+  let generatedThreadId = '';
+
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+
+    if (url.includes('/api/auth/me')) {
+      return jsonResponse({
+        id: 'user-1',
+        login_id: 'tester',
+        role: 'user',
+        status: 'active',
+        display_name: null,
+        email: null,
+        must_change_password: false,
+      });
+    }
+
+    if (url.includes('/api/threads?limit=50')) {
+      return jsonResponse({ threads: [] });
+    }
+
+    if (url.endsWith('/api/chat')) {
+      const body = JSON.parse(String(init?.body || '{}'));
+      generatedThreadId = body.thread_id;
+      return deferred.response;
+    }
+
+    if (url.endsWith('/ai-title')) {
+      return jsonResponse({
+        thread_id: generatedThreadId,
+        title: '작업 파일 생성',
+        preview: '응답 대기 중',
+        created_at: '2026-03-22T10:00:00Z',
+        last_activity_at: '2026-03-22T10:00:00Z',
+        message_count: 1,
+        latest_status: 'running',
+        checkpoint_id: null,
+        pinned: false,
+        archived: false,
+      });
+    }
+
+    if (url.endsWith('/suggested-queries')) {
+      return jsonResponse(defaultTelemetryPayload(generatedThreadId));
+    }
+
+    throw new Error(`Unhandled fetch: ${url}`);
+  });
+
+  Object.defineProperty(document, 'cookie', {
+    configurable: true,
+    get: () => 'orch_csrf=csrf-token',
+  });
+  vi.stubGlobal('fetch', fetchMock);
+
+  renderWorkspace();
+
+  await user.type(await screen.findByPlaceholderText(/message orchagent/i), 'Create a file named hi.txt in the workspace and write hi into it.');
+  await user.click(screen.getByRole('button', { name: /send message/i }));
+
+  deferred.complete([
+    {
+      event_type: 'tool_start',
+      node: 'filesystem_write',
+      tool_name: 'filesystem_write',
+      display_name: 'Filesystem Write',
+      timestamp: '2026-03-22T10:20:00Z',
+    },
+    {
+      event_type: 'status',
+      status: 'running',
+      thread_id: generatedThreadId,
+      node: 'writing_team',
+      display_name: 'Writing Team',
+      timestamp: '2026-03-22T10:20:01Z',
+    },
+  ]);
+
+  expect(await screen.findByText(/Filesystem Write 도구 결과를 바탕으로 응답 근거를 정리하는 중입니다/i)).toBeInTheDocument();
+});
+
 test('keeps a manual rename when a delayed ai title response arrives later', async () => {
   const user = userEvent.setup();
   const deferred = deferredSseResponse();

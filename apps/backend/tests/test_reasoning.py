@@ -2,6 +2,7 @@ import pytest
 from unittest.mock import MagicMock
 from langchain.chat_models import init_chat_model
 from workflow.main_graph import DEFAULT_LLM_MODEL
+from api.routes.chat import _extract_reasoning_chunk
 
 
 def test_reasoning_config_in_graph():
@@ -27,11 +28,18 @@ async def test_reasoning_extraction_logic(monkeypatch):
     }
     mock_chunk.content = ""
 
-    # Verify our logic in chat.py would catch this (Manual verification of the logic path)
-    reasoning_chunk = getattr(mock_chunk, "additional_kwargs", {}).get(
-        "reasoning_summary_text"
-    )
+    reasoning_chunk = _extract_reasoning_chunk(mock_chunk)
     assert reasoning_chunk == "I am thinking about the number 9.11..."
+
+
+def test_reasoning_extraction_from_content_items():
+    mock_chunk = MagicMock()
+    mock_chunk.additional_kwargs = {}
+    mock_chunk.content = [
+        {"type": "reasoning_summary", "summary": "Summarizing the comparison."}
+    ]
+
+    assert _extract_reasoning_chunk(mock_chunk) == "Summarizing the comparison."
 
 
 def test_preset_reasoning_query():

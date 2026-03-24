@@ -41,10 +41,10 @@ export function ThreadListItem({
   const interactive = Boolean(onSelect);
   const hasActions = Boolean(onRename || onTogglePinned || onDelete);
   const baseClassName = [
-    'group relative w-full rounded-[12px] border px-4 py-3 text-left transition-all duration-200',
+    'group relative w-full rounded-[10px] px-3.5 py-2.5 text-left transition-all duration-200',
     selected
-      ? 'border-[rgba(143,245,255,0.24)] bg-[rgba(29,31,40,0.95)] shadow-[0_0_0_1px_rgba(143,245,255,0.08)]'
-      : 'border-transparent bg-transparent hover:border-[rgba(255,255,255,0.05)] hover:bg-[rgba(29,31,40,0.6)]',
+      ? 'bg-[rgba(29,31,40,0.9)] shadow-[inset_2px_0_0_0_rgba(172,137,255,0.65)]'
+      : 'bg-transparent hover:bg-[rgba(29,31,40,0.44)]',
     interactive && !disabled ? 'cursor-pointer' : '',
     disabled ? 'cursor-not-allowed opacity-80' : '',
   ]
@@ -101,13 +101,13 @@ export function ThreadListItem({
               disabled={disabled}
             />
           ) : (
-            <div className="line-clamp-2 text-[14px] font-semibold leading-5 text-[#e7e7f0]">
+            <div className="line-clamp-2 text-[13px] font-semibold leading-[1.35rem] text-[#e7e7f0]">
               {thread.title}
             </div>
           )}
 
           {thread.pinned ? (
-            <span className="mt-2 inline-flex rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.18em] text-amber-200">
+            <span className="mt-1.5 inline-flex rounded-full border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.16em] text-amber-200">
               Pinned
             </span>
           ) : null}
@@ -126,7 +126,7 @@ export function ThreadListItem({
               aria-haspopup="menu"
               aria-expanded={menuOpen}
               className={[
-                'rounded-[10px] border border-[rgba(255,255,255,0.05)] bg-[rgba(0,0,0,0.16)] p-1.5 text-[rgba(170,170,179,0.74)] transition hover:border-[rgba(255,255,255,0.08)] hover:text-[#e7e7f0]',
+                'rounded-[8px] bg-transparent p-1 text-[rgba(170,170,179,0.74)] transition hover:bg-[rgba(255,255,255,0.04)] hover:text-[#e7e7f0]',
                 menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100',
                 disabled ? 'cursor-not-allowed opacity-50' : '',
               ]

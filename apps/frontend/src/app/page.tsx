@@ -11,6 +11,8 @@ import type { AuthUser } from '@/types/auth';
 import type { ActionSpaceState, ActiveThreadState, StreamSessionState, ThreadCollectionState } from '@/types/thread';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { changePasswordUser, deleteThread, fetchThreadDetail, fetchThreadTelemetry, fetchThreads, generateAiThreadTitle, generateSuggestedQueries, patchThread, resumeChatStream, sendChatStream } from '@/lib/api';
@@ -45,7 +47,8 @@ function cn(...inputs: ClassValue[]) {
 const MarkdownContent = ({ content }: { content: string }) => {
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
+      remarkPlugins={[remarkGfm, remarkMath]}
+      rehypePlugins={[rehypeKatex]}
       components={{
         code({ inline, className, children, ...props }: { inline?: boolean; className?: string; children?: React.ReactNode }) {
           const match = /language-(\w+)/.exec(className || '');
@@ -1138,19 +1141,29 @@ function WorkspaceApp({
   };
 
   const liveReasoningFallback = (() => {
-    if (actionSpaceState.reasoning.trim() || !streamSessionState.loading) {
+    if (actionSpaceState.reasoning.trim() || isHistoricalView) {
       return '';
     }
 
-    const runningTool = [...actionSpaceState.toolExecutions]
+    if (activeThreadState.viewMode === 'draft' && activeThreadState.messages.length === 0) {
+      return '';
+    }
+
+    const mostRecentTool = [...actionSpaceState.toolExecutions]
       .reverse()
-      .find((tool) => tool.status === 'running');
-    if (runningTool) {
-      return `${runningTool.name} 도구 결과를 바탕으로 응답 근거를 정리하는 중입니다.`;
+      .find((tool) => tool.status === 'running' || tool.status === 'success');
+    if (mostRecentTool) {
+      if (mostRecentTool.status === 'running') {
+        return `${mostRecentTool.name} 도구 결과를 바탕으로 응답 근거를 정리하는 중입니다.`;
+      }
+      return `${mostRecentTool.name} 결과를 반영해 최종 답변의 핵심 근거를 정리했습니다.`;
     }
 
     if (streamSessionState.currentNode) {
-      return `${streamSessionState.currentNode} 단계에서 현재 요청에 맞는 답변 구조를 잡는 중입니다.`;
+      if (streamSessionState.loading) {
+        return `${streamSessionState.currentNode} 단계에서 현재 요청에 맞는 답변 구조를 잡는 중입니다.`;
+      }
+      return `${streamSessionState.currentNode} 단계에서 이번 turn의 답변 구성이 마무리되었습니다.`;
     }
 
     return '현재 요청을 해석하고 다음 응답 단계를 정리하는 중입니다.';
@@ -1172,12 +1185,107 @@ function WorkspaceApp({
   );
 
   return (
-    <main className="relative flex h-screen overflow-hidden bg-[var(--oa-bg)] text-[var(--oa-copy)]">
+    <main className="relative flex h-screen flex-col overflow-hidden bg-[var(--oa-bg)] text-[var(--oa-copy)]">
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute left-[-10%] top-[-8%] h-[32rem] w-[32rem] rounded-full bg-[rgba(143,245,255,0.08)] blur-[120px]" />
         <div className="absolute bottom-[-16%] right-[-8%] h-[28rem] w-[28rem] rounded-full bg-[rgba(172,137,255,0.12)] blur-[120px]" />
       </div>
 
+      <header className="relative z-20 flex h-16 shrink-0 items-center justify-between border-b border-[rgba(255,255,255,0.05)] bg-[rgba(12,14,20,0.9)] px-6 backdrop-blur-xl md:px-8">
+        <div className="flex min-w-0 items-center gap-4">
+          <button
+            type="button"
+            onClick={() => setMobileSidebarOpen(true)}
+            className="inline-flex rounded-[12px] border border-[rgba(255,255,255,0.06)] bg-[rgba(35,38,46,0.4)] p-2 text-[rgba(170,170,179,0.82)] transition hover:text-[#e7e7f0] lg:hidden"
+          >
+            <Menu size={16} />
+          </button>
+
+          <div className="hidden items-center gap-8 md:flex">
+            <div className="font-[var(--font-display)] text-[24px] font-bold tracking-[-0.04em] text-[#ac89ff]">
+              OrchAgent
+            </div>
+
+            <nav className="flex items-center gap-2 text-[14px]">
+              <button
+                type="button"
+                className="rounded-[8px] border-b-2 border-[#ac89ff] px-3 py-1 font-[var(--font-display)] text-[#ac89ff]"
+              >
+                Chat
+              </button>
+              <button
+                type="button"
+                aria-disabled="true"
+                className="rounded-[8px] px-3 py-1 text-[rgba(148,163,184,0.7)] transition hover:bg-[rgba(255,255,255,0.04)] hover:text-[#e7e7f0]"
+              >
+                Dashboard
+              </button>
+              <button
+                type="button"
+                aria-disabled="true"
+                className="rounded-[8px] px-3 py-1 text-[rgba(148,163,184,0.7)] transition hover:bg-[rgba(255,255,255,0.04)] hover:text-[#e7e7f0]"
+              >
+                Agents
+              </button>
+              <button
+                type="button"
+                aria-disabled="true"
+                className="rounded-[8px] px-3 py-1 text-[rgba(148,163,184,0.7)] transition hover:bg-[rgba(255,255,255,0.04)] hover:text-[#e7e7f0]"
+              >
+                Logs
+              </button>
+              <button
+                type="button"
+                aria-disabled="true"
+                className="rounded-[8px] px-3 py-1 text-[rgba(148,163,184,0.7)] transition hover:bg-[rgba(255,255,255,0.04)] hover:text-[#e7e7f0]"
+              >
+                Settings
+              </button>
+            </nav>
+          </div>
+
+          <div className="md:hidden">
+            <div className="font-[var(--font-display)] text-[18px] font-bold text-[#ac89ff]">
+              OrchAgent
+            </div>
+          </div>
+        </div>
+
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="hidden min-w-0 items-center gap-3 rounded-[12px] border border-[rgba(255,255,255,0.06)] bg-[rgba(29,31,40,0.45)] px-3 py-2 sm:flex">
+            <div className="min-w-0">
+              <div className="truncate text-[12px] font-semibold text-[#e7e7f0]">
+                {activeThreadState.title || 'New Chat'}
+              </div>
+              <div className="truncate text-[10px] uppercase tracking-[0.22em] text-[rgba(170,170,179,0.72)]">
+                {activeThreadState.threadId || 'draft_session'}
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            aria-label="Notifications"
+            className="hidden rounded-[12px] border border-[rgba(255,255,255,0.06)] bg-[rgba(29,31,40,0.45)] p-2 text-[rgba(170,170,179,0.82)] transition hover:text-[#e7e7f0] sm:inline-flex"
+          >
+            <Bell size={16} />
+          </button>
+
+          <button
+            type="button"
+            aria-label="Open account drawer"
+            onClick={() => setAccountPanelOpen(true)}
+            className="inline-flex items-center gap-2 rounded-[12px] border border-[rgba(172,137,255,0.18)] bg-[rgba(29,31,40,0.45)] px-3 py-2 text-[12px] text-[#e7e7f0] transition hover:border-[rgba(172,137,255,0.32)]"
+          >
+            <PanelRightOpen size={15} className="text-[#ac89ff]" />
+            <span className="hidden font-semibold sm:inline">
+              {currentUser.display_name || currentUser.login_id}
+            </span>
+          </button>
+        </div>
+      </header>
+
+      <div className="relative z-10 flex min-h-0 flex-1 overflow-hidden">
       {accountPanelOpen ? (
         <AccountDrawer
           user={currentUser}
@@ -1223,74 +1331,7 @@ function WorkspaceApp({
         </div>
       ) : null}
 
-      <section className="relative z-10 flex min-w-0 flex-1 flex-col">
-        <header className="flex h-16 items-center justify-between border-b border-[rgba(255,255,255,0.05)] bg-[rgba(12,14,20,0.82)] px-6 backdrop-blur-xl md:px-8">
-          <div className="flex min-w-0 items-center gap-4">
-            <button
-              type="button"
-              onClick={() => setMobileSidebarOpen(true)}
-              className="inline-flex rounded-[12px] border border-[rgba(255,255,255,0.06)] bg-[rgba(35,38,46,0.4)] p-2 text-[rgba(170,170,179,0.82)] transition hover:text-[#e7e7f0] lg:hidden"
-            >
-              <Menu size={16} />
-            </button>
-
-            <div className="hidden items-center gap-8 md:flex">
-              <div className="font-[var(--font-display)] text-[24px] font-bold tracking-[-0.04em] text-[#00f0ff]">
-                OrchAgent
-              </div>
-
-              <nav className="flex items-center gap-5 text-[14px]">
-                <span className="border-b-2 border-[#00f0ff] pb-1 font-[var(--font-display)] text-[#00f0ff]">
-                  Chat
-                </span>
-                <span className="cursor-default text-[rgba(148,163,184,0.7)]">Dashboard</span>
-                <span className="cursor-default text-[rgba(148,163,184,0.7)]">Agents</span>
-                <span className="cursor-default text-[rgba(148,163,184,0.7)]">Logs</span>
-                <span className="cursor-default text-[rgba(148,163,184,0.7)]">Settings</span>
-              </nav>
-            </div>
-
-            <div className="md:hidden">
-              <div className="font-[var(--font-display)] text-[18px] font-bold text-[#00f0ff]">
-                OrchAgent
-              </div>
-            </div>
-          </div>
-
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="hidden min-w-0 items-center gap-3 rounded-[12px] border border-[rgba(255,255,255,0.06)] bg-[rgba(29,31,40,0.45)] px-3 py-2 sm:flex">
-              <div className="min-w-0">
-                <div className="truncate text-[12px] font-semibold text-[#e7e7f0]">
-                  {activeThreadState.title || 'New Chat'}
-                </div>
-                <div className="truncate text-[10px] uppercase tracking-[0.22em] text-[rgba(170,170,179,0.72)]">
-                  {activeThreadState.threadId || 'draft_session'}
-                </div>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              aria-label="Notifications"
-              className="hidden rounded-[12px] border border-[rgba(255,255,255,0.06)] bg-[rgba(29,31,40,0.45)] p-2 text-[rgba(170,170,179,0.82)] transition hover:text-[#e7e7f0] sm:inline-flex"
-            >
-              <Bell size={16} />
-            </button>
-
-            <button
-              type="button"
-              aria-label="Open account drawer"
-              onClick={() => setAccountPanelOpen(true)}
-              className="inline-flex items-center gap-2 rounded-[12px] border border-[rgba(143,245,255,0.16)] bg-[rgba(29,31,40,0.45)] px-3 py-2 text-[12px] text-[#e7e7f0] transition hover:border-[rgba(143,245,255,0.28)]"
-            >
-              <PanelRightOpen size={15} className="text-[#8ff5ff]" />
-              <span className="hidden font-semibold sm:inline">
-                {currentUser.display_name || currentUser.login_id}
-              </span>
-            </button>
-          </div>
-        </header>
-
+      <section className="flex min-w-0 flex-1 flex-col">
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-6 md:px-8">
           <div className="mx-auto flex w-full max-w-[720px] flex-col gap-8">
             {activeThreadState.detailLoadState === 'loading' ? (
@@ -1538,6 +1579,7 @@ function WorkspaceApp({
           </div>
         </div>
       </aside>
+      </div>
     </main>
   );
 }
