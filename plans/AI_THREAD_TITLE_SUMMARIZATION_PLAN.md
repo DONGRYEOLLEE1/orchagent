@@ -1,5 +1,5 @@
 작성일시: 2026-03-24 10:57 KST
-최종 수정일시: 2026-03-24 11:05 KST
+최종 수정일시: 2026-03-24 11:09 KST
 
 # AI Thread Title Summarization Plan
 
@@ -174,13 +174,13 @@
 
 ### Phase 2. 백엔드 API 추가
 
-- [ ] `POST /api/threads/{thread_id}/ai-title` 엔드포인트를 추가한다.
-- [ ] 요청 시 thread ownership을 검증한다.
-- [ ] 이미 `title_override`가 있으면 AI 제목 생성을 건너뛰거나 no-op 응답을 반환한다.
-- [ ] thread의 첫 user message인지 확인하는 정책을 구현한다.
-- [ ] 새 질문 본문을 service에 전달해 title을 생성한다.
-- [ ] 결과는 `ThreadProfileService`를 통해 저장한다.
-- [ ] 응답은 프런트가 즉시 title을 patch할 수 있는 형태로 반환한다.
+- [x] `POST /api/threads/{thread_id}/ai-title` 엔드포인트를 추가한다.
+- [x] 요청 시 thread ownership을 검증한다.
+- [x] 이미 `title_override`가 있으면 AI 제목 생성을 건너뛰거나 no-op 응답을 반환한다.
+- [x] thread의 첫 user message인지 확인하는 정책을 구현한다.
+- [x] 새 질문 본문을 service에 전달해 title을 생성한다.
+- [x] 결과는 `ThreadProfileService`를 통해 저장한다.
+- [x] 응답은 프런트가 즉시 title을 patch할 수 있는 형태로 반환한다.
 
 ### Phase 3. 프런트 병렬화 구현
 

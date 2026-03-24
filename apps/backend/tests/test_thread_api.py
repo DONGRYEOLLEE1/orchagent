@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from uuid import uuid4
+from unittest.mock import AsyncMock
 
 from fastapi.testclient import TestClient
 
@@ -11,7 +12,9 @@ client = TestClient(app)
 
 
 async def _override_get_db():
-    yield object()
+    db = AsyncMock()
+    db.commit = AsyncMock()
+    yield db
 
 
 def test_list_threads_returns_thread_summaries(monkeypatch):
@@ -365,3 +368,179 @@ def test_delete_thread_returns_404_for_missing_thread(monkeypatch):
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Thread not found"}
+
+
+def test_generate_ai_thread_title_creates_title_for_first_message(monkeypatch):
+    created_at = datetime(2026, 3, 22, 10, 0, 0, tzinfo=timezone.utc)
+    summary = ThreadSummary(
+        thread_id="thread-ai-1",
+        title="RoPE 논문 탐색",
+        preview="Latest reply",
+        created_at=created_at,
+        last_activity_at=created_at,
+        message_count=1,
+        latest_status="running",
+        checkpoint_id=None,
+        pinned=False,
+        archived=False,
+    )
+
+    from services.logging_service import LoggingService
+    from services.thread_profile_service import ThreadProfileService
+    from services.thread_service import ThreadService
+    from services.thread_title_service import ThreadTitleService
+
+    async def mock_get_chat_session(db, thread_id, *, user_id=None):
+        assert thread_id == "thread-ai-1"
+        assert user_id is None
+        return None
+
+    async def mock_get_or_create_session(db, thread_id, user_id=None):
+        assert thread_id == "thread-ai-1"
+        assert user_id == "test-user"
+        return object()
+
+    async def mock_get_thread_profile(db, thread_id, user_id):
+        return None
+
+    async def mock_get_counts(db, thread_id):
+        assert thread_id == "thread-ai-1"
+        return {"user": 1, "assistant": 0}
+
+    async def mock_generate_title(message):
+        assert "RoPE 논문" in message
+        return "RoPE 논문 탐색"
+
+    async def mock_set_generated_title_if_missing(*args, **kwargs):
+        assert kwargs["thread_id"] == "thread-ai-1"
+        assert kwargs["user_id"] == "test-user"
+        assert kwargs["title"] == "RoPE 논문 탐색"
+        return object()
+
+    async def mock_get_thread_summary(db, thread_id, *, user_id):
+        assert thread_id == "thread-ai-1"
+        assert user_id == "test-user"
+        return summary
+
+    app.dependency_overrides[get_db] = _override_get_db
+    monkeypatch.setattr(ThreadService, "get_chat_session", mock_get_chat_session)
+    monkeypatch.setattr(LoggingService, "get_or_create_session", mock_get_or_create_session)
+    monkeypatch.setattr(ThreadProfileService, "get_thread_profile", mock_get_thread_profile)
+    monkeypatch.setattr(ThreadService, "get_thread_message_role_counts", mock_get_counts)
+    monkeypatch.setattr(ThreadTitleService, "generate_title", mock_generate_title)
+    monkeypatch.setattr(
+        ThreadProfileService,
+        "set_generated_title_if_missing",
+        mock_set_generated_title_if_missing,
+    )
+    monkeypatch.setattr(ThreadService, "get_thread_summary", mock_get_thread_summary)
+    try:
+        response = client.post(
+            "/api/threads/thread-ai-1/ai-title",
+            json={"message": "웹검색을 통해 RoPE 논문을 탐색하고 메인 연구자가 원하는 바는 무엇인지 설명해주세요."},
+        )
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+    assert response.status_code == 200
+    assert response.json()["title"] == "RoPE 논문 탐색"
+
+
+def test_generate_ai_thread_title_skips_when_manual_title_exists(monkeypatch):
+    created_at = datetime(2026, 3, 22, 10, 0, 0, tzinfo=timezone.utc)
+    summary = ThreadSummary(
+        thread_id="thread-ai-2",
+        title="수동 제목",
+        preview="Latest reply",
+        created_at=created_at,
+        last_activity_at=created_at,
+        message_count=1,
+        latest_status="running",
+        checkpoint_id=None,
+        pinned=False,
+        archived=False,
+    )
+
+    from services.thread_profile_service import ThreadProfileService
+    from services.thread_service import ThreadService
+    from services.thread_title_service import ThreadTitleService
+
+    async def mock_get_chat_session(db, thread_id, *, user_id=None):
+        return type("Session", (), {"user_id": "test-user"})()
+
+    async def mock_get_thread_profile(db, thread_id, user_id):
+        return type("Profile", (), {"title_override": "수동 제목"})()
+
+    async def mock_get_thread_summary(db, thread_id, *, user_id):
+        return summary
+
+    async def fail_generate_title(message):
+        raise AssertionError("generate_title should not be called when manual title exists")
+
+    app.dependency_overrides[get_db] = _override_get_db
+    monkeypatch.setattr(ThreadService, "get_chat_session", mock_get_chat_session)
+    monkeypatch.setattr(ThreadProfileService, "get_thread_profile", mock_get_thread_profile)
+    monkeypatch.setattr(ThreadService, "get_thread_summary", mock_get_thread_summary)
+    monkeypatch.setattr(ThreadTitleService, "generate_title", fail_generate_title)
+    try:
+        response = client.post(
+            "/api/threads/thread-ai-2/ai-title",
+            json={"message": "웹검색으로 JWT를 설명해줘"},
+        )
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+    assert response.status_code == 200
+    assert response.json()["title"] == "수동 제목"
+
+
+def test_generate_ai_thread_title_skips_existing_threads_after_first_user_turn(monkeypatch):
+    created_at = datetime(2026, 3, 22, 10, 0, 0, tzinfo=timezone.utc)
+    summary = ThreadSummary(
+        thread_id="thread-ai-3",
+        title="기존 제목",
+        preview="Latest reply",
+        created_at=created_at,
+        last_activity_at=created_at,
+        message_count=3,
+        latest_status="completed",
+        checkpoint_id="cp-1",
+        pinned=False,
+        archived=False,
+    )
+
+    from services.thread_profile_service import ThreadProfileService
+    from services.thread_service import ThreadService
+    from services.thread_title_service import ThreadTitleService
+
+    async def mock_get_chat_session(db, thread_id, *, user_id=None):
+        return type("Session", (), {"user_id": "test-user"})()
+
+    async def mock_get_thread_profile(db, thread_id, user_id):
+        return None
+
+    async def mock_get_counts(db, thread_id):
+        return {"user": 2, "assistant": 1}
+
+    async def mock_get_thread_summary(db, thread_id, *, user_id):
+        return summary
+
+    async def fail_generate_title(message):
+        raise AssertionError("generate_title should not be called for existing follow-up turns")
+
+    app.dependency_overrides[get_db] = _override_get_db
+    monkeypatch.setattr(ThreadService, "get_chat_session", mock_get_chat_session)
+    monkeypatch.setattr(ThreadProfileService, "get_thread_profile", mock_get_thread_profile)
+    monkeypatch.setattr(ThreadService, "get_thread_message_role_counts", mock_get_counts)
+    monkeypatch.setattr(ThreadService, "get_thread_summary", mock_get_thread_summary)
+    monkeypatch.setattr(ThreadTitleService, "generate_title", fail_generate_title)
+    try:
+        response = client.post(
+            "/api/threads/thread-ai-3/ai-title",
+            json={"message": "추가 질문입니다"},
+        )
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+    assert response.status_code == 200
+    assert response.json()["title"] == "기존 제목"

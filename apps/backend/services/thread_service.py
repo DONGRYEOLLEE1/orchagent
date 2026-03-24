@@ -302,6 +302,25 @@ class ThreadService:
         ]
 
     @staticmethod
+    async def get_thread_message_role_counts(
+        db: AsyncSession, thread_id: str
+    ) -> dict[str, int]:
+        stmt = (
+            select(
+                ChatMessageLog.role.label("role"),
+                func.count(ChatMessageLog.id).label("count"),
+            )
+            .where(ChatMessageLog.session_id == thread_id)
+            .group_by(ChatMessageLog.role)
+        )
+        result = await db.execute(stmt)
+        counts = {row["role"]: row["count"] for row in result.mappings().all()}
+        return {
+            "user": int(counts.get("user", 0) or 0),
+            "assistant": int(counts.get("assistant", 0) or 0),
+        }
+
+    @staticmethod
     async def get_thread_detail(
         db: AsyncSession, thread_id: str, *, user_id: str
     ) -> ThreadDetail | None:

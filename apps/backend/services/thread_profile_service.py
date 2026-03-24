@@ -68,3 +68,25 @@ class ThreadProfileService:
         await db.commit()
         await db.refresh(profile)
         return profile
+
+    @staticmethod
+    async def set_generated_title_if_missing(
+        db: AsyncSession,
+        *,
+        thread_id: str,
+        user_id: str,
+        title: str,
+    ) -> ThreadProfile:
+        profile = await ThreadProfileService.get_thread_profile(db, thread_id, user_id)
+        if profile is None:
+            profile = ThreadProfile(thread_id=thread_id, user_id=user_id)
+            db.add(profile)
+
+        if profile.title_override:
+            return profile
+
+        normalized_title = ThreadProfileService.normalize_title(title)
+        profile.title_override = normalized_title
+        await db.commit()
+        await db.refresh(profile)
+        return profile

@@ -42,3 +42,33 @@ async def test_upsert_thread_profile_creates_profile(monkeypatch):
     db.add.assert_called_once()
     db.commit.assert_awaited_once()
     db.refresh.assert_awaited_once_with(profile)
+
+
+@pytest.mark.asyncio
+async def test_set_generated_title_if_missing_skips_existing_override(monkeypatch):
+    existing = ThreadProfile(thread_id="thread-1", user_id="user-1", title_override="Manual")
+    db = AsyncMock()
+    db.add = Mock()
+    db.commit = AsyncMock()
+    db.refresh = AsyncMock()
+
+    async def mock_get_thread_profile(*args, **kwargs):
+        return existing
+
+    monkeypatch.setattr(
+        ThreadProfileService,
+        "get_thread_profile",
+        mock_get_thread_profile,
+    )
+
+    profile = await ThreadProfileService.set_generated_title_if_missing(
+        db,
+        thread_id="thread-1",
+        user_id="user-1",
+        title="AI title",
+    )
+
+    assert profile.title_override == "Manual"
+    db.add.assert_not_called()
+    db.commit.assert_not_awaited()
+    db.refresh.assert_not_awaited()
