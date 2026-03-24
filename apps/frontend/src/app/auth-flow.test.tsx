@@ -181,6 +181,7 @@ test('workspace logout clears auth and redirects to login', async () => {
 
   renderWithAuth(<ChatWorkspace />);
 
+  await user.click(await screen.findByRole('button', { name: /open account drawer/i }));
   await user.click(await screen.findByRole('button', { name: /log out/i }));
 
   await waitFor(() => {
@@ -321,12 +322,13 @@ test('profile panel saves and updates the visible user state', async () => {
 
   renderWithAuth(<ChatWorkspace />);
 
+  await user.click(await screen.findByRole('button', { name: /open account drawer/i }));
   await user.type(await screen.findByLabelText(/display name/i), 'Updated Name');
   await user.type(screen.getByLabelText(/email/i), 'updated@example.com');
   await user.click(screen.getByRole('button', { name: /save profile/i }));
 
   expect(await screen.findByDisplayValue('Updated Name')).toBeInTheDocument();
-  expect(screen.getByText('Updated Name')).toBeInTheDocument();
+  expect(screen.getAllByText('Updated Name').length).toBeGreaterThan(0);
 });
 
 test('admin status panel is only rendered for admins and can submit a status change', async () => {
@@ -374,6 +376,7 @@ test('admin status panel is only rendered for admins and can submit a status cha
 
   renderWithAuth(<ChatWorkspace />);
 
+  await user.click(await screen.findByRole('button', { name: /open account drawer/i }));
   expect(await screen.findByText(/Admin User Status/i)).toBeInTheDocument();
   await user.type(screen.getByLabelText(/target user id/i), 'user-2');
   await user.selectOptions(screen.getByLabelText(/status/i), 'disabled');
@@ -383,6 +386,7 @@ test('admin status panel is only rendered for admins and can submit a status cha
 });
 
 test('admin status panel is hidden for non-admin users', async () => {
+  const user = userEvent.setup();
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
 
@@ -409,6 +413,8 @@ test('admin status panel is hidden for non-admin users', async () => {
 
   renderWithAuth(<ChatWorkspace />);
 
+  const accountButton = await screen.findByRole('button', { name: /open account drawer/i });
+  await user.click(accountButton);
   expect(await screen.findByText(/System Ready/i)).toBeInTheDocument();
   expect(screen.queryByText(/Admin User Status/i)).not.toBeInTheDocument();
 });

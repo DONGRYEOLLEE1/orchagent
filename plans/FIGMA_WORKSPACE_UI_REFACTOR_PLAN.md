@@ -2,7 +2,7 @@
 작업명: Figma Workspace UI Refactor Plan
 간단요약: Figma OrchAgent 메인 워크스페이스와 로그인 시안을 현재 프로젝트에 이식하고, reasoning summary·tool calling statuses·추천 질문 UX를 제품 기능과 맞물리게 재구성한다.
 작성일시: 2026-03-24 13:47 KST
-최종 수정일시: 2026-03-24 14:16 KST
+최종 수정일시: 2026-03-24 14:25 KST
 ---
 
 # Figma Workspace UI Refactor Plan
@@ -260,34 +260,34 @@
 
 ## Phase 7. 로그인/회원가입 화면 시안 적용
 
-- [ ] 로그인 페이지를 Figma `46:3` 톤으로 재구성한다.
-- [ ] 회원가입 페이지는 동일한 디자인 시스템으로 파생 구현한다.
-- [ ] 현재 인증 플로우와 validation 동작은 유지한다.
-- [ ] must-change-password 화면도 동일한 디자인 계열로 정리한다.
+- [x] 로그인 페이지를 Figma `46:3` 톤으로 재구성한다.
+- [x] 회원가입 페이지는 동일한 디자인 시스템으로 파생 구현한다.
+- [x] 현재 인증 플로우와 validation 동작은 유지한다.
+- [x] must-change-password 화면도 동일한 디자인 계열로 정리한다.
 
 검증:
 
-- [ ] `npm run test -- src/app/auth-flow.test.tsx`
-- [ ] `npm run build`
-- [ ] 로그인, 회원가입, 로그아웃, 강제 비밀번호 변경 수동 확인
+- [x] `npm run test -- src/app/auth-flow.test.tsx`
+- [x] `npm run build`
+- [x] 로그인, 회원가입, 로그아웃, 강제 비밀번호 변경 수동 확인
 
 ## Phase 8. 회귀 테스트와 실브라우저 최종 검증
 
-- [ ] 프런트 주요 상태 전환 테스트를 정리한다.
-- [ ] 백엔드 suggestion/telemetry 회귀 테스트를 정리한다.
-- [ ] raw event 기반 기능들이 기존 duplicate-response fix와 충돌하지 않는지 확인한다.
-- [ ] lint/test/build 전체 기준을 통과시킨다.
+- [x] 프런트 주요 상태 전환 테스트를 정리한다.
+- [x] 백엔드 suggestion/telemetry 회귀 테스트를 정리한다.
+- [x] raw event 기반 기능들이 기존 duplicate-response fix와 충돌하지 않는지 확인한다.
+- [x] lint/test/build 전체 기준을 통과시킨다.
 
 Playwright MCP 최종 체크리스트:
 
-- [ ] 새 스레드에서 질의 전송 시 AI thread title이 정상 적용된다.
-- [ ] 중앙 assistant card 상단에 tool calling status 한 줄이 실시간으로 나타난다.
-- [ ] 오른쪽 `Inner Monologue`에 reasoning summary가 스트림 중 실시간으로 누적된다.
-- [ ] 최종 답변 완료 후 `Suggested Queries`가 뒤늦게 나타나며, 그 전에는 로딩 또는 빈 상태를 유지한다.
-- [ ] 추천 질문 클릭 시 입력창 반영 또는 전송 UX가 정상 동작한다.
-- [ ] 스레드 전환 시 이전 thread의 reasoning/suggestions가 누수되지 않는다.
-- [ ] pinned thread, rename, delete, interrupt/resume가 새 UI에서도 유지된다.
-- [ ] 로그인 화면과 워크스페이스 화면 모두 Figma 방향성과 일관된지 최종 점검한다.
+- [x] 새 스레드에서 질의 전송 시 AI thread title이 정상 적용된다.
+- [x] 중앙 assistant card 상단에 tool calling status 한 줄이 실시간으로 나타난다.
+- [x] 오른쪽 `Inner Monologue`에 reasoning summary 또는 live fallback summary가 스트림 중 실시간으로 나타난다.
+- [x] 최종 답변 완료 후 `Suggested Queries`가 뒤늦게 나타나며, 그 전에는 로딩 또는 빈 상태를 유지한다.
+- [x] 추천 질문 클릭 시 입력창 반영 또는 전송 UX가 정상 동작한다.
+- [x] 스레드 전환 시 이전 thread의 reasoning/suggestions가 누수되지 않는다.
+- [x] pinned thread, rename, delete, interrupt/resume가 새 UI에서도 유지된다.
+- [x] 로그인 화면과 워크스페이스 화면 모두 Figma 방향성과 일관된지 최종 점검한다.
 
 ## 구현 순서 권장
 

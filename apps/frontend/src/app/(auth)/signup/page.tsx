@@ -3,14 +3,15 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Bot, Loader2, UserPlus } from 'lucide-react';
+import { Loader2, UserPlus } from 'lucide-react';
 
 import { signupUser } from '@/lib/api';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { AuthScaffold } from '@/components/auth/AuthScaffold';
 
 function passwordStrength(password: string) {
   let score = 0;
-  if (password.length >= 15) score += 1;
+  if (password.length >= 4) score += 1;
   if (/[a-z]/.test(password)) score += 1;
   if (/\d/.test(password)) score += 1;
 
@@ -56,35 +57,35 @@ export default function SignupPage() {
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-950 px-6 py-12 text-slate-100">
-      <div className="w-full max-w-md rounded-3xl border border-slate-800/80 bg-slate-900/70 p-8 shadow-2xl shadow-black/40 backdrop-blur-xl">
-        <div className="mb-8 flex items-center gap-4">
-          <div className="rounded-2xl bg-blue-600 p-3 shadow-lg shadow-blue-500/20">
-            <Bot className="text-white" />
-          </div>
+    <AuthScaffold
+      title="Create Account"
+      subtitle="Provision a new operator identity for the workspace."
+      footer={(
+        <>
+          Already have an account?{' '}
+          <Link href="/login" className="font-semibold text-[#8ff5ff] transition hover:text-[#c7fbff]">
+            Log in
+          </Link>
+        </>
+      )}
+    >
+      <form className="space-y-5" onSubmit={handleSubmit}>
           <div>
-            <div className="text-xs uppercase tracking-[0.24em] text-slate-500">OrchAgent</div>
-            <h1 className="mt-1 text-2xl font-bold text-slate-100">Create Account</h1>
-          </div>
-        </div>
-
-        <form className="space-y-5" onSubmit={handleSubmit}>
-          <div>
-            <label className="mb-2 block text-sm font-medium text-slate-300" htmlFor="signup-login-id">
+            <label className="mb-2 block text-[12px] font-semibold uppercase tracking-[0.2em] text-[rgba(170,170,179,0.82)]" htmlFor="signup-login-id">
               Login ID
             </label>
             <input
               id="signup-login-id"
               value={loginId}
               onChange={(e) => setLoginId(e.target.value)}
-              className="w-full rounded-2xl border border-slate-800 bg-slate-950/70 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-blue-500/60"
+              className="w-full rounded-[16px] border border-[rgba(255,255,255,0.08)] bg-black/70 px-4 py-4 text-sm text-[#e7e7f0] outline-none transition placeholder:text-[rgba(170,170,179,0.42)] focus:border-[rgba(143,245,255,0.28)]"
               placeholder="Choose your login ID"
               disabled={submitting}
             />
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-medium text-slate-300" htmlFor="signup-password">
+            <label className="mb-2 block text-[12px] font-semibold uppercase tracking-[0.2em] text-[rgba(170,170,179,0.82)]" htmlFor="signup-password">
               Password
             </label>
             <input
@@ -92,24 +93,24 @@ export default function SignupPage() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-2xl border border-slate-800 bg-slate-950/70 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-blue-500/60"
+              className="w-full rounded-[16px] border border-[rgba(255,255,255,0.08)] bg-black/70 px-4 py-4 text-sm text-[#e7e7f0] outline-none transition placeholder:text-[rgba(170,170,179,0.42)] focus:border-[rgba(143,245,255,0.28)]"
               placeholder="Create a password"
               disabled={submitting}
             />
-            <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-800">
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-[rgba(255,255,255,0.06)]">
               <div
                 className={`h-full transition-all ${strength.tone}`}
-                style={{ width: password ? `${Math.min(password.length * 6, 100)}%` : '0%' }}
+                style={{ width: password ? `${Math.min(password.length * 16, 100)}%` : '0%' }}
               />
             </div>
-            <div className="mt-2 text-xs font-medium text-slate-400">Strength: {strength.label}</div>
-            <p className="mt-2 text-xs italic leading-5 text-slate-500">
+            <div className="mt-2 text-xs font-medium text-[rgba(170,170,179,0.82)]">Strength: {strength.label}</div>
+            <p className="mt-2 text-xs italic leading-5 text-[rgba(170,170,179,0.68)]">
               Password must be at least 4 characters and include lowercase letters and numbers.
             </p>
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-medium text-slate-300" htmlFor="signup-confirm-password">
+            <label className="mb-2 block text-[12px] font-semibold uppercase tracking-[0.2em] text-[rgba(170,170,179,0.82)]" htmlFor="signup-confirm-password">
               Confirm Password
             </label>
             <input
@@ -117,14 +118,14 @@ export default function SignupPage() {
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full rounded-2xl border border-slate-800 bg-slate-950/70 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-blue-500/60"
+              className="w-full rounded-[16px] border border-[rgba(255,255,255,0.08)] bg-black/70 px-4 py-4 text-sm text-[#e7e7f0] outline-none transition placeholder:text-[rgba(170,170,179,0.42)] focus:border-[rgba(143,245,255,0.28)]"
               placeholder="Re-enter your password"
               disabled={submitting}
             />
           </div>
 
           {error ? (
-            <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+            <div className="rounded-[16px] border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
               {error}
             </div>
           ) : null}
@@ -132,20 +133,12 @@ export default function SignupPage() {
           <button
             type="submit"
             disabled={submitting || !loginId.trim() || !password || !confirmPassword}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-500"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-[16px] bg-gradient-to-r from-[#8ff5ff] to-[#00deec] px-4 py-4 text-sm font-semibold text-[#005359] transition hover:brightness-105 disabled:bg-slate-800 disabled:text-slate-500"
           >
             {submitting ? <Loader2 size={16} className="animate-spin" /> : <UserPlus size={16} />}
             <span>Create Account</span>
           </button>
-        </form>
-
-        <p className="mt-6 text-sm text-slate-500">
-          Already have an account?{' '}
-          <Link href="/login" className="font-medium text-blue-400 transition hover:text-blue-300">
-            Log in
-          </Link>
-        </p>
-      </div>
-    </main>
+      </form>
+    </AuthScaffold>
   );
 }

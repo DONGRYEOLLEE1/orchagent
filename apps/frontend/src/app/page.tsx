@@ -29,6 +29,7 @@ import {
   upsertThreadSummary,
 } from '@/lib/workspace-state';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { AuthScaffold } from '@/components/auth/AuthScaffold';
 import { HITLPanel } from '@/components/HITLPanel';
 import { AgentTimeline } from '@/components/sidebar/AgentTimeline';
 import { ThreadListSidebar } from '@/components/sidebar/ThreadListSidebar';
@@ -140,30 +141,22 @@ function MustChangePasswordView({
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-950 px-6 py-12 text-slate-100">
-      <div className="w-full max-w-lg rounded-3xl border border-slate-800/80 bg-slate-900/70 p-8 shadow-2xl shadow-black/40 backdrop-blur-xl">
-        <div className="mb-8 flex items-center justify-between gap-4">
+    <AuthScaffold
+      title="Change Your Password"
+      subtitle={`The bootstrap admin account is active as ${currentUser.login_id}. Replace the temporary password before using the workspace.`}
+      footer={(
+        <button
+          type="button"
+          onClick={() => void onLogout()}
+          className="font-semibold text-[#8ff5ff] transition hover:text-[#c7fbff]"
+        >
+          Log Out
+        </button>
+      )}
+    >
+      <form className="space-y-5" onSubmit={handleSubmit}>
           <div>
-            <div className="text-xs uppercase tracking-[0.24em] text-slate-500">Security Gate</div>
-            <h1 className="mt-1 text-2xl font-bold text-slate-100">Change Your Password</h1>
-            <p className="mt-3 text-sm leading-6 text-slate-400">
-              The bootstrap admin account is active as <span className="font-mono text-slate-200">{currentUser.login_id}</span>.
-              You must replace the temporary password before using the workspace.
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => void onLogout()}
-            className="rounded-2xl border border-slate-800 bg-slate-950/70 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-700 hover:text-slate-100"
-          >
-            Log Out
-          </button>
-        </div>
-
-        <form className="space-y-5" onSubmit={handleSubmit}>
-          <div>
-            <label className="mb-2 block text-sm font-medium text-slate-300" htmlFor="current-password">
+            <label className="mb-2 block text-[12px] font-semibold uppercase tracking-[0.2em] text-[rgba(170,170,179,0.82)]" htmlFor="current-password">
               Current Password
             </label>
             <input
@@ -171,14 +164,14 @@ function MustChangePasswordView({
               type="password"
               value={currentPassword}
               onChange={(e) => setCurrentPassword(e.target.value)}
-              className="w-full rounded-2xl border border-slate-800 bg-slate-950/70 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-blue-500/60"
+              className="w-full rounded-[16px] border border-[rgba(255,255,255,0.08)] bg-black/70 px-4 py-4 text-sm text-[#e7e7f0] outline-none transition placeholder:text-[rgba(170,170,179,0.42)] focus:border-[rgba(143,245,255,0.28)]"
               placeholder="Enter the current password"
               disabled={submitting}
             />
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-medium text-slate-300" htmlFor="new-password">
+            <label className="mb-2 block text-[12px] font-semibold uppercase tracking-[0.2em] text-[rgba(170,170,179,0.82)]" htmlFor="new-password">
               New Password
             </label>
             <input
@@ -186,17 +179,17 @@ function MustChangePasswordView({
               type="password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              className="w-full rounded-2xl border border-slate-800 bg-slate-950/70 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-blue-500/60"
+              className="w-full rounded-[16px] border border-[rgba(255,255,255,0.08)] bg-black/70 px-4 py-4 text-sm text-[#e7e7f0] outline-none transition placeholder:text-[rgba(170,170,179,0.42)] focus:border-[rgba(143,245,255,0.28)]"
               placeholder="Create a new password"
               disabled={submitting}
             />
-            <p className="mt-2 text-xs italic leading-5 text-slate-500">
+            <p className="mt-2 text-xs italic leading-5 text-[rgba(170,170,179,0.68)]">
               Password must be at least 4 characters and include lowercase letters and numbers.
             </p>
           </div>
 
           {error ? (
-            <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+            <div className="rounded-[16px] border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
               {error}
             </div>
           ) : null}
@@ -204,14 +197,13 @@ function MustChangePasswordView({
           <button
             type="submit"
             disabled={submitting || !currentPassword || !newPassword}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-500"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-[16px] bg-gradient-to-r from-[#8ff5ff] to-[#00deec] px-4 py-4 text-sm font-semibold text-[#005359] transition hover:brightness-105 disabled:bg-slate-800 disabled:text-slate-500"
           >
             {submitting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
             <span>Change Password</span>
           </button>
-        </form>
-      </div>
-    </main>
+      </form>
+    </AuthScaffold>
   );
 }
 
@@ -1145,6 +1137,25 @@ function WorkspaceApp({
     setInput(query);
   };
 
+  const liveReasoningFallback = (() => {
+    if (actionSpaceState.reasoning.trim() || !streamSessionState.loading) {
+      return '';
+    }
+
+    const runningTool = [...actionSpaceState.toolExecutions]
+      .reverse()
+      .find((tool) => tool.status === 'running');
+    if (runningTool) {
+      return `${runningTool.name} 도구 결과를 바탕으로 응답 근거를 정리하는 중입니다.`;
+    }
+
+    if (streamSessionState.currentNode) {
+      return `${streamSessionState.currentNode} 단계에서 현재 요청에 맞는 답변 구조를 잡는 중입니다.`;
+    }
+
+    return '현재 요청을 해석하고 다음 응답 단계를 정리하는 중입니다.';
+  })();
+
   const sidebarContent = (
     <ThreadListSidebar
       threads={threadCollectionState.threads}
@@ -1469,6 +1480,7 @@ function WorkspaceApp({
             content={actionSpaceState.reasoning}
             isThinking={streamSessionState.loading}
             historicalView={isHistoricalView}
+            fallbackSummary={liveReasoningFallback}
           />
 
           <SuggestedQueriesPanel

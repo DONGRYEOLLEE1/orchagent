@@ -4,12 +4,15 @@ export function ReasoningSummaryPanel({
   content,
   isThinking,
   historicalView,
+  fallbackSummary,
 }: {
   content: string;
   isThinking: boolean;
   historicalView: boolean;
+  fallbackSummary?: string;
 }) {
-  const hasContent = Boolean(content.trim());
+  const resolvedContent = content.trim() || (isThinking ? fallbackSummary || '' : '');
+  const hasContent = Boolean(resolvedContent.trim());
 
   return (
     <section className="rounded-[12px] border border-[rgba(143,245,255,0.1)] bg-[rgba(35,38,46,0.4)] px-6 py-6 backdrop-blur-md">
@@ -31,7 +34,7 @@ export function ReasoningSummaryPanel({
         <div className="space-y-3">
           <div className="rounded-[8px] border-l-2 border-[rgba(172,137,255,0.5)] bg-[rgba(29,31,40,0.55)] px-4 py-3 text-[13px] leading-7 text-[rgba(231,231,240,0.88)]">
             <div className="whitespace-pre-wrap">
-              {content}
+              {resolvedContent}
               {isThinking ? (
                 <span className="ml-1 inline-block h-3 w-1.5 animate-pulse rounded-full bg-[#8ff5ff]" />
               ) : null}
