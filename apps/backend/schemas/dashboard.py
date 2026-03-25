@@ -8,6 +8,7 @@ class DashboardSummaryResponse(BaseModel):
     user_id: str
     total_turns: int
     completed_turns: int
+    total_llm_calls: int
     total_input_tokens: int
     total_output_tokens: int
     total_tokens: int
@@ -20,6 +21,7 @@ class DashboardSummaryResponse(BaseModel):
     avg_latency_ms: int | None
     avg_ttft_ms: int | None
     total_tool_calls: int
+    total_inference_cost_microusd: int
 
 
 class DashboardDailyUsagePointResponse(BaseModel):

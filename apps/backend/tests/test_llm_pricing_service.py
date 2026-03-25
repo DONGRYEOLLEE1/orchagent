@@ -16,10 +16,10 @@ def test_apply_snapshot_to_usage_calculates_exact_total_and_estimated_reasoning_
         model="gpt-5.4-mini",
         pricing_version="test",
         effective_from=datetime(2026, 3, 24, tzinfo=UTC),
-        input_cost_per_1m_microusd=750_000,
-        output_cost_per_1m_microusd=4_500_000,
+        input_cost_per_1m_microusd=250_000,
+        output_cost_per_1m_microusd=2_000_000,
         reasoning_cost_per_1m_microusd=None,
-        cache_read_cost_per_1m_microusd=75_000,
+        cache_read_cost_per_1m_microusd=25_000,
         is_estimated=False,
     )
     params = LLMUsageWriteParams(
@@ -47,11 +47,11 @@ def test_apply_snapshot_to_usage_calculates_exact_total_and_estimated_reasoning_
 
     priced = LLMPricingService.apply_snapshot_to_usage(params, snapshot)
 
-    assert priced.input_cost_microusd == 615
-    assert priced.output_cost_microusd == 9000
-    assert priced.total_cost_microusd == 9615
+    assert priced.input_cost_microusd == 205
+    assert priced.output_cost_microusd == 4000
+    assert priced.total_cost_microusd == 4205
     assert priced.reasoning_cost_microusd is None
-    assert priced.estimated_reasoning_cost_microusd == 2250
+    assert priced.estimated_reasoning_cost_microusd == 1000
     assert priced.reasoning_cost_is_estimated is True
 
 
@@ -60,13 +60,13 @@ async def test_resolve_pricing_snapshot_normalizes_model_alias():
     snapshot = LLMPricingSnapshot(
         id=uuid4(),
         provider="openai",
-        model="gpt-5.4-nano",
+        model="gpt-5-nano",
         pricing_version="test",
         effective_from=datetime(2026, 3, 24, tzinfo=UTC),
-        input_cost_per_1m_microusd=200_000,
-        output_cost_per_1m_microusd=1_250_000,
+        input_cost_per_1m_microusd=50_000,
+        output_cost_per_1m_microusd=400_000,
         reasoning_cost_per_1m_microusd=None,
-        cache_read_cost_per_1m_microusd=20_000,
+        cache_read_cost_per_1m_microusd=5_000,
         is_estimated=False,
     )
     mock_db = AsyncMock()

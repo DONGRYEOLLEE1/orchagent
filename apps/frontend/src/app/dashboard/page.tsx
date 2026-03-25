@@ -4,14 +4,13 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Activity,
-  Bell,
   Loader2,
-  Search,
   ShieldCheck,
   Wallet,
 } from 'lucide-react';
 
 import { AccountDrawer } from '@/components/workspace/AccountDrawer';
+import { WorkspaceTopNav } from '@/components/workspace/WorkspaceTopNav';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { fetchDashboardDailyUsage, fetchDashboardLiveTraces, fetchDashboardSummary } from '@/lib/api';
 import type {
@@ -47,8 +46,19 @@ function formatLatency(value: number | null) {
   return `${value}ms`;
 }
 
-function formatPercent(value: number) {
-  return `${value.toFixed(2)}%`;
+function formatTokenBreakdown(summary: DashboardSummary) {
+  return `In ${formatCompactNumber(summary.total_input_tokens)} / Out ${formatCompactNumber(summary.total_output_tokens)}`;
+}
+
+function formatInferenceCost(summary: DashboardSummary) {
+  return formatCurrencyFromMicrousd(summary.total_inference_cost_microusd);
+}
+
+function formatUsageDate(value: string) {
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+  }).format(new Date(value));
 }
 
 function buildUsagePath(points: DashboardDailyUsagePoint[], width: number, height: number) {
@@ -72,6 +82,7 @@ function buildAreaPath(points: DashboardDailyUsagePoint[], width: number, height
 function TokenUsageChart({ points }: { points: DashboardDailyUsagePoint[] }) {
   const width = 620;
   const height = 220;
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const linePath = buildUsagePath(points, width, height);
   const areaPath = buildAreaPath(points, width, height);
   const peakPoint = useMemo(() => {
@@ -80,6 +91,22 @@ function TokenUsageChart({ points }: { points: DashboardDailyUsagePoint[] }) {
       point.total_tokens > highest.total_tokens ? point : highest
     ), points[0]);
   }, [points]);
+  const hoveredPoint = hoveredIndex != null ? points[hoveredIndex] : null;
+  const hoveredX = hoveredIndex != null && points.length > 1
+    ? (hoveredIndex / (points.length - 1)) * width
+    : width / 2;
+  const hoveredY = hoveredPoint
+    ? height - (hoveredPoint.total_tokens / Math.max(...points.map((point) => point.total_tokens), 1)) * height
+    : null;
+
+  const handlePointerMove = (event: React.MouseEvent<SVGSVGElement>) => {
+    if (points.length === 0) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const ratio = rect.width === 0 ? 0 : Math.max(0, Math.min(x / rect.width, 1));
+    const index = points.length === 1 ? 0 : Math.round(ratio * (points.length - 1));
+    setHoveredIndex(index);
+  };
 
   return (
     <section className="min-h-[17rem] rounded-[14px] bg-[rgba(31,34,44,0.78)] px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
@@ -97,7 +124,13 @@ function TokenUsageChart({ points }: { points: DashboardDailyUsagePoint[] }) {
       </div>
 
       <div className="mt-5 h-[13.5rem] w-full">
-        <svg viewBox={`0 0 ${width} ${height}`} className="h-full w-full overflow-visible">
+        <svg
+          data-testid="token-usage-chart"
+          viewBox={`0 0 ${width} ${height}`}
+          className="h-full w-full overflow-visible"
+          onMouseMove={handlePointerMove}
+          onMouseLeave={() => setHoveredIndex(null)}
+        >
           {[0.25, 0.5, 0.75].map((ratio) => (
             <line
               key={ratio}
@@ -122,6 +155,26 @@ function TokenUsageChart({ points }: { points: DashboardDailyUsagePoint[] }) {
               strokeLinejoin="round"
             />
           ) : null}
+          {hoveredPoint && hoveredY != null ? (
+            <>
+              <line
+                x1={hoveredX}
+                x2={hoveredX}
+                y1="0"
+                y2={height}
+                stroke="rgba(94,242,255,0.22)"
+                strokeDasharray="4 6"
+              />
+              <circle
+                cx={hoveredX}
+                cy={hoveredY}
+                r="5"
+                fill="#16efff"
+                stroke="rgba(8,11,18,0.92)"
+                strokeWidth="2"
+              />
+            </>
+          ) : null}
           <defs>
             <linearGradient id="tokenArea" x1="0" x2="0" y1="0" y2="1">
               <stop offset="0%" stopColor="rgba(22,239,255,0.34)" />
@@ -132,13 +185,23 @@ function TokenUsageChart({ points }: { points: DashboardDailyUsagePoint[] }) {
       </div>
 
       {peakPoint ? (
-        <div className="mt-[-2.4rem] flex justify-end">
+        <div className="mt-[-2.4rem] flex items-start justify-between gap-4">
+          {hoveredPoint ? (
+            <div className="rounded-[8px] border border-[rgba(94,242,255,0.18)] bg-[rgba(10,14,22,0.94)] px-3 py-2">
+              <div className="text-[9px] font-semibold uppercase tracking-[0.14em] text-[rgba(170,170,179,0.64)]">
+                {formatUsageDate(hoveredPoint.usage_date)}
+              </div>
+              <div className="mt-1 text-[11px] font-semibold text-[#8ff5ff]">
+                {formatFullNumber(hoveredPoint.total_tokens)} tokens
+              </div>
+            </div>
+          ) : <div />}
           <div className="rounded-[8px] border border-[rgba(255,255,255,0.06)] bg-[rgba(13,16,24,0.92)] px-3 py-2 text-right">
             <div className="text-[9px] font-semibold uppercase tracking-[0.14em] text-[rgba(170,170,179,0.64)]">
-              Current Peak
+              Peak Day
             </div>
             <div className="mt-1 text-[11px] font-semibold text-[#8ff5ff]">
-              {formatCompactNumber(peakPoint.total_tokens)}/day
+              {formatUsageDate(peakPoint.usage_date)} · {formatCompactNumber(peakPoint.total_tokens)} tokens
             </div>
           </div>
         </div>
@@ -247,7 +310,6 @@ function DashboardWorkspace({
   onLogout: () => Promise<void> | void;
   onUserUpdated: (user: AuthUser) => void;
 }) {
-  const router = useRouter();
   const [accountPanelOpen, setAccountPanelOpen] = useState(false);
   const [loadState, setLoadState] = useState<LoadState>('loading');
   const [error, setError] = useState('');
@@ -288,10 +350,6 @@ function DashboardWorkspace({
   const quotaRatio = summary
     ? Math.min((summary.total_tokens / 2_000_000) * 100, 100)
     : 0;
-  const successRate = summary && summary.total_turns > 0
-    ? (summary.completed_turns / summary.total_turns) * 100
-    : 0;
-
   return (
     <main className="min-h-screen bg-[var(--oa-bg)] text-[var(--oa-copy)]">
       {accountPanelOpen ? (
@@ -303,61 +361,12 @@ function DashboardWorkspace({
         />
       ) : null}
 
-      <div className="mx-auto flex min-h-screen w-full max-w-[1280px] flex-col px-8 pb-10 pt-5">
-        <header className="border-t-2 border-t-[#ff2fd8] bg-[rgba(10,13,20,0.88)]">
-          <div className="flex items-center justify-between border-b border-b-[#18c8ff] px-4 py-3">
-            <div className="flex items-center gap-7">
-              <button
-                type="button"
-                onClick={() => router.push('/')}
-                className="font-[var(--font-display)] text-[24px] font-bold tracking-[-0.05em] text-[#63f4ff]"
-              >
-                OrchAgent
-              </button>
-              <nav className="flex items-center gap-5 text-[10px] uppercase tracking-[0.18em]">
-                <button
-                  type="button"
-                  onClick={() => router.push('/dashboard')}
-                  className="font-semibold text-[#63f4ff]"
-                >
-                  Dashboard
-                </button>
-                <button
-                  type="button"
-                  onClick={() => router.push('/')}
-                  className="text-[rgba(231,231,240,0.82)] transition hover:text-white"
-                >
-                  Chat
-                </button>
-                <button type="button" aria-disabled="true" className="text-[rgba(170,170,179,0.64)]">Logs</button>
-                <button type="button" aria-disabled="true" className="text-[rgba(170,170,179,0.64)]">Settings</button>
-              </nav>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <div className="relative hidden w-[12rem] md:block">
-                <Search size={12} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[rgba(170,170,179,0.58)]" />
-                <input
-                  readOnly
-                  value=""
-                  placeholder="Search logs..."
-                  className="h-8 w-full rounded-[999px] border border-[rgba(255,255,255,0.05)] bg-[rgba(255,255,255,0.03)] pl-8 pr-3 text-[11px] text-white outline-none placeholder:text-[rgba(170,170,179,0.44)]"
-                />
-              </div>
-              <button type="button" aria-label="Notifications" className="text-[rgba(170,170,179,0.74)] transition hover:text-white">
-                <Bell size={14} />
-              </button>
-              <button
-                type="button"
-                aria-label="Open account drawer"
-                onClick={() => setAccountPanelOpen(true)}
-                className="inline-flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-[rgba(255,255,255,0.08)] bg-[linear-gradient(135deg,#1edfff,#a57cff)] text-[11px] font-semibold text-black"
-              >
-                {currentUser.display_name?.[0] || currentUser.login_id[0] || 'U'}
-              </button>
-            </div>
-          </div>
-        </header>
+      <div className="mx-auto flex min-h-screen w-full max-w-[1280px] flex-col px-8 pb-10 pt-0">
+        <WorkspaceTopNav
+          activeSection="dashboard"
+          currentUser={currentUser}
+          onOpenAccountDrawer={() => setAccountPanelOpen(true)}
+        />
 
         {loadState === 'loading' ? (
           <div className="flex flex-1 items-center justify-center">
@@ -391,25 +400,30 @@ function DashboardWorkspace({
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <MetricCard
                 label="Total API Calls"
-                value={formatFullNumber(summary.total_tokens)}
-                accent="+12.4%"
+                value={formatFullNumber(summary.total_llm_calls)}
+                helper={`${summary.total_turns} tracked turns`}
                 icon={<Activity size={14} />}
               />
               <MetricCard
-                label="Global Success Rate"
-                value={formatPercent(successRate)}
-                helper="Stable"
+                label="Total Tokens"
+                value={formatFullNumber(summary.total_tokens)}
+                helper={formatTokenBreakdown(summary)}
                 icon={<ShieldCheck size={14} />}
               />
               <MetricCard
                 label="Avg Latency"
                 value={formatLatency(summary.avg_latency_ms)}
-                helper="Optimal"
+                helper={`TTFT ${formatLatency(summary.avg_ttft_ms)}`}
                 icon={<Activity size={14} />}
               />
               <MetricCard
-                label="Est. Monthly Cost"
-                value={formatCurrencyFromMicrousd(summary.total_cost_microusd)}
+                label="Total Inference Cost"
+                value={formatInferenceCost(summary)}
+                helper={
+                  summary.estimated_reasoning_cost_microusd > 0
+                    ? 'Estimated'
+                    : 'Exact'
+                }
                 icon={<Wallet size={14} />}
               />
             </div>

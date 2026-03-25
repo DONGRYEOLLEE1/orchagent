@@ -17,6 +17,7 @@ def test_dashboard_summary_returns_current_user_metrics(monkeypatch):
             user_id="test-user",
             total_turns=3,
             completed_turns=2,
+            total_llm_calls=7,
             total_input_tokens=10,
             total_output_tokens=20,
             total_tokens=30,
@@ -29,6 +30,7 @@ def test_dashboard_summary_returns_current_user_metrics(monkeypatch):
             avg_latency_ms=1000,
             avg_ttft_ms=300,
             total_tool_calls=4,
+            total_inference_cost_microusd=100,
         )
 
     monkeypatch.setattr(DashboardService, "get_summary", mock_summary)
@@ -108,6 +110,7 @@ def test_dashboard_allows_admin_cross_user_lookup(monkeypatch):
             user_id="someone-else",
             total_turns=1,
             completed_turns=1,
+            total_llm_calls=2,
             total_input_tokens=1,
             total_output_tokens=1,
             total_tokens=2,
@@ -120,6 +123,7 @@ def test_dashboard_allows_admin_cross_user_lookup(monkeypatch):
             avg_latency_ms=100,
             avg_ttft_ms=50,
             total_tool_calls=0,
+            total_inference_cost_microusd=0,
         )
 
     monkeypatch.setattr(DashboardService, "get_summary", mock_summary)

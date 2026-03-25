@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
@@ -57,6 +57,7 @@ test('renders dashboard metrics, chart heading, and live trace table', async () 
         user_id: 'user-1',
         total_turns: 12,
         completed_turns: 11,
+        total_llm_calls: 14,
         total_input_tokens: 1200,
         total_output_tokens: 3400,
         total_tokens: 4600,
@@ -69,6 +70,7 @@ test('renders dashboard metrics, chart heading, and live trace table', async () 
         avg_latency_ms: 248,
         avg_ttft_ms: 91,
         total_tool_calls: 18,
+        total_inference_cost_microusd: 4120500,
       });
     }
 
@@ -118,8 +120,93 @@ test('renders dashboard metrics, chart heading, and live trace table', async () 
   expect(screen.getByText('Daily Total Token Consumption')).toBeInTheDocument();
   expect(screen.getByText('Quota Utilization')).toBeInTheDocument();
   expect(screen.getByText('Real-time Service Trace')).toBeInTheDocument();
-  expect(screen.getByText('$4,120.50')).toBeInTheDocument();
+  expect(screen.getByText('14')).toBeInTheDocument();
+  expect(screen.getByText('4,600')).toBeInTheDocument();
+  expect(screen.getByText('$4.12')).toBeInTheDocument();
+  expect(screen.getByText('Peak Day')).toBeInTheDocument();
   expect(screen.getByText('gpt-5.4-mini')).toBeInTheDocument();
+});
+
+test('shows per-day token usage on chart hover', async () => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+
+    if (url.includes('/api/auth/me')) {
+      return jsonResponse({
+        id: 'user-1',
+        login_id: 'tester',
+        role: 'user',
+        status: 'active',
+        display_name: 'Tester',
+        email: null,
+        must_change_password: false,
+      });
+    }
+
+    if (url.includes('/api/dashboard/summary')) {
+      return jsonResponse({
+        user_id: 'user-1',
+        total_turns: 2,
+        completed_turns: 2,
+        total_llm_calls: 4,
+        total_input_tokens: 300,
+        total_output_tokens: 500,
+        total_tokens: 800,
+        total_reasoning_tokens: 120,
+        total_cost_microusd: 0,
+        exact_total_cost_microusd: 0,
+        estimated_total_cost_microusd: 0,
+        exact_reasoning_cost_microusd: 0,
+        estimated_reasoning_cost_microusd: 0,
+        avg_latency_ms: 248,
+        avg_ttft_ms: 91,
+        total_tool_calls: 4,
+        total_inference_cost_microusd: 1500000,
+      });
+    }
+
+    if (url.includes('/api/dashboard/daily-usage')) {
+      return jsonResponse({
+        user_id: 'user-1',
+        points: [
+          { usage_date: '2026-03-21', input_tokens: 100, output_tokens: 180, total_tokens: 280, reasoning_tokens: 60, total_cost_microusd: 1000000 },
+          { usage_date: '2026-03-22', input_tokens: 180, output_tokens: 260, total_tokens: 440, reasoning_tokens: 90, total_cost_microusd: 1400000 },
+          { usage_date: '2026-03-23', input_tokens: 220, output_tokens: 340, total_tokens: 560, reasoning_tokens: 140, total_cost_microusd: 1900000 },
+        ],
+      });
+    }
+
+    if (url.includes('/api/dashboard/live-traces')) {
+      return jsonResponse({ user_id: 'user-1', rows: [] });
+    }
+
+    throw new Error(`Unhandled fetch: ${url}`);
+  });
+
+  vi.stubGlobal('fetch', fetchMock);
+
+  renderDashboard();
+
+  await screen.findByText('OrchAgent Monitor');
+  const chart = screen.getByTestId('token-usage-chart');
+  Object.defineProperty(chart, 'getBoundingClientRect', {
+    value: () => ({
+      left: 0,
+      top: 0,
+      width: 620,
+      height: 220,
+      right: 620,
+      bottom: 220,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    }),
+  });
+
+  fireEvent.mouseMove(chart, { clientX: 619, clientY: 50 });
+
+  expect(screen.getByText('Mar 23')).toBeInTheDocument();
+  expect(screen.getByText('560 tokens')).toBeInTheDocument();
 });
 
 test('dashboard top navigation routes between chat and dashboard', async () => {
@@ -144,6 +231,7 @@ test('dashboard top navigation routes between chat and dashboard', async () => {
         user_id: 'user-1',
         total_turns: 1,
         completed_turns: 1,
+        total_llm_calls: 2,
         total_input_tokens: 10,
         total_output_tokens: 20,
         total_tokens: 30,
@@ -156,6 +244,7 @@ test('dashboard top navigation routes between chat and dashboard', async () => {
         avg_latency_ms: 10,
         avg_ttft_ms: 5,
         total_tool_calls: 0,
+        total_inference_cost_microusd: 0,
       });
     }
 

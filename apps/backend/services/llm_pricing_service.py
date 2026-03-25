@@ -1,17 +1,19 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from dataclasses import replace as dataclass_replace
-from datetime import UTC, datetime
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.timezone import KST
 from models.analytics import LLMPricingSnapshot
 from services.chat_analytics_service import LLMUsageWriteParams
 
 
-OPENAI_PRICING_VERSION = "openai-api-pricing-2026-03-24"
-OPENAI_PRICING_EFFECTIVE_FROM = datetime(2026, 3, 24, tzinfo=UTC)
+OPENAI_PRICING_VERSION = "openai-api-pricing-2026-03-25"
+OPENAI_PRICING_EFFECTIVE_FROM = datetime(2026, 3, 25, tzinfo=KST)
 
 DEFAULT_OPENAI_PRICING = [
     {
@@ -27,31 +29,43 @@ DEFAULT_OPENAI_PRICING = [
     },
     {
         "provider": "openai",
-        "model": "gpt-5.4-mini",
-        "input_cost_per_1m_microusd": 750_000,
-        "output_cost_per_1m_microusd": 4_500_000,
-        "cache_read_cost_per_1m_microusd": 75_000,
+        "model": "gpt-5-mini",
+        "input_cost_per_1m_microusd": 250_000,
+        "output_cost_per_1m_microusd": 2_000_000,
+        "cache_read_cost_per_1m_microusd": 25_000,
         "notes": {
             "source": "https://openai.com/api/pricing/",
-            "source_date": "2026-03-24",
+            "source_date": "2026-03-25",
         },
     },
     {
         "provider": "openai",
-        "model": "gpt-5.4-nano",
-        "input_cost_per_1m_microusd": 200_000,
-        "output_cost_per_1m_microusd": 1_250_000,
-        "cache_read_cost_per_1m_microusd": 20_000,
+        "model": "gpt-5-nano",
+        "input_cost_per_1m_microusd": 50_000,
+        "output_cost_per_1m_microusd": 400_000,
+        "cache_read_cost_per_1m_microusd": 5_000,
         "notes": {
             "source": "https://openai.com/api/pricing/",
-            "source_date": "2026-03-24",
+            "source_date": "2026-03-25",
         },
     },
 ]
 
 MODEL_ALIASES = {
-    "gpt-5-nano": "gpt-5.4-nano",
+    "gpt-5.4-mini": "gpt-5-mini",
+    "gpt-5.4-nano": "gpt-5-nano",
 }
+
+
+@dataclass(slots=True)
+class CostBreakdown:
+    total_cost_microusd: int
+    input_cost_microusd: int
+    output_cost_microusd: int
+    exact_reasoning_cost_microusd: int
+    estimated_reasoning_cost_microusd: int
+    cost_is_estimated: bool
+    reasoning_cost_is_estimated: bool
 
 
 class LLMPricingService:
@@ -71,6 +85,73 @@ class LLMPricingService:
         if not token_count or not rate_per_1m:
             return 0
         return int(round((token_count * rate_per_1m) / 1_000_000))
+
+    @staticmethod
+    def _get_default_snapshot_for_model(model: str) -> dict | None:
+        normalized_model = LLMPricingService._normalize_model_name(model)
+        for snapshot in DEFAULT_OPENAI_PRICING:
+            if snapshot["model"] == normalized_model:
+                return snapshot
+        return None
+
+    @staticmethod
+    def calculate_current_cost_breakdown(
+        *,
+        model: str,
+        input_tokens: int,
+        cache_read_input_tokens: int,
+        output_tokens: int,
+        reasoning_output_tokens: int,
+    ) -> CostBreakdown:
+        snapshot = LLMPricingService._get_default_snapshot_for_model(model)
+        if snapshot is None:
+            return CostBreakdown(
+                total_cost_microusd=0,
+                input_cost_microusd=0,
+                output_cost_microusd=0,
+                exact_reasoning_cost_microusd=0,
+                estimated_reasoning_cost_microusd=0,
+                cost_is_estimated=True,
+                reasoning_cost_is_estimated=True,
+            )
+
+        cache_read_tokens = min(cache_read_input_tokens, input_tokens)
+        uncached_input_tokens = max(input_tokens - cache_read_tokens, 0)
+        input_cost = LLMPricingService._microusd_from_token_rate(
+            uncached_input_tokens, snapshot["input_cost_per_1m_microusd"]
+        )
+        cache_read_cost = LLMPricingService._microusd_from_token_rate(
+            cache_read_tokens, snapshot["cache_read_cost_per_1m_microusd"]
+        )
+        output_cost = LLMPricingService._microusd_from_token_rate(
+            output_tokens, snapshot["output_cost_per_1m_microusd"]
+        )
+        total_cost = input_cost + cache_read_cost + output_cost
+
+        exact_reasoning_cost = 0
+        estimated_reasoning_cost = 0
+        reasoning_cost_is_estimated = False
+        reasoning_rate = snapshot.get("reasoning_cost_per_1m_microusd")
+        if reasoning_rate is not None:
+            exact_reasoning_cost = LLMPricingService._microusd_from_token_rate(
+                reasoning_output_tokens,
+                reasoning_rate,
+            )
+        elif output_tokens > 0 and reasoning_output_tokens > 0:
+            estimated_reasoning_cost = int(
+                round(output_cost * (reasoning_output_tokens / output_tokens))
+            )
+            reasoning_cost_is_estimated = True
+
+        return CostBreakdown(
+            total_cost_microusd=total_cost,
+            input_cost_microusd=input_cost + cache_read_cost,
+            output_cost_microusd=output_cost,
+            exact_reasoning_cost_microusd=exact_reasoning_cost,
+            estimated_reasoning_cost_microusd=estimated_reasoning_cost,
+            cost_is_estimated=False,
+            reasoning_cost_is_estimated=reasoning_cost_is_estimated,
+        )
 
     @staticmethod
     async def ensure_default_pricing_snapshots(db: AsyncSession) -> None:
@@ -137,41 +218,24 @@ class LLMPricingService:
         if snapshot is None:
             return params
 
-        cache_read_tokens = min(params.cache_read_input_tokens, params.input_tokens)
-        uncached_input_tokens = max(params.input_tokens - cache_read_tokens, 0)
-        input_cost = LLMPricingService._microusd_from_token_rate(
-            uncached_input_tokens, snapshot.input_cost_per_1m_microusd
+        cost_breakdown = LLMPricingService.calculate_current_cost_breakdown(
+            model=snapshot.model,
+            input_tokens=params.input_tokens,
+            cache_read_input_tokens=params.cache_read_input_tokens,
+            output_tokens=params.output_tokens,
+            reasoning_output_tokens=params.reasoning_output_tokens,
         )
-        cache_read_cost = LLMPricingService._microusd_from_token_rate(
-            cache_read_tokens, snapshot.cache_read_cost_per_1m_microusd
-        )
-        output_cost = LLMPricingService._microusd_from_token_rate(
-            params.output_tokens, snapshot.output_cost_per_1m_microusd
-        )
-        total_cost = input_cost + cache_read_cost + output_cost
-
-        reasoning_cost = None
-        estimated_reasoning_cost = 0
-        reasoning_cost_is_estimated = False
-        if snapshot.reasoning_cost_per_1m_microusd is not None:
-            reasoning_cost = LLMPricingService._microusd_from_token_rate(
-                params.reasoning_output_tokens,
-                snapshot.reasoning_cost_per_1m_microusd,
-            )
-        elif params.output_tokens > 0 and params.reasoning_output_tokens > 0:
-            estimated_reasoning_cost = int(
-                round(output_cost * (params.reasoning_output_tokens / params.output_tokens))
-            )
-            reasoning_cost_is_estimated = True
 
         return dataclass_replace(
             params,
             pricing_snapshot_id=snapshot.id,
-            input_cost_microusd=input_cost + cache_read_cost,
-            output_cost_microusd=output_cost,
-            reasoning_cost_microusd=reasoning_cost,
-            estimated_reasoning_cost_microusd=estimated_reasoning_cost,
-            total_cost_microusd=total_cost,
-            cost_is_estimated=snapshot.is_estimated,
-            reasoning_cost_is_estimated=reasoning_cost_is_estimated,
+            input_cost_microusd=cost_breakdown.input_cost_microusd,
+            output_cost_microusd=cost_breakdown.output_cost_microusd,
+            reasoning_cost_microusd=(
+                cost_breakdown.exact_reasoning_cost_microusd or None
+            ),
+            estimated_reasoning_cost_microusd=cost_breakdown.estimated_reasoning_cost_microusd,
+            total_cost_microusd=cost_breakdown.total_cost_microusd,
+            cost_is_estimated=cost_breakdown.cost_is_estimated or snapshot.is_estimated,
+            reasoning_cost_is_estimated=cost_breakdown.reasoning_cost_is_estimated,
         )

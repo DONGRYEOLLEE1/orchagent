@@ -104,13 +104,15 @@ async def test_dashboard_summary_aggregates_turn_and_usage_metrics(monkeypatch):
 
     assert summary.total_turns == 2
     assert summary.completed_turns == 2
+    assert summary.total_llm_calls == 2
     assert summary.total_tokens == 500
     assert summary.total_reasoning_tokens == 80
-    assert summary.total_cost_microusd == 1700
-    assert summary.estimated_reasoning_cost_microusd == 425
+    assert summary.total_cost_microusd == 685
+    assert summary.estimated_reasoning_cost_microusd == 160
     assert summary.avg_latency_ms == 1500
     assert summary.avg_ttft_ms == 400
     assert summary.total_tool_calls == 3
+    assert summary.total_inference_cost_microusd == 685
 
 
 @pytest.mark.asyncio
@@ -176,6 +178,7 @@ async def test_dashboard_daily_usage_respects_date_range(monkeypatch):
     assert len(points) == 1
     assert points[0].usage_date == date(2026, 3, 24)
     assert points[0].total_tokens == 100
+    assert points[0].total_cost_microusd == 130
 
 
 @pytest.mark.asyncio

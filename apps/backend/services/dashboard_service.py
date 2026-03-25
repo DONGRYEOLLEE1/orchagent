@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.analytics import ChatTurn, LLMUsageEvent
+from services.llm_pricing_service import LLMPricingService
 
 
 @dataclass(slots=True)
@@ -16,6 +17,7 @@ class DashboardSummary:
     user_id: str
     total_turns: int
     completed_turns: int
+    total_llm_calls: int
     total_input_tokens: int
     total_output_tokens: int
     total_tokens: int
@@ -28,6 +30,7 @@ class DashboardSummary:
     avg_latency_ms: int | None
     avg_ttft_ms: int | None
     total_tool_calls: int
+    total_inference_cost_microusd: int
 
 
 @dataclass(slots=True)
@@ -144,37 +147,46 @@ class DashboardService:
         usage_events = await DashboardService._load_usage_events(
             db, user_id=user_id, start_at=start_at, end_at=end_at
         )
+        recalculated_costs = [
+            LLMPricingService.calculate_current_cost_breakdown(
+                model=event.model,
+                input_tokens=event.input_tokens,
+                cache_read_input_tokens=event.cache_read_input_tokens,
+                output_tokens=event.output_tokens,
+                reasoning_output_tokens=event.reasoning_output_tokens,
+            )
+            for event in usage_events
+        ]
 
         return DashboardSummary(
             user_id=user_id,
             total_turns=len(turns),
             completed_turns=sum(1 for turn in turns if turn.status == "completed"),
+            total_llm_calls=len(usage_events),
             total_input_tokens=sum(event.input_tokens for event in usage_events),
             total_output_tokens=sum(event.output_tokens for event in usage_events),
             total_tokens=sum(event.total_tokens for event in usage_events),
             total_reasoning_tokens=sum(
                 event.reasoning_output_tokens for event in usage_events
             ),
-            total_cost_microusd=sum(event.total_cost_microusd for event in usage_events),
+            total_cost_microusd=sum(
+                cost.total_cost_microusd for cost in recalculated_costs
+            ),
             exact_total_cost_microusd=sum(
-                event.total_cost_microusd
-                for event in usage_events
-                if not event.cost_is_estimated
+                cost.total_cost_microusd
+                for cost in recalculated_costs
+                if not cost.cost_is_estimated
             ),
             estimated_total_cost_microusd=sum(
-                event.total_cost_microusd
-                for event in usage_events
-                if event.cost_is_estimated
+                cost.total_cost_microusd
+                for cost in recalculated_costs
+                if cost.cost_is_estimated
             ),
             exact_reasoning_cost_microusd=sum(
-                event.reasoning_cost_microusd or 0
-                for event in usage_events
-                if not event.reasoning_cost_is_estimated
+                cost.exact_reasoning_cost_microusd for cost in recalculated_costs
             ),
             estimated_reasoning_cost_microusd=sum(
-                (event.estimated_reasoning_cost_microusd or 0)
-                + ((event.reasoning_cost_microusd or 0) if event.reasoning_cost_is_estimated else 0)
-                for event in usage_events
+                cost.estimated_reasoning_cost_microusd for cost in recalculated_costs
             ),
             avg_latency_ms=DashboardService._average(
                 turn.latency_ms for turn in turns if turn.status == "completed"
@@ -183,6 +195,9 @@ class DashboardService:
                 turn.ttft_ms for turn in turns if turn.status == "completed"
             ),
             total_tool_calls=sum(turn.tool_call_count for turn in turns),
+            total_inference_cost_microusd=sum(
+                cost.total_cost_microusd for cost in recalculated_costs
+            ),
         )
 
     @staticmethod
@@ -199,6 +214,13 @@ class DashboardService:
         )
         buckets: dict[date, DailyUsagePoint] = {}
         for event in usage_events:
+            cost = LLMPricingService.calculate_current_cost_breakdown(
+                model=event.model,
+                input_tokens=event.input_tokens,
+                cache_read_input_tokens=event.cache_read_input_tokens,
+                output_tokens=event.output_tokens,
+                reasoning_output_tokens=event.reasoning_output_tokens,
+            )
             usage_date = event.created_at.date()
             existing = buckets.get(usage_date)
             if existing is None:
@@ -215,7 +237,7 @@ class DashboardService:
             existing.output_tokens += event.output_tokens
             existing.total_tokens += event.total_tokens
             existing.reasoning_tokens += event.reasoning_output_tokens
-            existing.total_cost_microusd += event.total_cost_microusd
+            existing.total_cost_microusd += cost.total_cost_microusd
 
         return [buckets[key] for key in sorted(buckets.keys())]
 

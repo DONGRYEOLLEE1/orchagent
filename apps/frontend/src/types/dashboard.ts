@@ -2,6 +2,7 @@ export interface DashboardSummary {
   user_id: string;
   total_turns: number;
   completed_turns: number;
+  total_llm_calls: number;
   total_input_tokens: number;
   total_output_tokens: number;
   total_tokens: number;
@@ -14,6 +15,7 @@ export interface DashboardSummary {
   avg_latency_ms: number | null;
   avg_ttft_ms: number | null;
   total_tool_calls: number;
+  total_inference_cost_microusd: number;
 }
 
 export interface DashboardDailyUsagePoint {

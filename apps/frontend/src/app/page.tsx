@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Send, Loader2, Bot, Image as ImageIcon, X, Menu, PanelRightOpen } from 'lucide-react';
+import { Send, Loader2, Bot, Image as ImageIcon, X } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import NextImage from 'next/image';
@@ -40,6 +40,7 @@ import { LiveToolStatusStrip } from '@/components/workspace/LiveToolStatusStrip'
 import { ReasoningSummaryPanel } from '@/components/workspace/ReasoningSummaryPanel';
 import { SuggestedQueriesPanel } from '@/components/workspace/SuggestedQueriesPanel';
 import { AccountDrawer } from '@/components/workspace/AccountDrawer';
+import { WorkspaceTopNav } from '@/components/workspace/WorkspaceTopNav';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -222,7 +223,6 @@ function WorkspaceApp({
   onLogout: () => Promise<void> | void;
   onUserUpdated: (user: AuthUser) => void;
 }) {
-  const router = useRouter();
   const [input, setInput] = useState('');
   const [selectedImages, setSelectedImages] = useState<File[]>([]);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -1221,80 +1221,12 @@ function WorkspaceApp({
         />
       ) : null}
 
-      <header className="relative z-20 flex h-16 shrink-0 items-center justify-between border-b border-[rgba(255,255,255,0.05)] bg-[rgba(12,14,20,0.88)] px-6 backdrop-blur-xl md:px-8">
-        <div className="flex min-w-0 items-center gap-4">
-          <button
-            type="button"
-            onClick={() => setMobileSidebarOpen(true)}
-            className="inline-flex rounded-[12px] border border-[rgba(255,255,255,0.06)] bg-[rgba(35,38,46,0.4)] p-2 text-[rgba(170,170,179,0.82)] transition hover:text-[#e7e7f0] lg:hidden"
-          >
-            <Menu size={16} />
-          </button>
-
-          <div className="hidden items-center gap-8 md:flex">
-            <div className="font-[var(--font-display)] text-[24px] font-bold tracking-[-0.04em] text-[#00f0ff]">
-              OrchAgent
-            </div>
-
-            <nav className="flex items-center gap-2 text-[14px]">
-              <button
-                type="button"
-                className="rounded-[8px] border-b-2 border-[#00f0ff] px-3 py-1 font-[var(--font-display)] text-[#00f0ff]"
-              >
-                Chat
-              </button>
-              <button
-                type="button"
-                onClick={() => router.push('/dashboard')}
-                className="rounded-[8px] px-3 py-1 text-[rgba(148,163,184,0.7)] transition hover:bg-[rgba(255,255,255,0.04)] hover:text-[#e7e7f0]"
-              >
-                Dashboard
-              </button>
-              <button
-                type="button"
-                aria-disabled="true"
-                className="rounded-[8px] px-3 py-1 text-[rgba(148,163,184,0.7)] transition hover:bg-[rgba(255,255,255,0.04)] hover:text-[#e7e7f0]"
-              >
-                Agents
-              </button>
-              <button
-                type="button"
-                aria-disabled="true"
-                className="rounded-[8px] px-3 py-1 text-[rgba(148,163,184,0.7)] transition hover:bg-[rgba(255,255,255,0.04)] hover:text-[#e7e7f0]"
-              >
-                Logs
-              </button>
-              <button
-                type="button"
-                aria-disabled="true"
-                className="rounded-[8px] px-3 py-1 text-[rgba(148,163,184,0.7)] transition hover:bg-[rgba(255,255,255,0.04)] hover:text-[#e7e7f0]"
-              >
-                Settings
-              </button>
-            </nav>
-          </div>
-
-          <div className="md:hidden">
-            <div className="font-[var(--font-display)] text-[18px] font-bold text-[#00f0ff]">
-              OrchAgent
-            </div>
-          </div>
-        </div>
-
-        <div className="flex min-w-0 items-center gap-3">
-          <button
-            type="button"
-            aria-label="Open account drawer"
-            onClick={() => setAccountPanelOpen(true)}
-            className="inline-flex items-center gap-2 rounded-[12px] border border-[rgba(143,245,255,0.16)] bg-[rgba(29,31,40,0.45)] px-3 py-2 text-[12px] text-[#e7e7f0] transition hover:border-[rgba(143,245,255,0.3)]"
-          >
-            <PanelRightOpen size={15} className="text-[#8ff5ff]" />
-            <span className="hidden font-semibold sm:inline">
-              {currentUser.display_name || currentUser.login_id}
-            </span>
-          </button>
-        </div>
-      </header>
+      <WorkspaceTopNav
+        activeSection="chat"
+        currentUser={currentUser}
+        onOpenAccountDrawer={() => setAccountPanelOpen(true)}
+        onOpenMobileSidebar={() => setMobileSidebarOpen(true)}
+      />
 
       <div className="relative z-10 flex min-h-0 flex-1 overflow-hidden">
       <aside className="hidden h-full w-64 shrink-0 border-r border-[rgba(255,255,255,0.05)] bg-[rgba(17,19,26,0.96)] py-6 lg:flex lg:flex-col">
