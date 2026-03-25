@@ -10,6 +10,11 @@
 
 ---
 
+<p align="center">
+  <img src="assets/ui-chat.png" alt="OrchAgent chat workspace" width="54%" />
+  <img src="assets/ui-dashboard.png" alt="OrchAgent dashboard" width="40%" />
+</p>
+
 ## ✨ What It Does
 
 - **🧩 Hierarchical Orchestration**: A head supervisor delegates to specialized `research`, `writing`, and `vision` team subgraphs, and each team routes work to its own workers.
