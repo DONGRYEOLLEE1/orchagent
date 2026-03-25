@@ -544,17 +544,17 @@ historical cost 안정성을 위한 가격 스냅샷 테이블.
 
 ## Phase 8. Frontend Dashboard
 
-- [ ] `Dashboard` route 추가
-- [ ] 총 토큰 카드
-- [ ] 평균 latency 카드
-- [ ] 총 추론 비용 카드
-- [ ] 날짜별 토큰 사용량 그래프
-- [ ] 실시간 tracing table
+- [x] `Dashboard` route 추가
+- [x] 총 토큰 카드
+- [x] 평균 latency 카드
+- [x] 총 추론 비용 카드
+- [x] 날짜별 토큰 사용량 그래프
+- [x] 실시간 tracing table
 
 검증:
 
-- [ ] frontend component test
-- [ ] Playwright 실브라우저 확인
+- [x] frontend component test
+- [x] Playwright 실브라우저 확인
 
 ## 추천 구현 우선순위
 

@@ -222,6 +222,7 @@ function WorkspaceApp({
   onLogout: () => Promise<void> | void;
   onUserUpdated: (user: AuthUser) => void;
 }) {
+  const router = useRouter();
   const [input, setInput] = useState('');
   const [selectedImages, setSelectedImages] = useState<File[]>([]);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -1244,7 +1245,7 @@ function WorkspaceApp({
               </button>
               <button
                 type="button"
-                aria-disabled="true"
+                onClick={() => router.push('/dashboard')}
                 className="rounded-[8px] px-3 py-1 text-[rgba(148,163,184,0.7)] transition hover:bg-[rgba(255,255,255,0.04)] hover:text-[#e7e7f0]"
               >
                 Dashboard

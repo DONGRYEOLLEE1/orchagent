@@ -1,4 +1,9 @@
 import type { AuthUser } from '@/types/auth';
+import type {
+  DashboardDailyUsageResponse,
+  DashboardLiveTracesResponse,
+  DashboardSummary,
+} from '@/types/dashboard';
 import type { ThreadDetail, ThreadSummary, ThreadTelemetry } from '@/types/thread';
 
 const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8002').replace(/\/$/, '');
@@ -210,6 +215,18 @@ export async function deleteThread(threadId: string): Promise<void> {
 
 export async function fetchCurrentUser(): Promise<AuthUser> {
   return requestJson<AuthUser>('/api/auth/me');
+}
+
+export async function fetchDashboardSummary(): Promise<DashboardSummary> {
+  return requestJson<DashboardSummary>('/api/dashboard/summary');
+}
+
+export async function fetchDashboardDailyUsage(): Promise<DashboardDailyUsageResponse> {
+  return requestJson<DashboardDailyUsageResponse>('/api/dashboard/daily-usage');
+}
+
+export async function fetchDashboardLiveTraces(limit = 20): Promise<DashboardLiveTracesResponse> {
+  return requestJson<DashboardLiveTracesResponse>(`/api/dashboard/live-traces?limit=${limit}`);
 }
 
 export async function signupUser(params: {

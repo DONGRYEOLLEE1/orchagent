@@ -9,9 +9,11 @@ import { AuthProvider } from '@/components/auth/AuthProvider';
 import ChatWorkspace from '@/app/page';
 
 const replaceMock = vi.fn();
+const pushMock = vi.fn();
 
 beforeEach(() => {
   replaceMock.mockReset();
+  pushMock.mockReset();
 });
 
 vi.mock('next/image', () => ({
@@ -21,6 +23,7 @@ vi.mock('next/image', () => ({
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
     replace: replaceMock,
+    push: pushMock,
   }),
 }));
 
@@ -280,6 +283,43 @@ test('hydrates historical reasoning summary and suggested queries for a selected
   expect(await screen.findByText('저장된 reasoning summary')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: '후속 질문 A' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: '후속 질문 B' })).toBeInTheDocument();
+});
+
+test('routes to dashboard from the top navigation', async () => {
+  const user = userEvent.setup();
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    const telemetryResponse = maybeHandleTelemetryRequest(url);
+    if (telemetryResponse) {
+      return telemetryResponse;
+    }
+
+    if (url.includes('/api/auth/me')) {
+      return jsonResponse({
+        id: 'user-1',
+        login_id: 'tester',
+        role: 'user',
+        status: 'active',
+        display_name: null,
+        email: null,
+        must_change_password: false,
+      });
+    }
+
+    if (url.includes('/api/threads?limit=50')) {
+      return jsonResponse({ threads: [] });
+    }
+
+    throw new Error(`Unhandled fetch: ${url}`);
+  });
+
+  vi.stubGlobal('fetch', fetchMock);
+
+  renderWorkspace();
+
+  await user.click(await screen.findByRole('button', { name: 'Dashboard' }));
+
+  expect(pushMock).toHaveBeenCalledWith('/dashboard');
 });
 
 test('reuses the selected thread id for follow-up sends and disables switching while streaming', async () => {
