@@ -82,6 +82,16 @@ const MarkdownContent = ({ content }: { content: string }) => {
         p: ({ children }) => <p className="mb-4 last:mb-0">{children}</p>,
         ul: ({ children }) => <ul className="list-disc pl-6 mb-4 space-y-1">{children}</ul>,
         ol: ({ children }) => <ol className="list-decimal pl-6 mb-4 space-y-1">{children}</ol>,
+        a: ({ href, children }) => (
+          <a
+            href={href}
+            target="_blank"
+            rel="noreferrer"
+            className="cursor-pointer break-all text-[#8ff5ff] underline decoration-[rgba(143,245,255,0.4)] underline-offset-3 transition hover:text-[#c7fbff] hover:decoration-[rgba(199,251,255,0.9)]"
+          >
+            {children}
+          </a>
+        ),
       }}
     >
       {preprocessMarkdown(content)}

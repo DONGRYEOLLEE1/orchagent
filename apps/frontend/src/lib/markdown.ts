@@ -4,6 +4,43 @@ function convertDelimitedMath(content: string): string {
     .replace(/\\\(([\s\S]+?)\\\)/g, (_, expr: string) => `$${expr.trim()}$`);
 }
 
+const BARE_URL_PATTERN = /(?<![\[\]\(<])https?:\/\/[^\s<]+/g;
+
+function trimTrailingUrlPunctuation(value: string): { url: string; trailing: string } {
+  let url = value;
+  let trailing = "";
+
+  while (/[),.;!?]$/.test(url)) {
+    trailing = url.slice(-1) + trailing;
+    url = url.slice(0, -1);
+  }
+
+  return { url, trailing };
+}
+
+function formatUrlLabel(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.replace(/^www\./, "");
+    const path = parsed.pathname.replace(/\/$/, "");
+    if (!path || path === "/") {
+      return host;
+    }
+
+    const compactPath = path.length > 24 ? `${path.slice(0, 21)}...` : path;
+    return `${host}${compactPath}`;
+  } catch {
+    return url;
+  }
+}
+
+function convertBareUrls(content: string): string {
+  return content.replace(BARE_URL_PATTERN, (match: string) => {
+    const { url, trailing } = trimTrailingUrlPunctuation(match);
+    return `[${formatUrlLabel(url)}](${url})${trailing}`;
+  });
+}
+
 function shouldWrapFormula(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed || trimmed.includes('$')) {
@@ -54,7 +91,7 @@ export function preprocessMarkdown(content: string): string {
         return segment;
       }
 
-      return wrapFormulaFragments(convertDelimitedMath(segment));
+      return convertBareUrls(wrapFormulaFragments(convertDelimitedMath(segment)));
     })
     .join('');
 }

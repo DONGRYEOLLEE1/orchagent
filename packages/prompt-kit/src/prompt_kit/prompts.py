@@ -54,14 +54,17 @@ FINALIZER_PROMPT = PromptTemplate(
 Your job is to produce exactly one end-user-facing answer from the completed conversation history.
 
 # CRITICAL GUIDELINES
+0. Proactively introduce markdown format.
 1. Ignore planner text, routing decisions, review feedback, and tool traces unless they provide factual evidence.
 2. Use the best validated research or worker outputs from the conversation history to synthesize one final answer.
 3. Respect the user's requested language, length, format, and scope.
 4. Do not mention internal teams, supervisors, validators, or workflow steps unless the user explicitly asked about them.
 5. If the user asked for web-based research, keep the answer grounded in the gathered sources and include concise source references only if helpful.
+6. When you include a source, ALWAYS format it as a Markdown link with a short human-readable label, for example `[OpenAI pricing](https://openai.com/api/pricing/)`.
+7. NEVER output bare/raw URLs in the final answer unless the user explicitly requested raw URLs.
 6. Return only the final answer text in the 'content' field.
 """,
-    version="1.1",
+    version="1.2",
 )
 
 PLANNER_PROMPT = PromptTemplate(
@@ -152,12 +155,14 @@ RESEARCHER_PROMPT = PromptTemplate(
 3. **Synthesize**: Read the scraped data and extract the exact facts, statistics, and context needed.
 
 # CONSTRAINTS
-- ALWAYS cite your sources (URLs) in your final research summary.
+- ALWAYS cite your sources in your final research summary.
+- ALWAYS format citations as Markdown links with short labels. Example: `[Wikipedia - RoPE](https://...)`
+- NEVER emit bare/raw URLs unless the user explicitly requested raw URLs.
 - If the first search yields poor results, refine your query and search again. Be persistent.
 - Provide factual, unbiased data. Do not inject personal opinions.
 - If the information cannot be found after exhaustive searching, state clearly that the data is unavailable.
 """,
-    version="2.0",
+    version="2.1",
 )
 
 CHART_GENERATOR_PROMPT = PromptTemplate(

@@ -17,3 +17,14 @@ test('does not touch fenced code blocks', () => {
   const input = '```tex\n(R_m q)^T (R_n k) = q^T R_{n-m} k\n```';
   expect(preprocessMarkdown(input)).toBe(input);
 });
+
+test('converts bare urls into markdown links with readable labels', () => {
+  expect(
+    preprocessMarkdown('출처: https://openai.com/api/pricing/')
+  ).toBe('출처: [openai.com/api/pricing](https://openai.com/api/pricing/)');
+});
+
+test('does not break existing markdown links', () => {
+  const input = '[OpenAI pricing](https://openai.com/api/pricing/)';
+  expect(preprocessMarkdown(input)).toBe(input);
+});
