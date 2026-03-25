@@ -96,12 +96,16 @@ async def test_initialize_runtime_dependencies_once_bootstraps_admin(monkeypatch
 
     bootstrap_calls = []
     pricing_calls = []
+    timezone_calls = []
 
     async def fake_bootstrap_admin(db):
         bootstrap_calls.append(db)
 
     async def fake_ensure_pricing(db):
         pricing_calls.append(db)
+
+    async def fake_ensure_timezone(db):
+        timezone_calls.append(db)
 
     monkeypatch.setattr("main.engine", DummyEngine())
     monkeypatch.setattr(
@@ -113,6 +117,7 @@ async def test_initialize_runtime_dependencies_once_bootstraps_admin(monkeypatch
         ),
     )
     monkeypatch.setattr("main.AsyncSessionLocal", DummySessionFactory())
+    monkeypatch.setattr("main.DatabaseTimeService.ensure_kst_timezone", fake_ensure_timezone)
     monkeypatch.setattr("main.ensure_bootstrap_admin", fake_bootstrap_admin)
     monkeypatch.setattr("main.LLMPricingService.ensure_default_pricing_snapshots", fake_ensure_pricing)
 
@@ -120,5 +125,6 @@ async def test_initialize_runtime_dependencies_once_bootstraps_admin(monkeypatch
 
     assert "create_all" in sync_calls
     assert "checkpointer.setup" in sync_calls
+    assert len(timezone_calls) == 1
     assert len(bootstrap_calls) == 1
     assert len(pricing_calls) == 1

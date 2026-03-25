@@ -11,6 +11,7 @@ import models  # noqa: F401
 
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from services.auth_service import ensure_bootstrap_admin
+from services.database_time_service import DatabaseTimeService
 from services.llm_pricing_service import LLMPricingService
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,7 @@ async def _initialize_runtime_dependencies_once() -> None:
         await checkpointer.setup()
 
     async with AsyncSessionLocal() as db:
+        await DatabaseTimeService.ensure_kst_timezone(db)
         await ensure_bootstrap_admin(db)
         await LLMPricingService.ensure_default_pricing_snapshots(db)
 

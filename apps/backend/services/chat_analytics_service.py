@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 import uuid
 from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.timezone import now_kst
 from models.analytics import ChatTurn, LLMUsageEvent, ToolExecutionEvent
 
 
@@ -225,7 +226,7 @@ class ChatAnalyticsService:
             total_cost_microusd=params.total_cost_microusd,
             cost_is_estimated=params.cost_is_estimated,
             reasoning_cost_is_estimated=params.reasoning_cost_is_estimated,
-            created_at=params.created_at or datetime.now(UTC),
+            created_at=params.created_at or now_kst(),
         )
         db.add(usage_event)
         await db.commit()

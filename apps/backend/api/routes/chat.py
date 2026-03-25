@@ -5,7 +5,7 @@ import re
 import sys
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime, UTC
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
@@ -33,6 +33,7 @@ from services.chat_analytics_service import (
     ToolExecutionFinishParams,
     ToolExecutionStartParams,
 )
+from core.timezone import iso_now_kst, now_kst
 from services.llm_pricing_service import LLMPricingService
 from services.logging_service import LoggingService
 from services.file_logger import JsonLogger
@@ -44,7 +45,7 @@ INTERNAL_MESSAGE_NAMES = {"planner", "supervisor", "reviewer", "validator"}
 
 
 def _utc_timestamp() -> str:
-    return datetime.now(UTC).isoformat()
+    return iso_now_kst()
 
 
 def _display_name(name: str | None) -> str | None:
@@ -351,7 +352,7 @@ def _build_usage_write_params(
         reasoning_output_tokens=reasoning_output_tokens,
         text_output_tokens=text_output_tokens,
         usage_metadata=usage_metadata,
-        created_at=datetime.now(UTC),
+        created_at=now_kst(),
     )
 
 
@@ -727,7 +728,7 @@ async def _create_usage_event_with_fresh_session(
             db,
             provider=params.provider,
             model=params.model,
-            at=params.created_at or datetime.now(UTC),
+            at=params.created_at or now_kst(),
         )
         priced_params = LLMPricingService.apply_snapshot_to_usage(params, snapshot)
         await ChatAnalyticsService.create_usage_event(db, priced_params)
@@ -833,7 +834,7 @@ async def chat_stream(
     request_message = await _log_message_with_fresh_session(
         request.thread_id, role="user", content=request.message, user_id=user_id
     )
-    turn_started_at = datetime.now(UTC)
+    turn_started_at = now_kst()
     started_turn = await _start_turn_with_fresh_session(
         thread_id=request.thread_id,
         user_id=user_id,
@@ -941,7 +942,7 @@ async def chat_stream(
             nonlocal first_token_recorded, first_token_at
             if trace_context.turn_id and not first_token_recorded:
                 first_token_recorded = True
-                first_token_at = datetime.now(UTC)
+                first_token_at = now_kst()
                 await _mark_turn_first_token_with_fresh_session(
                     trace_context.turn_id, first_token_at
                 )
@@ -1026,7 +1027,7 @@ async def chat_stream(
                                         node_name=name,
                                         tool_name=name,
                                         display_name=_display_name(name),
-                                        started_at=datetime.now(UTC),
+                                        started_at=now_kst(),
                                         input_summary=_serialize_value(data.get("input")),
                                     )
                                 ),
@@ -1055,7 +1056,7 @@ async def chat_stream(
                                         run_id=run_id,
                                         tool_name=name,
                                         status="success",
-                                        ended_at=datetime.now(UTC),
+                                        ended_at=now_kst(),
                                         output_summary=_serialize_value(data.get("output")),
                                     )
                                 ),
@@ -1084,7 +1085,7 @@ async def chat_stream(
                                         run_id=run_id,
                                         tool_name=name,
                                         status="error",
-                                        ended_at=datetime.now(UTC),
+                                        ended_at=now_kst(),
                                         error_summary=_serialize_value(data.get("error")),
                                     )
                                 ),
@@ -1249,7 +1250,7 @@ async def chat_stream(
                 collector.final_answer_chunks,
             )
             if trace_context.turn_id is not None:
-                now = datetime.now(UTC)
+                now = now_kst()
                 await _run_cleanup_task(
                     "turn finalize",
                     _finalize_turn_with_fresh_session(
@@ -1367,7 +1368,7 @@ async def chat_resume_stream(
     request_message = await _log_message_with_fresh_session(
         request.thread_id, role="user", content=resume_message, user_id=user_id
     )
-    turn_started_at = datetime.now(UTC)
+    turn_started_at = now_kst()
     started_turn = await _start_turn_with_fresh_session(
         thread_id=request.thread_id,
         user_id=user_id,
@@ -1452,7 +1453,7 @@ async def chat_resume_stream(
             if trace_context.turn_id and not first_token_recorded:
                 first_token_recorded = True
                 await _mark_turn_first_token_with_fresh_session(
-                    trace_context.turn_id, datetime.now(UTC)
+                    trace_context.turn_id, now_kst()
                 )
             return await emit(_text_payload_from_emission(emission), persist=False)
 
@@ -1535,7 +1536,7 @@ async def chat_resume_stream(
                                         node_name=name,
                                         tool_name=name,
                                         display_name=_display_name(name),
-                                        started_at=datetime.now(UTC),
+                                        started_at=now_kst(),
                                         input_summary=_serialize_value(data.get("input")),
                                     )
                                 ),
@@ -1564,7 +1565,7 @@ async def chat_resume_stream(
                                         run_id=run_id,
                                         tool_name=name,
                                         status="success",
-                                        ended_at=datetime.now(UTC),
+                                        ended_at=now_kst(),
                                         output_summary=_serialize_value(data.get("output")),
                                     )
                                 ),
@@ -1593,7 +1594,7 @@ async def chat_resume_stream(
                                         run_id=run_id,
                                         tool_name=name,
                                         status="error",
-                                        ended_at=datetime.now(UTC),
+                                        ended_at=now_kst(),
                                         error_summary=_serialize_value(data.get("error")),
                                     )
                                 ),
@@ -1753,7 +1754,7 @@ async def chat_resume_stream(
                 collector.final_answer_chunks,
             )
             if trace_context.turn_id is not None:
-                now = datetime.now(UTC)
+                now = now_kst()
                 await _run_cleanup_task(
                     "turn finalize",
                     _finalize_turn_with_fresh_session(
