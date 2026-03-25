@@ -285,6 +285,98 @@ test('hydrates historical reasoning summary and suggested queries for a selected
   expect(screen.getByRole('button', { name: '후속 질문 B' })).toBeInTheDocument();
 });
 
+test('generates suggested queries when historical telemetry is missing them', async () => {
+  const user = userEvent.setup();
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+
+    if (url.includes('/api/auth/me')) {
+      return jsonResponse({
+        id: 'user-1',
+        login_id: 'tester',
+        role: 'user',
+        status: 'active',
+        display_name: null,
+        email: null,
+        must_change_password: false,
+      });
+    }
+
+    if (url.includes('/api/threads?limit=50')) {
+      return jsonResponse({
+        threads: [
+          {
+            thread_id: 'thread-historical-suggest',
+            title: 'Historical suggest thread',
+            preview: 'Saved answer',
+            created_at: '2026-03-22T10:00:00Z',
+            last_activity_at: '2026-03-22T10:15:00Z',
+            message_count: 4,
+            latest_status: 'completed',
+            checkpoint_id: 'cp-1',
+            pinned: false,
+            archived: false,
+          },
+        ],
+      });
+    }
+
+    if (url.includes('/api/threads/thread-historical-suggest/telemetry')) {
+      return jsonResponse({
+        thread_id: 'thread-historical-suggest',
+        reasoning_summary: '',
+        suggested_queries: [],
+      });
+    }
+
+    if (url.includes('/api/threads/thread-historical-suggest/suggested-queries')) {
+      return jsonResponse({
+        thread_id: 'thread-historical-suggest',
+        reasoning_summary: '',
+        suggested_queries: ['후속 질문 복구'],
+      });
+    }
+
+    if (url.includes('/api/threads/thread-historical-suggest')) {
+      return jsonResponse({
+        thread: {
+          thread_id: 'thread-historical-suggest',
+          title: 'Historical suggest thread',
+          preview: 'Saved answer',
+          created_at: '2026-03-22T10:00:00Z',
+          last_activity_at: '2026-03-22T10:15:00Z',
+          message_count: 4,
+          latest_status: 'completed',
+          checkpoint_id: 'cp-1',
+          pinned: false,
+          archived: false,
+        },
+        messages: [
+          { id: 'm-1', role: 'user', content: '질문 1', created_at: '2026-03-22T10:00:00Z' },
+          { id: 'm-2', role: 'assistant', content: '답변 1', created_at: '2026-03-22T10:01:00Z' },
+          { id: 'm-3', role: 'user', content: '질문 2', created_at: '2026-03-22T10:02:00Z' },
+          { id: 'm-4', role: 'assistant', content: '답변 2', created_at: '2026-03-22T10:03:00Z' },
+        ],
+      });
+    }
+
+    throw new Error(`Unhandled fetch: ${url}`);
+  });
+
+  Object.defineProperty(document, 'cookie', {
+    configurable: true,
+    get: () => 'orch_csrf=csrf-token',
+  });
+  vi.stubGlobal('fetch', fetchMock);
+
+  renderWorkspace();
+
+  await user.click(await screen.findByRole('button', { name: /open thread historical suggest thread/i }));
+
+  expect(await screen.findByRole('button', { name: '후속 질문 복구' })).toBeInTheDocument();
+  expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/suggested-queries'))).toBe(true);
+});
+
 test('routes to dashboard from the top navigation', async () => {
   const user = userEvent.setup();
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {

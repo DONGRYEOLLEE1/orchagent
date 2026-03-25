@@ -430,6 +430,12 @@ function WorkspaceApp({
     try {
       const telemetry = await fetchThreadTelemetry(threadId);
       applyThreadTelemetry(threadId, requestId, telemetry);
+      if (
+        activeThreadIdRef.current === threadId &&
+        telemetry.suggested_queries.length === 0
+      ) {
+        void requestSuggestedQueries(threadId);
+      }
     } catch {
       if (pendingTelemetryRequestIdsRef.current[threadId] === requestId) {
         delete pendingTelemetryRequestIdsRef.current[threadId];
