@@ -2,7 +2,7 @@
 작업명: LangGraph Postgres Long-Term Memory Refactor Plan
 간단요약: 현재 SQL canonical personal memory를 유지하면서 LangGraph PostgresStore와 조건부 `load_memories` 노드를 추가해 유저별 personalization을 강화하고, retrieval latency 증가를 엄격한 게이트와 캐시/요약 전략으로 제어한다.
 작성일시: 2026-03-26 13:41 KST
-최종 수정일시: 2026-03-26 14:14 KST
+최종 수정일시: 2026-03-26 15:04 KST
 ---
 
 # LangGraph Postgres Long-Term Memory Refactor Plan
@@ -294,7 +294,7 @@ LangGraph store를 붙여도 memory가 자동으로 prompt에 녹아드는 건 �
 - [x] active memory count short-circuit 구현
 - [x] summary-only retrieval 우선 구현
 - [x] search fallback 조건을 최소화
-- [ ] retrieval cache 도입 여부 검토
+- [x] retrieval cache 도입 여부 검토
 - [x] prompt injection 길이 cap을 적용
 
 ## Phase 6. Migration 및 Backfill
@@ -302,14 +302,14 @@ LangGraph store를 붙여도 memory가 자동으로 prompt에 녹아드는 건 �
 - [x] 기존 `user_memory_entries`를 store로 backfill하는 스크립트를 만든다.
 - [x] per-user summary document를 생성한다.
 - [x] backfill idempotency를 보장한다.
-- [ ] rollout 전후 count/sample validation을 추가한다.
+- [x] rollout 전후 count/sample validation을 추가한다.
 
 ## Phase 7. Observability 및 Evaluation
 
-- [ ] `load_memories` latency trace event 추가
-- [ ] retrieval hit/miss metrics 추가
-- [ ] store sync failure metric 추가
-- [ ] memory reference와 final answer correlation 확인 경로 추가
+- [x] `load_memories` latency trace event 추가
+- [x] retrieval hit/miss metrics 추가
+- [x] store sync failure metric 추가
+- [x] memory reference와 final answer correlation 확인 경로 추가
 - [ ] personalization quality evaluation fixture 추가
 
 ## 성능 검증 계획
@@ -348,8 +348,8 @@ LangGraph store를 붙여도 memory가 자동으로 prompt에 녹아드는 건 �
   - 2번 스레드: `내가 좋아하는 가수는 누구게?`
   - 기대 응답: `사용자님은 가수 백예린을 좋아하십니다.`에 준하는 personalization 반영
 - [ ] thread local memory는 같은 thread에서만 우선 recall되는지 검증한다.
-- [ ] memory delete 후 store projection과 SQL canonical이 함께 반영되는지 검증한다.
-- [ ] summary document가 SQL canonical과 불일치하지 않는지 검증한다.
+- [x] memory delete 후 store projection과 SQL canonical이 함께 반영되는지 검증한다.
+- [x] summary document가 SQL canonical과 불일치하지 않는지 검증한다.
 
 ## 수동 검증 시나리오
 
@@ -357,7 +357,7 @@ LangGraph store를 붙여도 memory가 자동으로 prompt에 녹아드는 건 �
 - [x] 같은 user의 2번 스레드에서 `내가 좋아하는 가수는 누구게?` 질의를 보내 cross-thread recall을 확인
 - [x] 선호 신호 없는 질의에서는 추가 memory가 생기지 않는지 확인
 - [x] settings personal memory 목록과 실제 retrieved behavior가 일치하는지 확인
-- [ ] memory delete 후 후속 thread에서 해당 personalization이 약화/제거되는지 확인
+- [x] memory delete 후 후속 thread에서 해당 personalization이 약화/제거되는지 확인
 
 ## 완료 조건
 

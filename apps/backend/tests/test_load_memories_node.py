@@ -35,11 +35,15 @@ async def test_load_memories_node_populates_personalization(monkeypatch):
         fake_count_active_memories,
     )
     monkeypatch.setattr(
-        "workflow.load_memories.MemoryStoreService.build_personalization_context",
-        lambda *, user_id, thread_id: (
-            "- [personal_interest] 가수 백예린을 굉장히 좋아한다",
-            [],
-        ),
+        "workflow.load_memories.MemoryStoreService.build_personalization_payload",
+        lambda *, user_id, thread_id: {
+            "context_block": "- [personal_interest] 가수 백예린을 굉장히 좋아한다",
+            "memory_ids": [],
+            "hit_count": 0,
+            "summary_used": True,
+            "recent_used": False,
+            "cache_hit": False,
+        },
     )
 
     command = await node(
@@ -56,6 +60,7 @@ async def test_load_memories_node_populates_personalization(monkeypatch):
         command.update["shared_context"]["personalization"]["context_block"]
         == "- [personal_interest] 가수 백예린을 굉장히 좋아한다"
     )
+    assert command.update["shared_context"]["personalization_meta"]["summary_used"] is True
 
 
 @pytest.mark.asyncio

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from datetime import datetime
 from typing import Any
 from uuid import UUID
@@ -16,6 +17,11 @@ class MemoryStoreService:
     RECENT_LIMIT = 5
     SEARCH_FETCH_LIMIT = 20
     MAX_CONTEXT_CHARS = 1200
+    CACHE_TTL_SECONDS = 15.0
+    _context_cache: dict[
+        tuple[str, str],
+        tuple[float, dict[str, Any]],
+    ] = {}
 
     @staticmethod
     def global_namespace(user_id: str) -> tuple[str, ...]:
@@ -59,6 +65,18 @@ class MemoryStoreService:
         return MemoryStoreService.global_namespace(memory.user_id)
 
     @staticmethod
+    def invalidate_context_cache(*, user_id: str, thread_id: str | None = None) -> None:
+        keys_to_remove = []
+        for cache_key in MemoryStoreService._context_cache:
+            cached_user_id, cached_thread_id = cache_key
+            if cached_user_id != user_id:
+                continue
+            if thread_id is None or cached_thread_id == thread_id:
+                keys_to_remove.append(cache_key)
+        for key in keys_to_remove:
+            MemoryStoreService._context_cache.pop(key, None)
+
+    @staticmethod
     async def sync_memory(memory: UserMemoryEntry) -> None:
         store = get_memory_store()
         if store is None:
@@ -67,6 +85,10 @@ class MemoryStoreService:
             MemoryStoreService._namespace_for_memory(memory),
             MemoryStoreService._memory_key(memory.id),
             MemoryStoreService._document_from_memory(memory),
+        )
+        MemoryStoreService.invalidate_context_cache(
+            user_id=memory.user_id,
+            thread_id=memory.thread_id,
         )
 
     @staticmethod
@@ -82,6 +104,7 @@ class MemoryStoreService:
             else MemoryStoreService.global_namespace(user_id)
         )
         store.delete(namespace, str(memory_id))
+        MemoryStoreService.invalidate_context_cache(user_id=user_id, thread_id=thread_id)
 
     @staticmethod
     async def _build_summary_document(
@@ -152,6 +175,8 @@ class MemoryStoreService:
             else:
                 store.put(thread_namespace, MemoryStoreService.SUMMARY_KEY, thread_doc)
 
+        MemoryStoreService.invalidate_context_cache(user_id=user_id, thread_id=thread_id)
+
     @staticmethod
     async def backfill_active_memories(db: AsyncSession) -> None:
         store = get_memory_store()
@@ -196,27 +221,38 @@ class MemoryStoreService:
         return ordered
 
     @staticmethod
-    def build_personalization_context(
+    def _compute_personalization_payload(
         *, user_id: str, thread_id: str
-    ) -> tuple[str, list[UUID]]:
+    ) -> dict[str, Any]:
         store = get_memory_store()
         if store is None:
-            return "", []
+            return {
+                "context_block": "",
+                "memory_ids": [],
+                "hit_count": 0,
+                "summary_used": False,
+                "recent_used": False,
+                "cache_hit": False,
+            }
 
         global_ns = MemoryStoreService.global_namespace(user_id)
         thread_ns = MemoryStoreService.thread_namespace(user_id, thread_id)
 
         lines: list[str] = []
         memory_ids: list[UUID] = []
+        summary_used = False
+        recent_used = False
 
         thread_summary = store.get(thread_ns, MemoryStoreService.SUMMARY_KEY)
         global_summary = store.get(global_ns, MemoryStoreService.SUMMARY_KEY)
         if thread_summary and thread_summary.value.get("summary_text"):
+            summary_used = True
             lines.append(str(thread_summary.value["summary_text"]).strip())
             memory_ids.extend(
                 UUID(memory_id) for memory_id in thread_summary.value.get("memory_ids", [])
             )
         if global_summary and global_summary.value.get("summary_text"):
+            summary_used = True
             lines.append(str(global_summary.value["summary_text"]).strip())
             memory_ids.extend(
                 UUID(memory_id) for memory_id in global_summary.value.get("memory_ids", [])
@@ -241,6 +277,7 @@ class MemoryStoreService:
             category = MemoryStoreService._collapse_text(item.value.get("category"))
             if not content_text:
                 continue
+            recent_used = True
             lines.append(f"- [{category}] {content_text}")
             memory_id = item.value.get("memory_id")
             if memory_id:
@@ -271,4 +308,121 @@ class MemoryStoreService:
             seen_ids.add(memory_id)
             unique_memory_ids.append(memory_id)
 
-        return "\n".join(deduped_lines), unique_memory_ids
+        return {
+            "context_block": "\n".join(deduped_lines),
+            "memory_ids": unique_memory_ids,
+            "hit_count": len(unique_memory_ids),
+            "summary_used": summary_used,
+            "recent_used": recent_used,
+            "cache_hit": False,
+        }
+
+    @staticmethod
+    def build_personalization_payload(
+        *, user_id: str, thread_id: str
+    ) -> dict[str, Any]:
+        cache_key = (user_id, thread_id)
+        cached = MemoryStoreService._context_cache.get(cache_key)
+        now_mono = time.monotonic()
+        if cached is not None:
+            expires_at, payload = cached
+            if now_mono < expires_at:
+                return {
+                    **payload,
+                    "cache_hit": True,
+                }
+            MemoryStoreService._context_cache.pop(cache_key, None)
+
+        payload = MemoryStoreService._compute_personalization_payload(
+            user_id=user_id,
+            thread_id=thread_id,
+        )
+        MemoryStoreService._context_cache[cache_key] = (
+            now_mono + MemoryStoreService.CACHE_TTL_SECONDS,
+            payload,
+        )
+        return payload
+
+    @staticmethod
+    def build_personalization_context(
+        *, user_id: str, thread_id: str
+    ) -> tuple[str, list[UUID]]:
+        payload = MemoryStoreService.build_personalization_payload(
+            user_id=user_id,
+            thread_id=thread_id,
+        )
+        return payload["context_block"], payload["memory_ids"]
+
+    @staticmethod
+    async def validate_projection(
+        db: AsyncSession, *, user_id: str, thread_id: str | None = None
+    ) -> dict[str, Any]:
+        store = get_memory_store()
+        if store is None:
+            return {
+                "store_available": False,
+                "sql_global_count": 0,
+                "store_global_count": 0,
+                "global_summary_count": 0,
+                "thread_sql_count": 0,
+                "thread_store_count": 0,
+                "thread_summary_count": 0,
+                "global_match": False,
+                "thread_match": False,
+            }
+
+        global_result = await db.execute(
+            select(UserMemoryEntry).where(
+                UserMemoryEntry.user_id == user_id,
+                UserMemoryEntry.thread_id.is_(None),
+                UserMemoryEntry.deleted_at.is_(None),
+                UserMemoryEntry.status == "active",
+            )
+        )
+        sql_global_rows = list(global_result.scalars().all())
+        global_ns = MemoryStoreService.global_namespace(user_id)
+        global_store_rows = store.search(
+            global_ns,
+            filter={"document_type": "memory", "status": "active"},
+            limit=1000,
+        )
+        global_summary = store.get(global_ns, MemoryStoreService.SUMMARY_KEY)
+
+        thread_sql_rows: list[UserMemoryEntry] = []
+        thread_store_rows: list[Any] = []
+        thread_summary_count = 0
+        if thread_id:
+            thread_result = await db.execute(
+                select(UserMemoryEntry).where(
+                    UserMemoryEntry.user_id == user_id,
+                    UserMemoryEntry.thread_id == thread_id,
+                    UserMemoryEntry.deleted_at.is_(None),
+                    UserMemoryEntry.status == "active",
+                )
+            )
+            thread_sql_rows = list(thread_result.scalars().all())
+            thread_ns = MemoryStoreService.thread_namespace(user_id, thread_id)
+            thread_store_rows = store.search(
+                thread_ns,
+                filter={"document_type": "memory", "status": "active"},
+                limit=1000,
+            )
+            thread_summary = store.get(thread_ns, MemoryStoreService.SUMMARY_KEY)
+            thread_summary_count = len(thread_summary.value.get("memory_ids", [])) if thread_summary else 0
+
+        global_summary_count = (
+            len(global_summary.value.get("memory_ids", []))
+            if global_summary and global_summary.value
+            else 0
+        )
+        return {
+            "store_available": True,
+            "sql_global_count": len(sql_global_rows),
+            "store_global_count": len(global_store_rows),
+            "global_summary_count": global_summary_count,
+            "thread_sql_count": len(thread_sql_rows),
+            "thread_store_count": len(thread_store_rows),
+            "thread_summary_count": thread_summary_count,
+            "global_match": len(sql_global_rows) == len(global_store_rows),
+            "thread_match": (not thread_id) or (len(thread_sql_rows) == len(thread_store_rows)),
+        }

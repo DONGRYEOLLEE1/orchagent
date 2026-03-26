@@ -62,10 +62,12 @@ def make_load_memories_node() -> Callable:
                     goto="planner",
                 )
 
-        context_block, memory_ids = MemoryStoreService.build_personalization_context(
+        personalization_payload = MemoryStoreService.build_personalization_payload(
             user_id=user_id,
             thread_id=thread_id,
         )
+        context_block = personalization_payload["context_block"]
+        memory_ids = personalization_payload["memory_ids"]
         retrieval_ms = max(
             int((now_kst() - started_at).total_seconds() * 1000),
             0,
@@ -83,6 +85,11 @@ def make_load_memories_node() -> Callable:
                         "hit_count": len(memory_ids),
                         "active_memory_count": active_count,
                         "source": "langgraph_postgres_store",
+                        "summary_used": personalization_payload.get("summary_used", False),
+                        "recent_used": personalization_payload.get("recent_used", False),
+                        "cache_hit": personalization_payload.get("cache_hit", False),
+                        "hit_miss": "hit" if memory_ids else "miss",
+                        "context_chars": len(context_block),
                         "retrieval_ms": retrieval_ms,
                     },
                 }
