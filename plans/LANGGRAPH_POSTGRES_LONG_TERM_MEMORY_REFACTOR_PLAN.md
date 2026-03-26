@@ -339,15 +339,15 @@ LangGraph store를 붙여도 memory가 자동으로 prompt에 녹아드는 건 �
 
 ## 정합성 통합 테스트
 
-- [ ] 선호도 신호 있는 질의는 store projection까지 완료되는지 검증한다.
-- [ ] 선호도 신호 없는 질의는 `load_memories`가 기존 memory만 읽고 새 memory write는 만들지 않는지 검증한다.
+- [x] 선호도 신호 있는 질의는 store projection까지 완료되는지 검증한다.
+- [x] 선호도 신호 없는 질의는 `load_memories`가 기존 memory만 읽고 새 memory write는 만들지 않는지 검증한다.
 - [x] 동일 user의 다른 thread에서도 user global memory가 자연스럽게 recall되는지 검증한다.
 - [x] cross-thread recall 시나리오를 고정한다.
   - 1번 스레드: `난 가수 백예린을 좋아해. 대표곡 5개만 뽑아줘.`
   - memory 저장: `사용자는 가수 백예린을 좋아한다.`
   - 2번 스레드: `내가 좋아하는 가수는 누구게?`
   - 기대 응답: `사용자님은 가수 백예린을 좋아하십니다.`에 준하는 personalization 반영
-- [ ] thread local memory는 같은 thread에서만 우선 recall되는지 검증한다.
+- [x] thread local memory는 같은 thread에서만 우선 recall되는지 검증한다.
 - [x] memory delete 후 store projection과 SQL canonical이 함께 반영되는지 검증한다.
 - [x] summary document가 SQL canonical과 불일치하지 않는지 검증한다.
 
