@@ -36,6 +36,8 @@ from services.chat_analytics_service import (
 from core.timezone import iso_now_kst, now_kst
 from services.llm_pricing_service import LLMPricingService
 from services.logging_service import LoggingService
+from services.memory_agent_service import MemoryAgentService
+from services.memory_service import MemoryService
 from services.file_logger import JsonLogger
 from services.storage_service import StorageService
 
@@ -759,6 +761,79 @@ async def _ensure_thread_owned_by_user(
             raise HTTPException(status_code=404, detail="Thread not found")
 
 
+async def _build_personalization_context_with_fresh_session(
+    *, user_id: str, thread_id: str
+) -> dict[str, Any]:
+    async with AsyncSessionLocal() as db:
+        context = await MemoryService.build_personalization_context(
+            db, user_id=user_id, thread_id=thread_id
+        )
+        return {
+            "enabled": context.enabled,
+            "context_block": context.context_block,
+            "memory_ids": [str(memory_id) for memory_id in context.memory_ids],
+        }
+
+
+async def _persist_memory_reference_events_with_fresh_session(
+    *,
+    user_id: str,
+    thread_id: str,
+    turn_id: UUID,
+    memory_ids: list[UUID],
+) -> None:
+    if not memory_ids:
+        return
+
+    async with AsyncSessionLocal() as db:
+        await MemoryService.record_reference_events(
+            db,
+            user_id=user_id,
+            thread_id=thread_id,
+            turn_id=turn_id,
+            memory_ids=memory_ids,
+        )
+
+
+async def _run_memory_agent_sidecar(
+    *,
+    user_id: str,
+    thread_id: str,
+    turn_id: UUID | None,
+    user_message: str,
+    assistant_message: str | None,
+) -> None:
+    if turn_id is None:
+        return
+
+    async with AsyncSessionLocal() as db:
+        saved_ids = await MemoryAgentService.process_turn(
+            db,
+            user_id=user_id,
+            thread_id=thread_id,
+            turn_id=turn_id,
+            user_message=user_message,
+            assistant_message=assistant_message,
+        )
+        if saved_ids:
+            await TraceService.create_event(
+                db,
+                thread_id=thread_id,
+                event_type="memory_write",
+                node_name="memory_agent",
+                payload={
+                    "event_type": "memory_write",
+                    "saved_memory_ids": [str(memory_id) for memory_id in saved_ids],
+                    "saved_count": len(saved_ids),
+                    "user_message": user_message,
+                    "assistant_message_present": bool(assistant_message),
+                    "timestamp": _utc_timestamp(),
+                },
+                user_id=user_id,
+                turn_id=turn_id,
+            )
+
+
 def _append_summary_trace_events(
     trace_context: _TraceWriteContext,
     trace_events: list[Any],
@@ -869,6 +944,12 @@ async def chat_stream(
 
     async def event_generator():
         approval_requested = requires_human_approval_for_text(request.message)
+        personalization = await _build_personalization_context_with_fresh_session(
+            user_id=user_id, thread_id=request.thread_id
+        )
+        personalization_memory_ids = [
+            UUID(memory_id) for memory_id in personalization.get("memory_ids", [])
+        ]
 
         # Construct multimodal message if images are present
         if request.images:
@@ -884,6 +965,7 @@ async def chat_stream(
                 "messages": [HumanMessage(content=content)],
                 "shared_context": {
                     "force_requires_approval": approval_requested,
+                    "personalization": personalization,
                 },
             }
         else:
@@ -891,6 +973,7 @@ async def chat_stream(
                 "messages": [("user", request.message)],
                 "shared_context": {
                     "force_requires_approval": approval_requested,
+                    "personalization": personalization,
                 },
             }
 
@@ -1303,6 +1386,25 @@ async def chat_stream(
                     "trace batch persist",
                     _persist_trace_events_with_fresh_session(trace_events),
                 )
+            if trace_context.turn_id is not None and personalization_memory_ids:
+                asyncio.create_task(
+                    _persist_memory_reference_events_with_fresh_session(
+                        user_id=user_id,
+                        thread_id=request.thread_id,
+                        turn_id=trace_context.turn_id,
+                        memory_ids=personalization_memory_ids,
+                    )
+                )
+            if trace_context.turn_id is not None and not disconnected:
+                asyncio.create_task(
+                    _run_memory_agent_sidecar(
+                        user_id=user_id,
+                        thread_id=request.thread_id,
+                        turn_id=trace_context.turn_id,
+                        user_message=request.message,
+                        assistant_message=collector.final_answer() or None,
+                    )
+                )
 
     return EventSourceResponse(event_generator())
 
@@ -1400,9 +1502,20 @@ async def chat_resume_stream(
     )
 
     async def event_generator():
+        personalization = await _build_personalization_context_with_fresh_session(
+            user_id=user_id, thread_id=request.thread_id
+        )
+        personalization_memory_ids = [
+            UUID(memory_id) for memory_id in personalization.get("memory_ids", [])
+        ]
         # Command input with resume
         command = Command(
-            resume={"action": request.action, "feedback": request.feedback}
+            update={
+                "shared_context": {
+                    "personalization": personalization,
+                }
+            },
+            resume={"action": request.action, "feedback": request.feedback},
         )
         config = {
             "configurable": {"thread_id": request.thread_id},
@@ -1807,6 +1920,26 @@ async def chat_resume_stream(
                 await _run_cleanup_task(
                     "trace batch persist",
                     _persist_trace_events_with_fresh_session(trace_events),
+                )
+            if trace_context.turn_id is not None and personalization_memory_ids:
+                asyncio.create_task(
+                    _persist_memory_reference_events_with_fresh_session(
+                        user_id=user_id,
+                        thread_id=request.thread_id,
+                        turn_id=trace_context.turn_id,
+                        memory_ids=personalization_memory_ids,
+                    )
+                )
+            if trace_context.turn_id is not None and not disconnected:
+                resume_message_text = resume_message
+                asyncio.create_task(
+                    _run_memory_agent_sidecar(
+                        user_id=user_id,
+                        thread_id=request.thread_id,
+                        turn_id=trace_context.turn_id,
+                        user_message=resume_message_text,
+                        assistant_message=collector.final_answer() or None,
+                    )
                 )
 
     return EventSourceResponse(event_generator())

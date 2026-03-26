@@ -7,6 +7,7 @@ from langgraph.graph import END
 from langgraph.types import Command
 
 from agent_core.state import BaseAgentState, build_route_entry
+from agent_core.personalization import build_personalization_prompt_block
 from prompt_kit.prompts import FINALIZER_PROMPT
 
 
@@ -19,7 +20,9 @@ def make_finalizer_node(llm: BaseChatModel) -> Callable:
 
     async def finalizer_node(state: BaseAgentState) -> Command:
         print("[Finalizer] Synthesizing final answer...", flush=True)
-        messages = [{"role": "system", "content": system_prompt}] + state.get(
+        shared_context = state.get("shared_context", {}) or {}
+        system_prompt_plus = f"{system_prompt}{build_personalization_prompt_block(shared_context)}"
+        messages = [{"role": "system", "content": system_prompt_plus}] + state.get(
             "messages", []
         )
 

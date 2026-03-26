@@ -12,8 +12,10 @@ class Settings(BaseSettings):
     GRAPH_RECURSION_LIMIT: int = 100
     RESEARCH_TEAM_MAX_DISPATCHES: int = 5
     WRITING_TEAM_MAX_DISPATCHES: int = 5
+    MAIN_AGENT_MODEL: str = "gpt-5.4-mini"
     THREAD_TITLE_MODEL: str = "gpt-5-nano"
     THREAD_SUGGESTIONS_MODEL: str = "gpt-5-nano"
+    MEMORY_AGENT_MODEL: str = "gpt-5.4-nano"
 
     POSTGRES_USER: str = "postgres"
     POSTGRES_PASSWORD: str = "postgres"

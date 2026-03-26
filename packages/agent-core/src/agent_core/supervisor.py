@@ -12,6 +12,7 @@ from agent_core.state import (
     build_route_entry,
     normalize_team_name,
 )
+from agent_core.personalization import build_personalization_prompt_block
 from prompt_kit.prompts import SYSTEM_SUPERVISOR_PROMPT, TEAM_SUPERVISOR_PROMPT
 
 
@@ -225,7 +226,10 @@ def make_supervisor_node(
             else ""
         )
 
-        system_prompt_plus = f"{system_prompt}{plan_instruction}"
+        personalization_instruction = build_personalization_prompt_block(shared_context)
+        system_prompt_plus = (
+            f"{system_prompt}{plan_instruction}{personalization_instruction}"
+        )
 
         messages = [{"role": "system", "content": system_prompt_plus}] + state[
             "messages"

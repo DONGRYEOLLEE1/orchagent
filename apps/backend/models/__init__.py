@@ -10,6 +10,7 @@ from models.auth import AuthSession, AuthUser
 from models.trace import TraceEvent
 from models.logging import ChatSession, ChatMessageLog
 from models.thread_profile import ThreadProfile
+from models.user_memory import MemoryReferenceEvent, UserMemoryEntry, UserMemorySettings
 
 # This ensures that when Base.metadata.create_all is called,
 # all models are registered.
@@ -26,4 +27,7 @@ __all__ = [
     "ThreadProfile",
     "ToolExecutionEvent",
     "UserDailyUsageRollup",
+    "UserMemorySettings",
+    "UserMemoryEntry",
+    "MemoryReferenceEvent",
 ]

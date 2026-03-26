@@ -10,7 +10,7 @@ from workflow.teams.writing import get_writing_graph
 from workflow.teams.vision import get_vision_graph
 from core.config import settings
 
-DEFAULT_LLM_MODEL = "gpt-5.4-mini"
+DEFAULT_LLM_MODEL = settings.MAIN_AGENT_MODEL
 
 
 def get_orchagent_graph(llm_model: str = DEFAULT_LLM_MODEL):

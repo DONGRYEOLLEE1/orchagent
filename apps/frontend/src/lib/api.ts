@@ -4,6 +4,7 @@ import type {
   DashboardLiveTracesResponse,
   DashboardSummary,
 } from '@/types/dashboard';
+import type { PersonalMemoryEntry, UserMemorySettings } from '@/types/memory';
 import type { ThreadDetail, ThreadSummary, ThreadTelemetry } from '@/types/thread';
 
 const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8002').replace(/\/$/, '');
@@ -302,6 +303,42 @@ export async function patchAdminUser(params: {
     body: {
       status: params.status,
     },
+  });
+}
+
+export async function fetchMemorySettings(): Promise<UserMemorySettings> {
+  return requestJson<UserMemorySettings>('/api/users/me/memory/settings');
+}
+
+export async function patchMemorySettings(params: {
+  memoryEnabled?: boolean;
+  allowExplicitMemory?: boolean;
+  allowInferredMemory?: boolean;
+  allowChatHistoryReference?: boolean;
+  defaultMemoryMode?: string;
+}): Promise<UserMemorySettings> {
+  return requestJson<UserMemorySettings>('/api/users/me/memory/settings', {
+    method: 'PATCH',
+    includeCsrf: true,
+    body: {
+      memory_enabled: params.memoryEnabled,
+      allow_explicit_memory: params.allowExplicitMemory,
+      allow_inferred_memory: params.allowInferredMemory,
+      allow_chat_history_reference: params.allowChatHistoryReference,
+      default_memory_mode: params.defaultMemoryMode,
+    },
+  });
+}
+
+export async function fetchPersonalMemories(limit = 100): Promise<PersonalMemoryEntry[]> {
+  const payload = await requestJson<{ memories: PersonalMemoryEntry[] }>(`/api/users/me/memory?limit=${limit}`);
+  return payload.memories;
+}
+
+export async function deletePersonalMemory(memoryId: string): Promise<void> {
+  await requestNoContent(`/api/users/me/memory/${encodeURIComponent(memoryId)}`, {
+    method: 'DELETE',
+    includeCsrf: true,
   });
 }
 

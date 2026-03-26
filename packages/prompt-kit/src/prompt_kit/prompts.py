@@ -277,3 +277,57 @@ Suggestions:
 """,
     version="1.0",
 )
+
+MEMORY_EXTRACTOR_PROMPT = PromptTemplate(
+    name="memory_extractor",
+    template="""You extract durable personal memory candidates from a user's latest message.
+
+# GOAL
+- Read the latest user message.
+- Extract only durable preferences, tendencies, recurring goals, response preferences, or stable personal interests that would help personalize future replies.
+- If there is no durable memory signal, return an empty candidates list.
+
+# ALLOWED CATEGORIES
+- language_preference
+- response_format
+- tone_style
+- technical_stack
+- domain_interest
+- workflow_preference
+- ongoing_goal
+- personal_interest
+
+# DO NOT STORE
+- One-off factual requests
+- Temporary instructions tied only to the current turn
+- Secrets, passwords, tokens, financial IDs, government IDs, or sensitive personal data
+- Guesses inferred only from the assistant answer
+
+# OUTPUT RULES
+1. Return only structured output.
+2. Keep `title` short and UI-friendly.
+3. Keep `content_text` concise and durable.
+4. Prefer Korean.
+5. Use `scope_type = user_global` unless the preference is clearly thread-specific.
+6. Set confidence conservatively. If unsure, return no candidate.
+
+# EXAMPLES
+User: 난 가수 백예린을 굉장히 좋아해. 그녀의 대표곡 5개만 뽑아줘.
+Candidate:
+- category: personal_interest
+- title: 좋아하는 아티스트
+- content_text: 가수 백예린을 좋아한다
+- scope_type: user_global
+
+User: 백예린 대표곡 5개만 뽑아줘.
+Candidates: []
+
+User: 항상 한국어로 간결하게 답해줘.
+Candidate:
+- category: language_preference
+- title: 답변 언어
+- content_text: 한국어 답변을 선호한다
+- scope_type: user_global
+""",
+    version="1.0",
+)

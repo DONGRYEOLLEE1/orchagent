@@ -6,7 +6,7 @@ import { Menu, PanelRightOpen } from 'lucide-react';
 
 import type { AuthUser } from '@/types/auth';
 
-type WorkspaceTopNavSection = 'chat' | 'dashboard';
+type WorkspaceTopNavSection = 'chat' | 'dashboard' | 'settings';
 
 function navButtonClass(active: boolean) {
   if (active) {
@@ -78,8 +78,8 @@ export function WorkspaceTopNav({
             </button>
             <button
               type="button"
-              aria-disabled="true"
-              className="rounded-[8px] px-3 py-1 text-[rgba(148,163,184,0.7)] transition hover:bg-[rgba(255,255,255,0.04)] hover:text-[#e7e7f0]"
+              onClick={activeSection === 'settings' ? undefined : () => router.push('/settings/profile')}
+              className={navButtonClass(activeSection === 'settings')}
             >
               Settings
             </button>
