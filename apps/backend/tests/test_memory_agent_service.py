@@ -76,3 +76,26 @@ async def test_extract_candidates_filters_and_normalizes(monkeypatch):
     assert len(result) == 1
     assert result[0].category == "personal_interest"
     assert result[0].content_text == "가수 백예린을 좋아한다"
+
+
+def test_memory_agent_uses_low_reasoning_effort(monkeypatch):
+    MemoryAgentService._get_agent.cache_clear()
+    captured: dict[str, object] = {}
+
+    def fake_init_chat_model(*, model, model_provider, reasoning):
+        captured["model"] = model
+        captured["model_provider"] = model_provider
+        captured["reasoning"] = reasoning
+        return object()
+
+    def fake_create_agent(**kwargs):
+        captured["create_agent_kwargs"] = kwargs
+        return object()
+
+    monkeypatch.setattr("services.memory_agent_service.init_chat_model", fake_init_chat_model)
+    monkeypatch.setattr("services.memory_agent_service.create_agent", fake_create_agent)
+
+    MemoryAgentService._get_agent()
+
+    assert captured["model"] == "gpt-5.4-nano"
+    assert captured["reasoning"] == {"effort": "low"}

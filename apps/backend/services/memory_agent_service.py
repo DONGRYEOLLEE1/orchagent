@@ -74,7 +74,7 @@ class MemoryAgentService:
         model = init_chat_model(
             model=settings.MEMORY_AGENT_MODEL,
             model_provider="openai",
-            reasoning={"effort": "minimal"},
+            reasoning={"effort": "low"},
         )
         return create_agent(
             model=model,
