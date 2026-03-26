@@ -8,6 +8,7 @@ from agent_core.nodes.planner import make_planner_node
 from workflow.teams.research import get_research_graph
 from workflow.teams.writing import get_writing_graph
 from workflow.teams.vision import get_vision_graph
+from workflow.load_memories import make_load_memories_node
 from core.config import settings
 
 DEFAULT_LLM_MODEL = settings.MAIN_AGENT_MODEL
@@ -28,6 +29,7 @@ def get_orchagent_graph(llm_model: str = DEFAULT_LLM_MODEL):
 
     # 2. Nodes
     planner_node = make_planner_node(llm)
+    load_memories_node = make_load_memories_node()
     finalizer_node = make_finalizer_node(llm)
     head_supervisor_node = make_supervisor_node(
         llm,
@@ -42,6 +44,7 @@ def get_orchagent_graph(llm_model: str = DEFAULT_LLM_MODEL):
 
     # 3. Build Super Graph
     builder = StateGraph(BaseAgentState)  # type: ignore
+    builder.add_node("load_memories", load_memories_node)
     builder.add_node("planner", planner_node)
     builder.add_node("head_supervisor", head_supervisor_node)
     builder.add_node("finalizer", finalizer_node)
@@ -52,7 +55,8 @@ def get_orchagent_graph(llm_model: str = DEFAULT_LLM_MODEL):
     builder.add_node("vision_team", vision_graph)
 
     # 4. Set Edges
-    builder.add_edge(START, "planner")
+    builder.add_edge(START, "load_memories")
+    builder.add_edge("load_memories", "planner")
     # Planner dynamically routes to head_supervisor via Command
 
     # Route back to head supervisor after subgraphs complete (Native subgraph routing)

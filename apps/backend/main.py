@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from core.config import settings
+from core.memory_store import initialize_memory_store, shutdown_memory_store
 from core.database import engine, Base, AsyncSessionLocal
 from api.routes import auth, chat, dashboard, health, memory, threads, users
 import models  # noqa: F401
@@ -13,6 +14,7 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from services.auth_service import ensure_bootstrap_admin
 from services.database_time_service import DatabaseTimeService
 from services.llm_pricing_service import LLMPricingService
+from services.memory_store_service import MemoryStoreService
 from services.schema_patch_service import SchemaPatchService
 
 logger = logging.getLogger(__name__)
@@ -35,6 +37,8 @@ async def _initialize_runtime_dependencies_once() -> None:
         await SchemaPatchService.ensure_trace_event_columns(db)
         await ensure_bootstrap_admin(db)
         await LLMPricingService.ensure_default_pricing_snapshots(db)
+        await initialize_memory_store()
+        await MemoryStoreService.backfill_active_memories(db)
 
 
 async def initialize_runtime_dependencies() -> None:
@@ -66,6 +70,7 @@ async def lifespan(app: FastAPI):
 
     yield
     # Cleanup on shutdown
+    await shutdown_memory_store()
     await engine.dispose()
 
 

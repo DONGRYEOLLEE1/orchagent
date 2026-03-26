@@ -8,6 +8,7 @@ from sqlalchemy import case, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.user_memory import MemoryReferenceEvent, UserMemoryEntry, UserMemorySettings
+from services.memory_store_service import MemoryStoreService
 
 
 @dataclass(slots=True)
@@ -133,6 +134,10 @@ class MemoryService:
         db.add(memory)
         await db.commit()
         await db.refresh(memory)
+        await MemoryStoreService.sync_memory(memory)
+        await MemoryStoreService.refresh_summaries_for_user(
+            db, user_id=user_id, thread_id=thread_id
+        )
         return memory
 
     @staticmethod
@@ -154,6 +159,15 @@ class MemoryService:
         memory.deleted_at = MemoryService._now()
         await db.commit()
         await db.refresh(memory)
+        await MemoryStoreService.delete_memory(
+            user_id=user_id,
+            memory_id=memory.id,
+            scope_type=memory.scope_type,
+            thread_id=memory.thread_id,
+        )
+        await MemoryStoreService.refresh_summaries_for_user(
+            db, user_id=user_id, thread_id=memory.thread_id
+        )
         return memory
 
     @staticmethod
@@ -186,6 +200,10 @@ class MemoryService:
             existing.updated_at = MemoryService._now()
             await db.commit()
             await db.refresh(existing)
+            await MemoryStoreService.sync_memory(existing)
+            await MemoryStoreService.refresh_summaries_for_user(
+                db, user_id=user_id, thread_id=existing.thread_id
+            )
             return existing, False
 
         memory = UserMemoryEntry(
@@ -203,6 +221,10 @@ class MemoryService:
         db.add(memory)
         await db.commit()
         await db.refresh(memory)
+        await MemoryStoreService.sync_memory(memory)
+        await MemoryStoreService.refresh_summaries_for_user(
+            db, user_id=user_id, thread_id=memory.thread_id
+        )
         return memory, True
 
     @staticmethod

@@ -761,20 +761,6 @@ async def _ensure_thread_owned_by_user(
             raise HTTPException(status_code=404, detail="Thread not found")
 
 
-async def _build_personalization_context_with_fresh_session(
-    *, user_id: str, thread_id: str
-) -> dict[str, Any]:
-    async with AsyncSessionLocal() as db:
-        context = await MemoryService.build_personalization_context(
-            db, user_id=user_id, thread_id=thread_id
-        )
-        return {
-            "enabled": context.enabled,
-            "context_block": context.context_block,
-            "memory_ids": [str(memory_id) for memory_id in context.memory_ids],
-        }
-
-
 async def _persist_memory_reference_events_with_fresh_session(
     *,
     user_id: str,
@@ -944,12 +930,6 @@ async def chat_stream(
 
     async def event_generator():
         approval_requested = requires_human_approval_for_text(request.message)
-        personalization = await _build_personalization_context_with_fresh_session(
-            user_id=user_id, thread_id=request.thread_id
-        )
-        personalization_memory_ids = [
-            UUID(memory_id) for memory_id in personalization.get("memory_ids", [])
-        ]
 
         # Construct multimodal message if images are present
         if request.images:
@@ -965,7 +945,8 @@ async def chat_stream(
                 "messages": [HumanMessage(content=content)],
                 "shared_context": {
                     "force_requires_approval": approval_requested,
-                    "personalization": personalization,
+                    "current_user_id": user_id,
+                    "thread_id": request.thread_id,
                 },
             }
         else:
@@ -973,7 +954,8 @@ async def chat_stream(
                 "messages": [("user", request.message)],
                 "shared_context": {
                     "force_requires_approval": approval_requested,
-                    "personalization": personalization,
+                    "current_user_id": user_id,
+                    "thread_id": request.thread_id,
                 },
             }
 
@@ -998,6 +980,7 @@ async def chat_stream(
         assistant_response_message_id: UUID | None = None
         disconnected = False
         error_message: str | None = None
+        final_state_values: dict[str, Any] = {}
 
         async def emit(payload: dict[str, Any], *, persist: bool = True):
             nonlocal final_status, final_status_node
@@ -1241,6 +1224,7 @@ async def chat_stream(
                 state_values = (
                     snapshot.values if isinstance(snapshot.values, dict) else {}
                 )
+                final_state_values = state_values
                 for emission in collector.collect_state_fallback(state_values):
                     yield await emit_text_emission(emission)
 
@@ -1386,6 +1370,14 @@ async def chat_stream(
                     "trace batch persist",
                     _persist_trace_events_with_fresh_session(trace_events),
                 )
+            personalization_meta = (final_state_values.get("shared_context", {}) or {}).get(
+                "personalization_meta", {}
+            )
+            personalization_memory_ids = [
+                UUID(memory_id)
+                for memory_id in personalization_meta.get("memory_ids", [])
+                if memory_id
+            ]
             if trace_context.turn_id is not None and personalization_memory_ids:
                 asyncio.create_task(
                     _persist_memory_reference_events_with_fresh_session(
@@ -1502,17 +1494,12 @@ async def chat_resume_stream(
     )
 
     async def event_generator():
-        personalization = await _build_personalization_context_with_fresh_session(
-            user_id=user_id, thread_id=request.thread_id
-        )
-        personalization_memory_ids = [
-            UUID(memory_id) for memory_id in personalization.get("memory_ids", [])
-        ]
         # Command input with resume
         command = Command(
             update={
                 "shared_context": {
-                    "personalization": personalization,
+                    "current_user_id": user_id,
+                    "thread_id": request.thread_id,
                 }
             },
             resume={"action": request.action, "feedback": request.feedback},
@@ -1538,6 +1525,7 @@ async def chat_resume_stream(
         assistant_response_message_id: UUID | None = None
         disconnected = False
         error_message: str | None = None
+        final_state_values: dict[str, Any] = {}
 
         async def emit(payload: dict[str, Any], *, persist: bool = True):
             nonlocal final_status, final_status_node
@@ -1780,6 +1768,7 @@ async def chat_resume_stream(
                 state_values = (
                     snapshot.values if isinstance(snapshot.values, dict) else {}
                 )
+                final_state_values = state_values
                 for emission in collector.collect_state_fallback(state_values):
                     yield await emit_text_emission(emission)
 
@@ -1921,6 +1910,14 @@ async def chat_resume_stream(
                     "trace batch persist",
                     _persist_trace_events_with_fresh_session(trace_events),
                 )
+            personalization_meta = (final_state_values.get("shared_context", {}) or {}).get(
+                "personalization_meta", {}
+            )
+            personalization_memory_ids = [
+                UUID(memory_id)
+                for memory_id in personalization_meta.get("memory_ids", [])
+                if memory_id
+            ]
             if trace_context.turn_id is not None and personalization_memory_ids:
                 asyncio.create_task(
                     _persist_memory_reference_events_with_fresh_session(
