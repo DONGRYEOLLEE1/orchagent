@@ -2,7 +2,7 @@
 작업명: LangGraph Postgres Long-Term Memory Refactor Plan
 간단요약: 현재 SQL canonical personal memory를 유지하면서 LangGraph PostgresStore와 조건부 `load_memories` 노드를 추가해 유저별 personalization을 강화하고, retrieval latency 증가를 엄격한 게이트와 캐시/요약 전략으로 제어한다.
 작성일시: 2026-03-26 13:41 KST
-최종 수정일시: 2026-03-26 14:07 KST
+최종 수정일시: 2026-03-26 14:14 KST
 ---
 
 # LangGraph Postgres Long-Term Memory Refactor Plan
@@ -270,7 +270,7 @@ LangGraph store를 붙여도 memory가 자동으로 prompt에 녹아드는 건 �
 - [x] create/update/delete 시 projection sync 규칙을 만든다.
 - [x] deleted/tombstone memory의 store projection 처리 방식을 정한다.
 - [x] summary document 생성/갱신 정책을 추가한다.
-- [ ] projection failure logging/trace를 추가한다.
+- [x] projection failure logging/trace를 추가한다.
 
 ## Phase 3. load_memories Node 구현
 
@@ -278,7 +278,7 @@ LangGraph store를 붙여도 memory가 자동으로 prompt에 녹아드는 건 �
 - [x] state schema에 personalization meta를 확장한다.
 - [x] `START -> load_memories -> planner`로 graph를 재구성한다.
 - [x] `load_memories`가 memory disabled / empty memory에서 즉시 skip하도록 구현한다.
-- [ ] retrieval latency를 state/trace에 기록한다.
+- [x] retrieval latency를 state/trace에 기록한다.
 - [x] resume 경로에서도 동일 retrieval 규칙을 적용할지 정한다.
 
 ## Phase 4. Prompt/Context 통합 재정리
@@ -291,7 +291,7 @@ LangGraph store를 붙여도 memory가 자동으로 prompt에 녹아드는 건 �
 ## Phase 5. Latency Hardening
 
 - [x] fast path skip 구현
-- [ ] active memory count short-circuit 구현
+- [x] active memory count short-circuit 구현
 - [x] summary-only retrieval 우선 구현
 - [x] search fallback 조건을 최소화
 - [ ] retrieval cache 도입 여부 검토

@@ -7,6 +7,7 @@ from uuid import UUID
 from sqlalchemy import case, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from services.trace_service import TraceService
 from models.user_memory import MemoryReferenceEvent, UserMemoryEntry, UserMemorySettings
 from services.memory_store_service import MemoryStoreService
 
@@ -105,6 +106,45 @@ class MemoryService:
         return list(result.scalars().all())
 
     @staticmethod
+    async def count_active_memories(db: AsyncSession, *, user_id: str) -> int:
+        result = await db.execute(
+            select(UserMemoryEntry.id).where(
+                UserMemoryEntry.user_id == user_id,
+                UserMemoryEntry.deleted_at.is_(None),
+                UserMemoryEntry.status == "active",
+            )
+        )
+        return len(result.scalars().all())
+
+    @staticmethod
+    async def _record_projection_failure(
+        db: AsyncSession,
+        *,
+        user_id: str,
+        thread_id: str | None,
+        turn_id: UUID | None,
+        operation: str,
+        error: Exception,
+    ) -> None:
+        if not thread_id:
+            return
+        await TraceService.create_event(
+            db,
+            thread_id=thread_id,
+            event_type="memory_projection_error",
+            node_name="memory_store",
+            payload={
+                "event_type": "memory_projection_error",
+                "operation": operation,
+                "error": str(error),
+                "thread_id": thread_id,
+                "turn_id": str(turn_id) if turn_id else None,
+            },
+            user_id=user_id,
+            turn_id=turn_id,
+        )
+
+    @staticmethod
     async def create_memory(
         db: AsyncSession,
         *,
@@ -134,10 +174,20 @@ class MemoryService:
         db.add(memory)
         await db.commit()
         await db.refresh(memory)
-        await MemoryStoreService.sync_memory(memory)
-        await MemoryStoreService.refresh_summaries_for_user(
-            db, user_id=user_id, thread_id=thread_id
-        )
+        try:
+            await MemoryStoreService.sync_memory(memory)
+            await MemoryStoreService.refresh_summaries_for_user(
+                db, user_id=user_id, thread_id=thread_id
+            )
+        except Exception as exc:
+            await MemoryService._record_projection_failure(
+                db,
+                user_id=user_id,
+                thread_id=thread_id,
+                turn_id=created_from_turn_id,
+                operation="create_memory",
+                error=exc,
+            )
         return memory
 
     @staticmethod
@@ -159,15 +209,25 @@ class MemoryService:
         memory.deleted_at = MemoryService._now()
         await db.commit()
         await db.refresh(memory)
-        await MemoryStoreService.delete_memory(
-            user_id=user_id,
-            memory_id=memory.id,
-            scope_type=memory.scope_type,
-            thread_id=memory.thread_id,
-        )
-        await MemoryStoreService.refresh_summaries_for_user(
-            db, user_id=user_id, thread_id=memory.thread_id
-        )
+        try:
+            await MemoryStoreService.delete_memory(
+                user_id=user_id,
+                memory_id=memory.id,
+                scope_type=memory.scope_type,
+                thread_id=memory.thread_id,
+            )
+            await MemoryStoreService.refresh_summaries_for_user(
+                db, user_id=user_id, thread_id=memory.thread_id
+            )
+        except Exception as exc:
+            await MemoryService._record_projection_failure(
+                db,
+                user_id=user_id,
+                thread_id=memory.thread_id,
+                turn_id=memory.created_from_turn_id,
+                operation="delete_memory",
+                error=exc,
+            )
         return memory
 
     @staticmethod
@@ -200,10 +260,20 @@ class MemoryService:
             existing.updated_at = MemoryService._now()
             await db.commit()
             await db.refresh(existing)
-            await MemoryStoreService.sync_memory(existing)
-            await MemoryStoreService.refresh_summaries_for_user(
-                db, user_id=user_id, thread_id=existing.thread_id
-            )
+            try:
+                await MemoryStoreService.sync_memory(existing)
+                await MemoryStoreService.refresh_summaries_for_user(
+                    db, user_id=user_id, thread_id=existing.thread_id
+                )
+            except Exception as exc:
+                await MemoryService._record_projection_failure(
+                    db,
+                    user_id=user_id,
+                    thread_id=existing.thread_id or thread_id,
+                    turn_id=created_from_turn_id,
+                    operation="upsert_inferred_memory_existing",
+                    error=exc,
+                )
             return existing, False
 
         memory = UserMemoryEntry(
@@ -221,10 +291,20 @@ class MemoryService:
         db.add(memory)
         await db.commit()
         await db.refresh(memory)
-        await MemoryStoreService.sync_memory(memory)
-        await MemoryStoreService.refresh_summaries_for_user(
-            db, user_id=user_id, thread_id=memory.thread_id
-        )
+        try:
+            await MemoryStoreService.sync_memory(memory)
+            await MemoryStoreService.refresh_summaries_for_user(
+                db, user_id=user_id, thread_id=memory.thread_id
+            )
+        except Exception as exc:
+            await MemoryService._record_projection_failure(
+                db,
+                user_id=user_id,
+                thread_id=memory.thread_id or thread_id,
+                turn_id=created_from_turn_id,
+                operation="upsert_inferred_memory_new",
+                error=exc,
+            )
         return memory, True
 
     @staticmethod

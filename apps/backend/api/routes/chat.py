@@ -781,6 +781,33 @@ async def _persist_memory_reference_events_with_fresh_session(
         )
 
 
+async def _persist_memory_load_trace_with_fresh_session(
+    *,
+    user_id: str,
+    thread_id: str,
+    turn_id: UUID,
+    personalization_meta: dict[str, Any],
+) -> None:
+    async with AsyncSessionLocal() as db:
+        await TraceService.create_event(
+            db,
+            thread_id=thread_id,
+            event_type="memory_load",
+            node_name="load_memories",
+            payload={
+                "event_type": "memory_load",
+                "memory_ids": personalization_meta.get("memory_ids", []),
+                "hit_count": personalization_meta.get("hit_count", 0),
+                "active_memory_count": personalization_meta.get("active_memory_count", 0),
+                "source": personalization_meta.get("source"),
+                "retrieval_ms": personalization_meta.get("retrieval_ms", 0),
+                "thread_id": thread_id,
+            },
+            user_id=user_id,
+            turn_id=turn_id,
+        )
+
+
 async def _run_memory_agent_sidecar(
     *,
     user_id: str,
@@ -1387,6 +1414,15 @@ async def chat_stream(
                         memory_ids=personalization_memory_ids,
                     )
                 )
+            if trace_context.turn_id is not None and personalization_meta:
+                asyncio.create_task(
+                    _persist_memory_load_trace_with_fresh_session(
+                        user_id=user_id,
+                        thread_id=request.thread_id,
+                        turn_id=trace_context.turn_id,
+                        personalization_meta=personalization_meta,
+                    )
+                )
             if trace_context.turn_id is not None and not disconnected:
                 asyncio.create_task(
                     _run_memory_agent_sidecar(
@@ -1925,6 +1961,15 @@ async def chat_resume_stream(
                         thread_id=request.thread_id,
                         turn_id=trace_context.turn_id,
                         memory_ids=personalization_memory_ids,
+                    )
+                )
+            if trace_context.turn_id is not None and personalization_meta:
+                asyncio.create_task(
+                    _persist_memory_load_trace_with_fresh_session(
+                        user_id=user_id,
+                        thread_id=request.thread_id,
+                        turn_id=trace_context.turn_id,
+                        personalization_meta=personalization_meta,
                     )
                 )
             if trace_context.turn_id is not None and not disconnected:

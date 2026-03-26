@@ -41,6 +41,26 @@ def make_load_memories_node() -> Callable:
                     },
                     goto="planner",
                 )
+            active_count = await MemoryService.count_active_memories(db, user_id=user_id)
+            if active_count == 0:
+                return Command(
+                    update={
+                        "shared_context": {
+                            "personalization": {
+                                "enabled": True,
+                                "context_block": "",
+                            },
+                            "personalization_meta": {
+                                "memory_ids": [],
+                                "hit_count": 0,
+                                "active_memory_count": 0,
+                                "source": "empty",
+                                "retrieval_ms": 0,
+                            },
+                        }
+                    },
+                    goto="planner",
+                )
 
         context_block, memory_ids = MemoryStoreService.build_personalization_context(
             user_id=user_id,
@@ -61,6 +81,7 @@ def make_load_memories_node() -> Callable:
                     "personalization_meta": {
                         "memory_ids": [str(memory_id) for memory_id in memory_ids],
                         "hit_count": len(memory_ids),
+                        "active_memory_count": active_count,
                         "source": "langgraph_postgres_store",
                         "retrieval_ms": retrieval_ms,
                     },
