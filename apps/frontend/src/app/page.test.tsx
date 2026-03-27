@@ -198,6 +198,13 @@ test('hydrates a selected thread and resets to a draft with New Chat', async () 
   expect(screen.getByText(/historical timeline replay is not restored in v1/i)).toBeInTheDocument();
   expect(screen.queryByText(/session state/i)).not.toBeInTheDocument();
 
+  await user.click(screen.getByRole('button', { name: '첨부 이미지 1 크게 보기' }));
+  expect(screen.getByRole('dialog', { name: '첨부 이미지 1 확대 보기' })).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Close image preview' }));
+  await waitFor(() => {
+    expect(screen.queryByRole('dialog', { name: '첨부 이미지 1 확대 보기' })).not.toBeInTheDocument();
+  });
+
   await user.click(screen.getByRole('button', { name: /new chat/i }));
 
   expect(await screen.findByText('System Ready')).toBeInTheDocument();

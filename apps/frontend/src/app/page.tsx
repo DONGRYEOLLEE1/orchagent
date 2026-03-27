@@ -216,9 +216,11 @@ const buildOptimisticAttachments = (files: File[]): ChatAttachment[] =>
 const MessageAttachmentStrip = ({
   attachments,
   align = 'end',
+  onImageSelect,
 }: {
   attachments: ChatAttachment[];
   align?: 'start' | 'end';
+  onImageSelect?: (attachment: ChatAttachment) => void;
 }) => {
   const imageAttachments = attachments.filter(
     (attachment) =>
@@ -241,12 +243,15 @@ const MessageAttachmentStrip = ({
       {visibleAttachments.length > 0 ? (
         <div className={cn('grid gap-2', isSingle ? 'grid-cols-1' : 'grid-cols-2')}>
           {visibleAttachments.map((attachment, index) => (
-            <div
+            <button
+              type="button"
               key={`${attachment.url || attachment.alt}_${index}`}
+              onClick={() => onImageSelect?.(attachment)}
               className={cn(
-                'relative overflow-hidden rounded-[22px] border border-[rgba(255,255,255,0.1)] bg-[rgba(35,38,46,0.46)] shadow-[0px_18px_32px_-24px_rgba(0,0,0,0.9)]',
+                'relative overflow-hidden rounded-[22px] border border-[rgba(255,255,255,0.1)] bg-[rgba(35,38,46,0.46)] shadow-[0px_18px_32px_-24px_rgba(0,0,0,0.9)] transition hover:brightness-110 cursor-zoom-in',
                 isSingle ? 'aspect-[4/3]' : 'aspect-square'
               )}
+              aria-label={`${attachment.alt} 크게 보기`}
             >
               {attachment.url ? (
                 <NextImage
@@ -263,7 +268,7 @@ const MessageAttachmentStrip = ({
                   +{hiddenCount}
                 </div>
               ) : null}
-            </div>
+            </button>
           ))}
         </div>
       ) : null}
@@ -297,6 +302,72 @@ const MessageAttachmentStrip = ({
           ) : null}
         </div>
       ))}
+    </div>
+  );
+};
+
+const ImageLightbox = ({
+  attachment,
+  onClose,
+}: {
+  attachment: ChatAttachment | null;
+  onClose: () => void;
+}) => {
+  useEffect(() => {
+    if (!attachment) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [attachment, onClose]);
+
+  if (!attachment?.url) {
+    return null;
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-[rgba(7,9,13,0.84)] px-6 py-6 backdrop-blur-md"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${attachment.alt} 확대 보기`}
+      onClick={onClose}
+    >
+      <div
+        className="relative flex max-h-full w-full max-w-[1200px] items-center justify-center"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close image preview"
+          className="absolute right-0 top-0 z-10 inline-flex h-11 w-11 items-center justify-center rounded-full border border-[rgba(255,255,255,0.12)] bg-[rgba(12,14,20,0.76)] text-[#e7e7f0] transition hover:border-[rgba(143,245,255,0.32)] hover:text-[#8ff5ff]"
+        >
+          <X size={18} />
+        </button>
+        <div className="relative max-h-[88vh] w-full overflow-hidden rounded-[24px] border border-[rgba(255,255,255,0.08)] bg-[rgba(12,14,20,0.94)] p-4 shadow-[0px_30px_80px_rgba(0,0,0,0.55)]">
+          <div className="mb-3 pr-14 text-[12px] font-semibold uppercase tracking-[0.18em] text-[rgba(170,170,179,0.74)]">
+            {attachment.file_name || attachment.alt}
+          </div>
+          <div className="relative flex max-h-[78vh] min-h-[320px] items-center justify-center overflow-hidden rounded-[18px] bg-black/40">
+            <NextImage
+              src={attachment.url}
+              alt={attachment.alt}
+              width={1400}
+              height={1000}
+              className="max-h-[78vh] w-auto max-w-full object-contain"
+              unoptimized
+            />
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
@@ -500,6 +571,7 @@ function WorkspaceApp({
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [attachmentUploadState, setAttachmentUploadState] = useState<'idle' | 'uploading' | 'error'>('idle');
   const [attachmentError, setAttachmentError] = useState('');
+  const [lightboxAttachment, setLightboxAttachment] = useState<ChatAttachment | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [accountPanelOpen, setAccountPanelOpen] = useState(false);
   const [threadCollectionState, setThreadCollectionState] = useState<ThreadCollectionState>(() => createInitialThreadCollectionState());
@@ -1659,7 +1731,11 @@ function WorkspaceApp({
                     >
                       {isUser ? (
                         <div className="flex w-full max-w-[520px] flex-col items-end">
-                          <MessageAttachmentStrip attachments={message.attachments || []} align="end" />
+                          <MessageAttachmentStrip
+                            attachments={message.attachments || []}
+                            align="end"
+                            onImageSelect={setLightboxAttachment}
+                          />
                           {message.content.trim() ? (
                             <div className="rounded-bl-[14px] rounded-br-[14px] rounded-tl-[14px] border border-[rgba(143,245,255,0.14)] bg-[rgba(35,38,46,0.28)] px-4 py-3 text-[13px] leading-6 text-[#e7e7f0] backdrop-blur-[12px]">
                               {message.content}
@@ -1679,7 +1755,11 @@ function WorkspaceApp({
                                 loading={streamSessionState.loading}
                               />
                             ) : null}
-                            <MessageAttachmentStrip attachments={message.attachments || []} align="start" />
+                            <MessageAttachmentStrip
+                              attachments={message.attachments || []}
+                              align="start"
+                              onImageSelect={setLightboxAttachment}
+                            />
                             <div className="px-1 py-1 text-[14px] leading-7 text-[#e7e7f0]">
                               <MarkdownContent content={message.content} />
                             </div>
@@ -1787,6 +1867,11 @@ function WorkspaceApp({
           </form>
         </div>
       </section>
+
+      <ImageLightbox
+        attachment={lightboxAttachment}
+        onClose={() => setLightboxAttachment(null)}
+      />
 
       <aside
         ref={actionSpaceRef}
