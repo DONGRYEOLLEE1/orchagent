@@ -55,6 +55,7 @@ async def test_supervisor_routes_to_worker():
     assert command.update["active_worker"] == "search_agent"
     assert command.update["route_history"][0]["layer"] == "team"
     assert command.update["route_history"][0]["team"] == "research"
+    assert command.update["route_history"][0].get("reasoning", "") == ""
 
 
 @pytest.mark.asyncio
@@ -203,6 +204,7 @@ async def test_head_supervisor_forces_data_science_team_for_file_analysis_turn()
     assert command.goto == "data_science_team"
     assert command.update["active_team"] == "data_science"
     assert command.update["shared_context"]["data_science_routed_for_current_turn"] is True
+    assert command.update["route_history"][0]["reasoning"] != ""
 
 
 @pytest.mark.asyncio

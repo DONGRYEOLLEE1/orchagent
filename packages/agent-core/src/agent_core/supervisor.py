@@ -267,13 +267,16 @@ def make_supervisor_node(
                         "active_team": None,
                         "active_worker": None,
                         "route_history": [
-                            build_route_entry(
-                                layer="team",
-                                node="supervisor",
-                                next_node="FINISH",
-                                team=normalized_team,
-                            )
-                        ],
+                        build_route_entry(
+                            layer="team",
+                            node="supervisor",
+                            next_node="FINISH",
+                            team=normalized_team,
+                            reasoning=(
+                                f"{normalized_team} team dispatch limit reached; returning control."
+                            ),
+                        )
+                    ],
                         "messages": [
                             AIMessage(
                                 content=(
@@ -444,6 +447,8 @@ def make_supervisor_node(
             and not data_science_already_routed
             and _should_force_data_science_team(state["messages"], shared_context)
         ):
+            if not reasoning:
+                reasoning = "Attached structured files were detected, so the request is routed to data_science_team for analysis."
             if next_node != "data_science_team":
                 print(
                     f"[Supervisor] Forcing head route {next_node} -> data_science_team for file analysis turn.",
@@ -472,6 +477,8 @@ def make_supervisor_node(
             and latest_user_has_image
             and not vision_already_routed
         ):
+            if not reasoning:
+                reasoning = "An image is attached in the latest user turn, so the request is routed to vision_team first."
             if next_node != "vision_team":
                 print(
                     f"[Supervisor] Forcing head route {next_node} -> vision_team for image-bearing user turn.",
@@ -556,6 +563,7 @@ def make_supervisor_node(
                             next_node=route_next_node or next_node,
                             team=next_team,
                             status=status,
+                            reasoning=reasoning,
                         )
                     ],
                 }
@@ -585,6 +593,7 @@ def make_supervisor_node(
                             next_node=next_node,
                             team=normalized_team,
                             worker=next_worker,
+                            reasoning=reasoning,
                         )
                     ],
                 }

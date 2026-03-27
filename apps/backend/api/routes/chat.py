@@ -632,6 +632,7 @@ def _route_payload(node: str, route_entry: dict[str, Any]) -> dict[str, Any]:
         "team": route_entry.get("team"),
         "worker": route_entry.get("worker"),
         "status": route_entry.get("status"),
+        "reasoning": route_entry.get("reasoning"),
         "display_name": _display_name(display_target),
         "timestamp": _utc_timestamp(),
     }
@@ -1392,7 +1393,22 @@ async def chat_stream(
                             update = output.update or {}
                             route_history = update.get("route_history") or []
                             if route_history:
-                                yield await emit(_route_payload(name, route_history[-1]))
+                                latest_route = route_history[-1]
+                                yield await emit(_route_payload(name, latest_route))
+                                route_reasoning = str(latest_route.get("reasoning") or "").strip()
+                                if route_reasoning:
+                                    reasoning_chunks.append(route_reasoning)
+                                    yield await emit(
+                                        {
+                                            "event_type": "reasoning",
+                                            "node": name,
+                                            "display_name": _display_name(name),
+                                            "content": route_reasoning,
+                                            "run_id": run_id,
+                                            "timestamp": _utc_timestamp(),
+                                        },
+                                        persist=False,
+                                    )
 
                             if name == "head_supervisor":
                                 status = update.get("streaming_status")

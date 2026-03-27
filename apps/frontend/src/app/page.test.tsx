@@ -1003,6 +1003,112 @@ test('requests a second ai title update after the fifth completed turn', async (
   });
 });
 
+test('renders live reasoning chunks in the Inner Monologue panel', async () => {
+  const user = userEvent.setup();
+  const deferred = deferredSseResponse();
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    const telemetryResponse = maybeHandleTelemetryRequest(url);
+    if (telemetryResponse) {
+      return telemetryResponse;
+    }
+
+    if (url.includes('/api/auth/me')) {
+      return jsonResponse({
+        id: 'user-1',
+        login_id: 'tester',
+        role: 'user',
+        status: 'active',
+        display_name: null,
+        email: null,
+        must_change_password: false,
+      });
+    }
+
+    if (url.includes('/api/threads?limit=50')) {
+      return jsonResponse({ threads: [] });
+    }
+
+    if (url.endsWith('/api/chat')) {
+      const body = JSON.parse(String(init?.body || '{}'));
+      expect(body.message).toBe('운영정책 요약해줘');
+      return deferred.response;
+    }
+
+    if (url.endsWith('/ai-title')) {
+      return jsonResponse({
+        thread_id: 'thread-reasoning',
+        title: '운영정책 요약',
+        preview: '응답 대기 중',
+        created_at: '2026-03-22T10:00:00Z',
+        last_activity_at: '2026-03-22T10:00:00Z',
+        message_count: 1,
+        latest_status: 'running',
+        checkpoint_id: null,
+        pinned: false,
+        archived: false,
+      });
+    }
+
+    throw new Error(`Unhandled fetch: ${url}`);
+  });
+
+  Object.defineProperty(document, 'cookie', {
+    configurable: true,
+    get: () => 'orch_csrf=csrf-token',
+  });
+  vi.stubGlobal('fetch', fetchMock);
+
+  renderWorkspace();
+
+  await user.type(await screen.findByPlaceholderText(/message orchagent/i), '운영정책 요약해줘');
+  await user.click(screen.getByRole('button', { name: /send message/i }));
+
+  deferred.complete([
+    {
+      event_type: 'status',
+      status: 'running',
+      thread_id: 'thread-reasoning',
+      node: 'head_supervisor',
+      display_name: 'Head Supervisor',
+      timestamp: '2026-03-22T10:20:00Z',
+    },
+    {
+      event_type: 'reasoning',
+      node: 'head_supervisor',
+      display_name: 'Head Supervisor',
+      content: '문서 요약을 위해 먼저 PDF 핵심 내용을 추출합니다.',
+      timestamp: '2026-03-22T10:20:01Z',
+    },
+    {
+      event_type: 'text',
+      node: 'assistant',
+      content: '요약 결과',
+      timestamp: '2026-03-22T10:20:02Z',
+    },
+    {
+      event_type: 'checkpoint',
+      thread_id: 'thread-reasoning',
+      checkpoint_id: 'cp-r',
+      timestamp: '2026-03-22T10:20:03Z',
+    },
+    {
+      event_type: 'status',
+      status: 'completed',
+      thread_id: 'thread-reasoning',
+      node: 'assistant',
+      display_name: 'Completed',
+      timestamp: '2026-03-22T10:20:04Z',
+    },
+  ]);
+
+  await waitFor(() => {
+    expect(
+      screen.getByText('문서 요약을 위해 먼저 PDF 핵심 내용을 추출합니다.')
+    ).toBeInTheDocument();
+  });
+});
+
 test('generates suggested queries after a completed answer and injects the clicked prompt', async () => {
   const user = userEvent.setup();
   const deferred = deferredSseResponse();

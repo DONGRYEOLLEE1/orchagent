@@ -15,6 +15,23 @@ class FinalAnswer(BaseModel):
     content: str = Field(description="The final end-user-facing answer only.")
 
 
+def _dedupe_consecutive_ai_messages(messages: list[object]) -> list[object]:
+    deduped: list[object] = []
+    previous_signature: tuple[str | None, str | None] | None = None
+
+    for message in messages:
+        if isinstance(message, AIMessage):
+            signature = (message.name, str(message.content))
+            if deduped and previous_signature == signature:
+                continue
+            previous_signature = signature
+        else:
+            previous_signature = None
+        deduped.append(message)
+
+    return deduped
+
+
 def make_finalizer_node(llm: BaseChatModel) -> Callable:
     system_prompt = FINALIZER_PROMPT.template
 
@@ -22,8 +39,8 @@ def make_finalizer_node(llm: BaseChatModel) -> Callable:
         print("[Finalizer] Synthesizing final answer...", flush=True)
         shared_context = state.get("shared_context", {}) or {}
         system_prompt_plus = f"{system_prompt}{build_personalization_prompt_block(shared_context)}"
-        messages = [{"role": "system", "content": system_prompt_plus}] + state.get(
-            "messages", []
+        messages = [{"role": "system", "content": system_prompt_plus}] + _dedupe_consecutive_ai_messages(
+            state.get("messages", [])
         )
 
         try:

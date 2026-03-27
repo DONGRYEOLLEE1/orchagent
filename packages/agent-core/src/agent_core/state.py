@@ -16,6 +16,7 @@ class RouteEntry(TypedDict, total=False):
     team: str
     worker: str
     status: StreamingStatus
+    reasoning: str
 
 
 def merge_state_maps(
@@ -67,6 +68,7 @@ def build_route_entry(
     team: str | None = None,
     worker: str | None = None,
     status: StreamingStatus | None = None,
+    reasoning: str | None = None,
 ) -> RouteEntry:
     entry: RouteEntry = {"layer": layer, "node": node, "next": next_node}
     if team:
@@ -75,6 +77,8 @@ def build_route_entry(
         entry["worker"] = worker
     if status:
         entry["status"] = status
+    if reasoning:
+        entry["reasoning"] = reasoning
     return entry
 
 
