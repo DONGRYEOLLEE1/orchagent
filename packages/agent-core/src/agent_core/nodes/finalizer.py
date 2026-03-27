@@ -15,13 +15,42 @@ class FinalAnswer(BaseModel):
     content: str = Field(description="The final end-user-facing answer only.")
 
 
+def _extract_text_content(content: object) -> str:
+    if isinstance(content, str):
+        return content
+
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                if item.get("type") == "text":
+                    parts.append(str(item.get("text", "")))
+                elif "text" in item:
+                    parts.append(str(item.get("text") or ""))
+                elif "content" in item:
+                    parts.append(_extract_text_content(item.get("content")))
+        return "".join(part for part in parts if part)
+
+    if isinstance(content, dict):
+        if content.get("type") == "text":
+            return str(content.get("text", ""))
+        if "text" in content:
+            return str(content.get("text") or "")
+        if "content" in content:
+            return _extract_text_content(content.get("content"))
+
+    return str(content or "")
+
+
 def _dedupe_consecutive_ai_messages(messages: list[object]) -> list[object]:
     deduped: list[object] = []
     previous_signature: tuple[str | None, str | None] | None = None
 
     for message in messages:
         if isinstance(message, AIMessage):
-            signature = (message.name, str(message.content))
+            signature = (message.name, _extract_text_content(message.content))
             if deduped and previous_signature == signature:
                 continue
             previous_signature = signature
@@ -37,7 +66,7 @@ def _extract_review_approved_worker_output(messages: list[object]) -> str:
         message = messages[index]
         if not isinstance(message, AIMessage):
             continue
-        content = str(message.content or "").strip()
+        content = _extract_text_content(message.content).strip()
         if not content.startswith("[Review Passed]"):
             continue
 
@@ -47,7 +76,7 @@ def _extract_review_approved_worker_output(messages: list[object]) -> str:
                 continue
             if candidate.name in {"supervisor", "planner", "reviewer"}:
                 continue
-            candidate_content = str(candidate.content or "").strip()
+            candidate_content = _extract_text_content(candidate.content).strip()
             if candidate_content:
                 return candidate_content
         break
@@ -116,14 +145,13 @@ def make_finalizer_node(llm: BaseChatModel) -> Callable:
                     "planner",
                     "reviewer",
                 }:
-                    if msg.content and isinstance(msg.content, str):
-                        final_content = msg.content.strip()
-                        if final_content:
-                            print(
-                                f"[Finalizer] Fallback used content from worker: {msg.name}",
-                                flush=True,
-                            )
-                            break
+                    final_content = _extract_text_content(msg.content).strip()
+                    if final_content:
+                        print(
+                            f"[Finalizer] Fallback used content from worker: {msg.name}",
+                            flush=True,
+                        )
+                        break
 
             # Absolute fallback
             if not final_content:

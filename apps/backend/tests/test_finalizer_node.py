@@ -79,3 +79,38 @@ async def test_finalizer_uses_review_passed_worker_output_without_llm():
     assert command.goto == "__end__"
     assert llm.captured_messages is None
     assert command.update["messages"][0].content == "월별 이익 표\n2026-01 | 40"
+
+
+@pytest.mark.asyncio
+async def test_finalizer_flattens_review_passed_structured_worker_output():
+    llm = CapturingFinalizerLLM()
+    node = make_finalizer_node(llm)  # type: ignore[arg-type]
+
+    state = cast(
+        BaseAgentState,
+        {
+            "messages": [
+                HumanMessage(content="두 파일을 분석해줘"),
+                AIMessage(
+                    content=[
+                        {
+                            "type": "text",
+                            "text": "## 월별 이익(revenue-cost) 표\n| month | profit |\n| 2026-01 | 40 |",
+                        }
+                    ],
+                    name="data_analyst",
+                ),
+                AIMessage(
+                    content="[Review Passed] Output materially satisfies the request.",
+                    name="data_science_team_reviewer",
+                ),
+            ],
+            "shared_context": {},
+        },
+    )
+
+    command = await node(state)
+
+    assert command.goto == "__end__"
+    assert llm.captured_messages is None
+    assert command.update["messages"][0].content == "## 월별 이익(revenue-cost) 표\n| month | profit |\n| 2026-01 | 40 |"
