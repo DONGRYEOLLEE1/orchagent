@@ -21,6 +21,9 @@ class ThreadAttachmentResponse(BaseModel):
     kind: str
     url: str
     alt: str
+    file_name: str | None = None
+    mime_type: str | None = None
+    size_bytes: int | None = None
 
 
 class ThreadMessageResponse(BaseModel):

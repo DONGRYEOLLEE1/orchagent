@@ -19,6 +19,9 @@ class ThreadAttachment:
     kind: str
     url: str
     alt: str
+    file_name: str | None = None
+    mime_type: str | None = None
+    size_bytes: int | None = None
 
 
 @dataclass(slots=True)
@@ -118,20 +121,33 @@ class ThreadService:
         for index, attachment in enumerate(attachments_payload or []):
             if not isinstance(attachment, dict):
                 continue
-            if attachment.get("kind") != "image":
-                continue
             storage_path = attachment.get("storage_path")
             if not isinstance(storage_path, str) or not storage_path:
                 continue
+            kind = str(attachment.get("kind") or "file")
+            file_name = attachment.get("file_name")
+            mime_type = attachment.get("mime_type")
+            size_bytes = attachment.get("size_bytes")
             attachments.append(
                 ThreadAttachment(
-                    kind="image",
+                    kind=kind,
                     url=ThreadService._build_attachment_url(
                         thread_id=thread_id,
                         message_id=message_id,
                         attachment_index=index,
                     ),
-                    alt=f"첨부 이미지 {index + 1}",
+                    alt=(
+                        str(file_name)
+                        if isinstance(file_name, str) and file_name
+                        else (
+                            f"첨부 이미지 {index + 1}"
+                            if kind == "image"
+                            else f"첨부 파일 {index + 1}"
+                        )
+                    ),
+                    file_name=file_name if isinstance(file_name, str) else None,
+                    mime_type=mime_type if isinstance(mime_type, str) else None,
+                    size_bytes=size_bytes if isinstance(size_bytes, int) else None,
                 )
             )
         return attachments
@@ -407,7 +423,7 @@ class ThreadService:
             return None
 
         attachment = attachments[attachment_index]
-        if not isinstance(attachment, dict) or attachment.get("kind") != "image":
+        if not isinstance(attachment, dict):
             return None
 
         storage_path = attachment.get("storage_path")

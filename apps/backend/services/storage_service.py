@@ -2,15 +2,39 @@ import os
 import base64
 import uuid
 from pathlib import Path
+from typing import Optional
 
 # Base directory for storing images
 IMAGE_STORAGE_DIR = Path(
     os.environ.get("IMAGE_STORAGE_DIR", "apps/backend/data/images")
 )
 IMAGE_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+ATTACHMENT_STORAGE_DIR = Path(
+    os.environ.get("ATTACHMENT_STORAGE_DIR", "apps/backend/data/uploads")
+)
+ATTACHMENT_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 
 
 class StorageService:
+    @staticmethod
+    def save_bytes(
+        content: bytes,
+        *,
+        extension: Optional[str] = None,
+        subdir: Optional[str] = None,
+    ) -> str:
+        directory = ATTACHMENT_STORAGE_DIR / (subdir or "misc")
+        directory.mkdir(parents=True, exist_ok=True)
+
+        normalized_extension = ""
+        if extension:
+            normalized_extension = extension if extension.startswith(".") else f".{extension}"
+        filename = f"{uuid.uuid4()}{normalized_extension}"
+        filepath = directory / filename
+        with open(filepath, "wb") as handle:
+            handle.write(content)
+        return str(filepath)
+
     @staticmethod
     def save_base64_image(base64_string: str) -> str:
         """
@@ -35,4 +59,4 @@ class StorageService:
 
     @staticmethod
     def get_storage_path() -> Path:
-        return IMAGE_STORAGE_DIR
+        return ATTACHMENT_STORAGE_DIR

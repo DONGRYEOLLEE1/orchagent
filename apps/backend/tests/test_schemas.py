@@ -29,6 +29,15 @@ def test_chat_request_with_images():
     assert req.images == ["base64_data_1", "base64_data_2"]
 
 
+def test_chat_request_with_attachment_ids():
+    req = ChatRequest(
+        message="Analyze these files",
+        thread_id="thread_123",
+        attachment_ids=["att-1", "att-2"],
+    )
+    assert req.attachment_ids == ["att-1", "att-2"]
+
+
 def test_signup_request_valid():
     req = SignupRequest(login_id="user1", password="abcdefghijklmn1")
     assert req.login_id == "user1"

@@ -275,6 +275,47 @@ async def test_get_thread_messages_maps_image_attachments_to_public_urls():
 
 
 @pytest.mark.asyncio
+async def test_get_thread_messages_maps_document_attachments_to_public_urls():
+    message_id = uuid4()
+    created_at = datetime(2026, 3, 21, 9, 0, 0)
+    result = SimpleNamespace(
+        mappings=lambda: SimpleNamespace(
+            all=lambda: [
+                {
+                    "id": message_id,
+                    "role": "user",
+                    "content": "Analyze this PDF",
+                    "created_at": created_at,
+                    "attachments": [
+                        {
+                            "kind": "pdf",
+                            "storage_path": "apps/backend/data/uploads/pdf/example.pdf",
+                            "file_name": "example.pdf",
+                            "mime_type": "application/pdf",
+                            "size_bytes": 2048,
+                        }
+                    ],
+                }
+            ]
+        )
+    )
+    db = AsyncMock()
+    db.execute = AsyncMock(return_value=result)
+
+    messages = await ThreadService.get_thread_messages(db, "thread-doc")
+
+    assert len(messages) == 1
+    attachment = messages[0].attachments[0]
+    assert attachment.kind == "pdf"
+    assert attachment.file_name == "example.pdf"
+    assert attachment.mime_type == "application/pdf"
+    assert attachment.size_bytes == 2048
+    assert attachment.url == (
+        f"/api/threads/thread-doc/messages/{message_id}/attachments/0"
+    )
+
+
+@pytest.mark.asyncio
 async def test_list_thread_summaries_places_pinned_threads_at_top():
     created_at = datetime(2026, 3, 21, 9, 0, 0)
     rows = [

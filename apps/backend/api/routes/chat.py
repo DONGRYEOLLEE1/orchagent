@@ -4,8 +4,10 @@ import json
 import re
 import sys
 import asyncio
+import base64
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
@@ -40,6 +42,7 @@ from services.memory_agent_service import MemoryAgentService
 from services.memory_service import MemoryService
 from services.file_logger import JsonLogger
 from services.storage_service import StorageService
+from services.upload_service import UploadService
 
 router = APIRouter()
 FINAL_TEXT_STREAM_NODES = {"head_supervisor", "finalizer"}
@@ -907,6 +910,39 @@ async def _run_cleanup_task(label: str, operation: Any) -> None:
         print(f"[Chat] Failed during {label}: {exc}", file=sys.stderr, flush=True)
 
 
+def _attachment_prompt_block(attachments: list[dict[str, Any]]) -> str:
+    if not attachments:
+        return ""
+
+    lines = ["Attached files available for this turn:"]
+    for attachment in attachments:
+        lines.append(
+            "- "
+            f"id={attachment.get('id')} "
+            f"name={attachment.get('file_name')} "
+            f"kind={attachment.get('kind')} "
+            f"mime={attachment.get('mime_type')} "
+            f"size_bytes={attachment.get('size_bytes')}"
+        )
+    return "\n".join(lines)
+
+
+def _augment_user_message_with_attachment_context(
+    message: str,
+    attachments: list[dict[str, Any]],
+) -> str:
+    attachment_block = _attachment_prompt_block(attachments)
+    if not attachment_block:
+        return message
+
+    return f"{message}\n\n{attachment_block}"
+
+
+def _load_uploaded_image_base64(storage_path: str) -> str:
+    data = Path(storage_path).read_bytes()
+    return base64.b64encode(data).decode("utf-8")
+
+
 @router.post("/chat")
 async def chat_stream(
     request: ChatRequest,
@@ -928,14 +964,31 @@ async def chat_stream(
         allow_missing=True,
     )
 
-    # Save images to disk and get paths for logging
-    image_paths = []
+    uploaded_files = await UploadService.resolve_uploads(
+        db,
+        upload_ids=request.attachment_ids,
+        user_id=user_id,
+    )
+
+    # Save legacy inline images to disk and normalize them into attachment snapshots.
+    image_paths: list[str] = []
     if request.images:
         image_paths = [StorageService.save_base64_image(img) for img in request.images]
     request_attachments = [
-        {"kind": "image", "storage_path": path}
-        for path in image_paths
+        UploadService.build_attachment_snapshot(upload) for upload in uploaded_files
+    ] + [
+        {"kind": "image", "storage_path": path, "file_name": f"image_{index + 1}.jpg", "mime_type": "image/jpeg"}
+        for index, path in enumerate(image_paths)
         if path and path != "error_saving_image"
+    ]
+    graph_user_message = _augment_user_message_with_attachment_context(
+        request.message,
+        request_attachments,
+    )
+    uploaded_image_payloads = [
+        _load_uploaded_image_base64(upload.storage_path)
+        for upload in uploaded_files
+        if upload.kind == "image"
     ]
 
     # 1. DB Logging
@@ -955,7 +1008,7 @@ async def chat_stream(
         started_at=turn_started_at,
         trace_id="",
         metadata={
-            "has_images": bool(request.images),
+            "has_images": bool(request.images or uploaded_image_payloads),
             "message_length": len(request.message),
         },
     )
@@ -974,8 +1027,9 @@ async def chat_stream(
         event_type="turn_start",
         metadata={
             "message_length": len(request.message),
-            "has_images": bool(request.images),
-            "image_paths": image_paths,
+            "has_images": bool(request.images or uploaded_image_payloads),
+            "image_paths": image_paths
+            + [upload.storage_path for upload in uploaded_files if upload.kind == "image"],
         },
     )
 
@@ -983,9 +1037,9 @@ async def chat_stream(
         approval_requested = requires_human_approval_for_text(request.message)
 
         # Construct multimodal message if images are present
-        if request.images:
-            content: list[Any] = [{"type": "text", "text": request.message}]
-            for img in request.images:
+        if request.images or uploaded_image_payloads:
+            content: list[Any] = [{"type": "text", "text": graph_user_message}]
+            for img in [*(request.images or []), *uploaded_image_payloads]:
                 content.append(
                     {
                         "type": "image_url",
@@ -999,16 +1053,18 @@ async def chat_stream(
                     "current_user_id": user_id,
                     "thread_id": request.thread_id,
                     "vision_routed_for_current_turn": False,
+                    "attachments": request_attachments,
                 },
             }
         else:
             inputs = {
-                "messages": [("user", request.message)],
+                "messages": [("user", graph_user_message)],
                 "shared_context": {
                     "force_requires_approval": approval_requested,
                     "current_user_id": user_id,
                     "thread_id": request.thread_id,
                     "vision_routed_for_current_turn": False,
+                    "attachments": request_attachments,
                 },
             }
 

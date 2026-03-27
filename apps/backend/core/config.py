@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     THREAD_TITLE_MODEL: str = "gpt-5-nano"
     THREAD_SUGGESTIONS_MODEL: str = "gpt-5-nano"
     MEMORY_AGENT_MODEL: str = "gpt-5.4-nano"
+    ATTACHMENT_STORAGE_DIR: str = "apps/backend/data/uploads"
+    ATTACHMENT_MAX_BYTES: int = 20 * 1024 * 1024
+    ATTACHMENT_MAX_FILES_PER_REQUEST: int = 10
 
     POSTGRES_USER: str = "postgres"
     POSTGRES_PASSWORD: str = "postgres"

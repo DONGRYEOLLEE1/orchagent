@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from core.config import settings
 from core.memory_store import initialize_memory_store, shutdown_memory_store
 from core.database import engine, Base, AsyncSessionLocal
-from api.routes import auth, chat, dashboard, health, memory, threads, users
+from api.routes import auth, chat, dashboard, health, memory, threads, uploads, users
 import models  # noqa: F401
 
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
@@ -97,6 +97,7 @@ app.include_router(auth.router, prefix=settings.API_V1_STR, tags=["auth"])
 app.include_router(threads.router, prefix=settings.API_V1_STR, tags=["threads"])
 app.include_router(users.router, prefix=settings.API_V1_STR, tags=["users"])
 app.include_router(memory.router, prefix=settings.API_V1_STR, tags=["memory"])
+app.include_router(uploads.router, prefix=settings.API_V1_STR, tags=["uploads"])
 app.include_router(health.router, prefix=settings.API_V1_STR, tags=["health"])
 
 if __name__ == "__main__":

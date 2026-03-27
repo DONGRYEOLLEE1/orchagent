@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 from unittest.mock import AsyncMock
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
@@ -353,8 +354,56 @@ def test_get_thread_absolutizes_message_attachment_urls(monkeypatch):
             "kind": "image",
             "url": f"http://testserver/api/threads/thread-attachment/messages/{message_id}/attachments/0",
             "alt": "첨부 이미지 1",
+            "file_name": None,
+            "mime_type": None,
+            "size_bytes": None,
         }
     ]
+
+
+def test_upload_files_returns_metadata(monkeypatch):
+    upload_id = uuid4()
+    created_at = datetime(2026, 3, 22, 10, 0, 0, tzinfo=timezone.utc)
+
+    async def mock_create_upload(db, *, user_id, file, thread_id):
+        assert user_id == "test-user"
+        assert thread_id == "thread-upload"
+        return SimpleNamespace(
+            id=upload_id,
+            kind="csv",
+            file_name=file.filename,
+            mime_type=file.content_type,
+            size_bytes=12,
+            created_at=created_at,
+        )
+
+    from services.upload_service import UploadService
+
+    app.dependency_overrides[get_db] = _override_get_db
+    monkeypatch.setattr(UploadService, "create_upload", mock_create_upload)
+    try:
+        response = client.post(
+            "/api/uploads",
+            files=[("files", ("sales.csv", b"a,b\n1,2\n", "text/csv"))],
+            data={"thread_id": "thread-upload"},
+            headers={"X-CSRF-Token": "csrf-token"},
+        )
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "uploads": [
+            {
+                "id": str(upload_id),
+                "kind": "csv",
+                "file_name": "sales.csv",
+                "mime_type": "text/csv",
+                "size_bytes": 12,
+                "created_at": "2026-03-22T10:00:00Z",
+            }
+        ]
+    }
 
 
 def test_get_thread_returns_resume_messages_in_existing_order(monkeypatch):

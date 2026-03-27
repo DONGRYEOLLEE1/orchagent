@@ -6,6 +6,7 @@ class ChatRequest(BaseModel):
     message: str
     thread_id: str
     images: Optional[List[str]] = None
+    attachment_ids: Optional[List[str]] = None
 
 
 class ResumeRequest(BaseModel):
