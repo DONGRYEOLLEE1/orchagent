@@ -411,8 +411,6 @@ function WorkspaceApp({
     }
 
     delete pendingTitleRequestIdsRef.current[threadId];
-    delete pendingTelemetryRequestIdsRef.current[threadId];
-    delete pendingSuggestionRequestIdsRef.current[threadId];
     setThreadCollectionState(prev => ({
       ...prev,
       threads: patchThreadSummary(prev.threads, threadId, { title: summary.title }),

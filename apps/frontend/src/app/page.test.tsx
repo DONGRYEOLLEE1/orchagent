@@ -695,13 +695,10 @@ test('requests a second ai title update after the fifth completed turn', async (
   const user = userEvent.setup();
   const deferred = deferredSseResponse();
   let aiTitleCalls = 0;
+  let suggestedQueriesCalls = 0;
 
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
-    const telemetryResponse = maybeHandleTelemetryRequest(url);
-    if (telemetryResponse) {
-      return telemetryResponse;
-    }
 
     if (url.includes('/api/auth/me')) {
       return jsonResponse({
@@ -731,6 +728,23 @@ test('requests a second ai title update after the fifth completed turn', async (
             archived: false,
           },
         ],
+      });
+    }
+
+    if (url.includes('/api/threads/thread-5turn/telemetry')) {
+      return jsonResponse({
+        thread_id: 'thread-5turn',
+        reasoning_summary: 'historical reasoning',
+        suggested_queries: ['기존 추천 질문'],
+      });
+    }
+
+    if (url.endsWith('/suggested-queries')) {
+      suggestedQueriesCalls += 1;
+      return jsonResponse({
+        thread_id: 'thread-5turn',
+        reasoning_summary: 'latest reasoning',
+        suggested_queries: ['질문5를 더 깊게 파고들까'],
       });
     }
 
@@ -840,6 +854,11 @@ test('requests a second ai title update after the fifth completed turn', async (
   await waitFor(() => {
     expect(aiTitleCalls).toBe(1);
     expect(screen.getAllByText('5턴 누적 주제 재요약').length).toBeGreaterThan(0);
+  });
+
+  await waitFor(() => {
+    expect(suggestedQueriesCalls).toBe(1);
+    expect(screen.getByRole('button', { name: '질문5를 더 깊게 파고들까' })).toBeInTheDocument();
   });
 });
 
