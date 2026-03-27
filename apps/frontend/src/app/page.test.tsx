@@ -422,6 +422,130 @@ test('routes to dashboard from the top navigation', async () => {
   expect(pushMock).toHaveBeenCalledWith('/dashboard');
 });
 
+test('uploads supported files before sending chat and forwards attachment ids', async () => {
+  const user = userEvent.setup();
+  const deferred = deferredSseResponse();
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    const telemetryResponse = maybeHandleTelemetryRequest(url);
+    if (telemetryResponse) {
+      return telemetryResponse;
+    }
+
+    if (url.includes('/api/auth/me')) {
+      return jsonResponse({
+        id: 'user-1',
+        login_id: 'tester',
+        role: 'user',
+        status: 'active',
+        display_name: null,
+        email: null,
+        must_change_password: false,
+      });
+    }
+
+    if (url.includes('/api/threads?limit=50')) {
+      return jsonResponse({ threads: [] });
+    }
+
+    if (url.endsWith('/api/uploads')) {
+      expect(init?.method).toBe('POST');
+      return jsonResponse({
+        uploads: [
+          {
+            id: 'upload-1',
+            kind: 'csv',
+            file_name: 'sales.csv',
+            mime_type: 'text/csv',
+            size_bytes: 12,
+            created_at: '2026-03-22T10:00:00Z',
+          },
+        ],
+      });
+    }
+
+    if (url.endsWith('/api/chat')) {
+      const body = JSON.parse(String(init?.body || '{}'));
+      expect(body.attachment_ids).toEqual(['upload-1']);
+      return deferred.response;
+    }
+
+    if (url.endsWith('/ai-title')) {
+      return jsonResponse({
+        thread_id: 'thread-uploaded',
+        title: 'CSV 분석',
+        preview: '응답 대기 중',
+        created_at: '2026-03-22T10:00:00Z',
+        last_activity_at: '2026-03-22T10:00:00Z',
+        message_count: 1,
+        latest_status: 'running',
+        checkpoint_id: null,
+        pinned: false,
+        archived: false,
+      });
+    }
+
+    throw new Error(`Unhandled fetch: ${url}`);
+  });
+
+  Object.defineProperty(document, 'cookie', {
+    configurable: true,
+    get: () => 'orch_csrf=csrf-token',
+  });
+  vi.stubGlobal('fetch', fetchMock);
+
+  renderWorkspace();
+
+  await screen.findByPlaceholderText(/message orchagent/i);
+  const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement | null;
+  expect(fileInput).not.toBeNull();
+  const csvFile = new File(['a,b\n1,2\n'], 'sales.csv', { type: 'text/csv' });
+
+  fireEvent.change(fileInput as HTMLInputElement, { target: { files: [csvFile] } });
+  expect(await screen.findByText('sales.csv')).toBeInTheDocument();
+
+  await user.type(screen.getByPlaceholderText(/message orchagent/i), '이 매출 파일 분석해줘');
+  await user.click(screen.getByRole('button', { name: /send message/i }));
+
+  deferred.complete([
+    {
+      event_type: 'status',
+      status: 'running',
+      thread_id: 'thread-uploaded',
+      node: 'head_supervisor',
+      display_name: 'Head Supervisor',
+      timestamp: '2026-03-22T10:20:00Z',
+    },
+    {
+      event_type: 'text',
+      node: 'assistant',
+      content: 'CSV 분석 시작',
+      timestamp: '2026-03-22T10:20:01Z',
+    },
+    {
+      event_type: 'checkpoint',
+      thread_id: 'thread-uploaded',
+      checkpoint_id: 'cp-upload',
+      timestamp: '2026-03-22T10:20:02Z',
+    },
+    {
+      event_type: 'status',
+      status: 'completed',
+      thread_id: 'thread-uploaded',
+      node: 'assistant',
+      display_name: 'Completed',
+      timestamp: '2026-03-22T10:20:03Z',
+    },
+  ]);
+
+  await waitFor(() => {
+    expect(screen.getByText('CSV 분석 시작')).toBeInTheDocument();
+  });
+
+  expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/api/uploads'))).toBe(true);
+  expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/api/chat'))).toBe(true);
+});
+
 test('reuses the selected thread id for follow-up sends and disables switching while streaming', async () => {
   const user = userEvent.setup();
   const deferred = deferredSseResponse();

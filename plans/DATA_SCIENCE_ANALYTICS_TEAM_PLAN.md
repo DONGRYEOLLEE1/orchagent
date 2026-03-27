@@ -2,7 +2,7 @@
 작업명: Data Science & Analytics Team Plan
 간단요약: 데이터 분석 전용 팀, 일반화된 파일 첨부, Python REPL 기반 시각화 아티팩트 반환을 단계적으로 도입한다.
 작성일시: 2026-03-27 11:27 KST
-최종 수정일시: 2026-03-27 12:01 KST
+최종 수정일시: 2026-03-27 12:06 KST
 ---
 
 # Data Science & Analytics Team 기능 추가 및 첨부 리팩토링 계획
@@ -128,17 +128,17 @@ V1에서 처음 노출할 툴은 작게 유지한다.
 
 ## Phase 2. Frontend 파일 추가 UX
 
-- [ ] compose area의 첨부 진입점을 `Add files`로 전환
-- [ ] `accept`를 이미지 + pdf + xlsx + csv + json + docx로 확장
-- [ ] 클라이언트에서 확장자/mime 선검증 추가
-- [ ] 이미지 thumbnail + 문서 file chip 혼합 preview tray 구현
-- [ ] 업로드 중 / 준비됨 / 실패 상태를 tray에 표시
-- [ ] 전송 payload를 attachment id 참조 구조로 전환
-- [ ] user bubble 상단 attachment strip을 일반 파일용으로 확장
-- [ ] thread reopen 시 attachment strip이 일관되게 복원되도록 수정
-- [ ] 프런트 관련 테스트 추가 및 통과 확인
-- [ ] `npm run lint`
-- [ ] `npm run build`
+- [x] compose area의 첨부 진입점을 `Add files`로 전환
+- [x] `accept`를 이미지 + pdf + xlsx + csv + json + docx로 확장
+- [x] 클라이언트에서 확장자/mime 선검증 추가
+- [x] 이미지 thumbnail + 문서 file chip 혼합 preview tray 구현
+- [x] 업로드 중 / 준비됨 / 실패 상태를 tray에 표시
+- [x] 전송 payload를 attachment id 참조 구조로 전환
+- [x] user bubble 상단 attachment strip을 일반 파일용으로 확장
+- [x] thread reopen 시 attachment strip이 일관되게 복원되도록 수정
+- [x] 프런트 관련 테스트 추가 및 통과 확인
+- [x] `npm run lint`
+- [x] `npm run build`
 
 ## Phase 3. 데이터 분석 전용 툴 추가
 

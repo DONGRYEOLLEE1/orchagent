@@ -6,9 +6,12 @@ export interface TraceEvent {
 }
 
 export interface ChatAttachment {
-    kind: 'image';
-    url: string;
+    kind: 'image' | 'pdf' | 'spreadsheet' | 'csv' | 'json' | 'docx' | 'artifact';
+    url?: string;
     alt: string;
+    file_name?: string | null;
+    mime_type?: string | null;
+    size_bytes?: number | null;
 }
 
 export interface ChatMessage {

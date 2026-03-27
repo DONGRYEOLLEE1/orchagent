@@ -1,9 +1,12 @@
 import type { ChatMessage, StreamEvent, ToolExecution } from '@/types/agent';
 
 export interface ThreadAttachment {
-  kind: 'image';
+  kind: 'image' | 'pdf' | 'spreadsheet' | 'csv' | 'json' | 'docx' | 'artifact';
   url: string;
   alt: string;
+  file_name?: string | null;
+  mime_type?: string | null;
+  size_bytes?: number | null;
 }
 
 export interface ThreadSummary {

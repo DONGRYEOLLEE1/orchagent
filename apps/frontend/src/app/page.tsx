@@ -2,7 +2,17 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Send, Loader2, Bot, Image as ImageIcon, X } from 'lucide-react';
+import {
+  Send,
+  Loader2,
+  Bot,
+  Image as ImageIcon,
+  Paperclip,
+  FileText,
+  FileSpreadsheet,
+  FileJson,
+  X,
+} from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import NextImage from 'next/image';
@@ -15,7 +25,19 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { changePasswordUser, deleteThread, fetchThreadDetail, fetchThreadTelemetry, fetchThreads, generateAiThreadTitle, generateSuggestedQueries, patchThread, resumeChatStream, sendChatStream } from '@/lib/api';
+import {
+  changePasswordUser,
+  deleteThread,
+  fetchThreadDetail,
+  fetchThreadTelemetry,
+  fetchThreads,
+  generateAiThreadTitle,
+  generateSuggestedQueries,
+  patchThread,
+  resumeChatStream,
+  sendChatStream,
+  uploadChatAttachments,
+} from '@/lib/api';
 import { appendAssistantText, parseSseBlock, pushUniqueHistory, splitSseBlocks } from '@/lib/chat-stream';
 import { preprocessMarkdown } from '@/lib/markdown';
 import {
@@ -100,24 +122,67 @@ const MarkdownContent = ({ content }: { content: string }) => {
 };
 
 // --- Helper Functions ---
-const fileToDataUrl = (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        resolve(reader.result);
-      } else {
-        reject(new Error('Failed to read file.'));
-      }
+const SUPPORTED_ATTACHMENT_LABEL = '이미지, PDF, XLSX, CSV, JSON, DOCX만 지원합니다.';
+
+function inferDraftAttachmentKind(file: File): ChatAttachment['kind'] | null {
+  const extension = file.name.split('.').pop()?.toLowerCase();
+  if (file.type.startsWith('image/')) return 'image';
+  if (file.type === 'application/pdf' || extension === 'pdf') return 'pdf';
+  if (
+    file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+    extension === 'xlsx'
+  ) {
+    return 'spreadsheet';
+  }
+  if (file.type === 'text/csv' || extension === 'csv') return 'csv';
+  if (file.type === 'application/json' || extension === 'json') return 'json';
+  if (
+    file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+    extension === 'docx'
+  ) {
+    return 'docx';
+  }
+  return null;
+}
+
+function formatAttachmentBytes(sizeBytes?: number | null): string {
+  if (!sizeBytes || sizeBytes <= 0) return '';
+  if (sizeBytes < 1024) return `${sizeBytes}B`;
+  if (sizeBytes < 1024 * 1024) return `${(sizeBytes / 1024).toFixed(1)}KB`;
+  return `${(sizeBytes / (1024 * 1024)).toFixed(1)}MB`;
+}
+
+function attachmentIcon(attachment: ChatAttachment) {
+  switch (attachment.kind) {
+    case 'spreadsheet':
+    case 'csv':
+      return <FileSpreadsheet size={15} />;
+    case 'json':
+      return <FileJson size={15} />;
+    case 'image':
+      return <ImageIcon size={15} />;
+    default:
+      return <FileText size={15} />;
+  }
+}
+
+const buildOptimisticAttachments = (files: File[]): ChatAttachment[] =>
+  files.map((file, index) => {
+    const kind = inferDraftAttachmentKind(file) || 'artifact';
+    return {
+      kind,
+      url: kind === 'image' ? URL.createObjectURL(file) : undefined,
+      alt: file.name || `첨부 파일 ${index + 1}`,
+      file_name: file.name,
+      mime_type: file.type || null,
+      size_bytes: file.size,
     };
-    reader.onerror = error => reject(error);
   });
-};
 
 const UserAttachmentStrip = ({ attachments }: { attachments: ChatAttachment[] }) => {
   const imageAttachments = attachments.filter((attachment) => attachment.kind === 'image');
-  if (imageAttachments.length === 0) {
+  const fileAttachments = attachments.filter((attachment) => attachment.kind !== 'image');
+  if (imageAttachments.length === 0 && fileAttachments.length === 0) {
     return null;
   }
 
@@ -126,32 +191,142 @@ const UserAttachmentStrip = ({ attachments }: { attachments: ChatAttachment[] })
   const isSingle = visibleAttachments.length === 1;
 
   return (
-    <div className="mb-3 w-[188px] self-end">
-      <div className={cn('grid gap-2', isSingle ? 'grid-cols-1' : 'grid-cols-2')}>
-        {visibleAttachments.map((attachment, index) => (
+    <div className="mb-3 w-[244px] self-end space-y-2">
+      {visibleAttachments.length > 0 ? (
+        <div className={cn('grid gap-2', isSingle ? 'grid-cols-1' : 'grid-cols-2')}>
+          {visibleAttachments.map((attachment, index) => (
+            <div
+              key={`${attachment.url || attachment.alt}_${index}`}
+              className={cn(
+                'relative overflow-hidden rounded-[22px] border border-[rgba(255,255,255,0.1)] bg-[rgba(35,38,46,0.46)] shadow-[0px_18px_32px_-24px_rgba(0,0,0,0.9)]',
+                isSingle ? 'aspect-[4/3]' : 'aspect-square'
+              )}
+            >
+              {attachment.url ? (
+                <NextImage
+                  src={attachment.url}
+                  alt={attachment.alt}
+                  fill
+                  sizes={isSingle ? '244px' : '118px'}
+                  className="object-cover"
+                  unoptimized
+                />
+              ) : null}
+              {hiddenCount > 0 && index === visibleAttachments.length - 1 ? (
+                <div className="absolute inset-0 flex items-center justify-center bg-[rgba(7,9,13,0.64)] text-[18px] font-semibold text-white">
+                  +{hiddenCount}
+                </div>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {fileAttachments.map((attachment, index) => (
+        <div
+          key={`${attachment.file_name || attachment.alt}_${index}`}
+          className="flex items-center gap-3 rounded-[16px] border border-[rgba(255,255,255,0.08)] bg-[rgba(35,38,46,0.52)] px-3 py-3 text-[#e7e7f0]"
+        >
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] bg-[rgba(143,245,255,0.12)] text-[#8ff5ff]">
+            {attachmentIcon(attachment)}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-[12px] font-semibold leading-5">
+              {attachment.file_name || attachment.alt}
+            </div>
+            <div className="text-[10px] uppercase tracking-[0.16em] text-[rgba(170,170,179,0.72)]">
+              {attachment.kind}
+              {attachment.size_bytes ? ` · ${formatAttachmentBytes(attachment.size_bytes)}` : ''}
+            </div>
+          </div>
+          {attachment.url ? (
+            <a
+              href={attachment.url}
+              target="_blank"
+              rel="noreferrer"
+              className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8ff5ff] transition hover:text-[#c7fbff]"
+            >
+              Open
+            </a>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const SelectedAttachmentTray = ({
+  files,
+  uploadState,
+  error,
+  onRemove,
+}: {
+  files: File[];
+  uploadState: 'idle' | 'uploading' | 'error';
+  error: string;
+  onRemove: (index: number) => void;
+}) => {
+  if (files.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="flex flex-wrap gap-2 rounded-[12px] border border-[rgba(255,255,255,0.06)] bg-[rgba(29,31,40,0.4)] p-3">
+      {files.map((file, i) => {
+        const kind = inferDraftAttachmentKind(file);
+        const isImage = kind === 'image';
+
+        return (
           <div
-            key={`${attachment.url}_${index}`}
+            key={`${file.name}_${i}`}
             className={cn(
-              'relative overflow-hidden rounded-[22px] border border-[rgba(255,255,255,0.1)] bg-[rgba(35,38,46,0.46)] shadow-[0px_18px_32px_-24px_rgba(0,0,0,0.9)]',
-              isSingle ? 'aspect-[4/3]' : 'aspect-square'
+              'relative overflow-hidden rounded-[12px] border border-[rgba(255,255,255,0.08)] bg-[rgba(7,9,13,0.72)]',
+              isImage ? 'h-16 w-16' : 'flex min-w-[168px] max-w-[240px] items-center gap-3 px-3 py-3'
             )}
           >
-            <NextImage
-              src={attachment.url}
-              alt={attachment.alt}
-              fill
-              sizes={isSingle ? '188px' : '92px'}
-              className="object-cover"
-              unoptimized
-            />
-            {hiddenCount > 0 && index === visibleAttachments.length - 1 ? (
-              <div className="absolute inset-0 flex items-center justify-center bg-[rgba(7,9,13,0.64)] text-[18px] font-semibold text-white">
-                +{hiddenCount}
-              </div>
-            ) : null}
+            {isImage ? (
+              <NextImage
+                src={URL.createObjectURL(file)}
+                alt={file.name}
+                width={64}
+                height={64}
+                className="h-full w-full object-cover"
+                unoptimized
+              />
+            ) : (
+              <>
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] bg-[rgba(143,245,255,0.12)] text-[#8ff5ff]">
+                  {attachmentIcon({
+                    kind: kind || 'artifact',
+                    alt: file.name,
+                    file_name: file.name,
+                    size_bytes: file.size,
+                  })}
+                </div>
+                <div className="min-w-0 flex-1 pr-6">
+                  <div className="truncate text-[12px] font-semibold text-[#e7e7f0]">
+                    {file.name}
+                  </div>
+                  <div className="text-[10px] uppercase tracking-[0.16em] text-[rgba(170,170,179,0.72)]">
+                    {(kind || 'file').toUpperCase()} · {formatAttachmentBytes(file.size)}
+                  </div>
+                </div>
+              </>
+            )}
+            <button
+              type="button"
+              onClick={() => onRemove(i)}
+              className="absolute right-1 top-1 rounded-full bg-[rgba(7,9,13,0.84)] p-1 text-white transition hover:bg-red-500"
+            >
+              <X size={10} />
+            </button>
           </div>
-        ))}
+        );
+      })}
+      <div className="w-full pt-1 text-[10px] uppercase tracking-[0.16em] text-[rgba(170,170,179,0.72)]">
+        {uploadState === 'uploading' ? 'Uploading files...' : 'Files ready to send'}
       </div>
+      {error ? <div className="w-full text-[12px] text-red-300">{error}</div> : null}
     </div>
   );
 };
@@ -276,7 +451,9 @@ function WorkspaceApp({
   onUserUpdated: (user: AuthUser) => void;
 }) {
   const [input, setInput] = useState('');
-  const [selectedImages, setSelectedImages] = useState<File[]>([]);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [attachmentUploadState, setAttachmentUploadState] = useState<'idle' | 'uploading' | 'error'>('idle');
+  const [attachmentError, setAttachmentError] = useState('');
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [accountPanelOpen, setAccountPanelOpen] = useState(false);
   const [threadCollectionState, setThreadCollectionState] = useState<ThreadCollectionState>(() => createInitialThreadCollectionState());
@@ -355,14 +532,28 @@ function WorkspaceApp({
     };
   }, []);
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      setSelectedImages(prev => [...prev, ...Array.from(e.target.files!)]);
+  const handleAttachmentChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files) {
+      return;
     }
+
+    const incomingFiles = Array.from(e.target.files);
+    const supportedFiles = incomingFiles.filter((file) => inferDraftAttachmentKind(file));
+    if (supportedFiles.length !== incomingFiles.length) {
+      setAttachmentUploadState('error');
+      setAttachmentError(SUPPORTED_ATTACHMENT_LABEL);
+    } else {
+      setAttachmentUploadState('idle');
+      setAttachmentError('');
+    }
+    setSelectedFiles(prev => [...prev, ...supportedFiles]);
+    e.target.value = '';
   };
 
-  const removeImage = (index: number) => {
-    setSelectedImages(prev => prev.filter((_, i) => i !== index));
+  const removeSelectedFile = (index: number) => {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+    setAttachmentUploadState('idle');
+    setAttachmentError('');
   };
 
   const refreshThreadsSilently = async () => {
@@ -395,7 +586,9 @@ function WorkspaceApp({
     }
 
     setInput('');
-    setSelectedImages([]);
+    setSelectedFiles([]);
+    setAttachmentUploadState('idle');
+    setAttachmentError('');
     setActiveThreadState(createInitialActiveThreadState());
     setStreamSessionState(createInitialStreamSessionState());
     setActionSpaceState(createInitialActionSpaceState());
@@ -613,7 +806,9 @@ function WorkspaceApp({
     }));
     if (deletingActiveThread) {
       setInput('');
-      setSelectedImages([]);
+      setSelectedFiles([]);
+      setAttachmentUploadState('idle');
+      setAttachmentError('');
       setActiveThreadState(createInitialActiveThreadState());
       setStreamSessionState(createInitialStreamSessionState());
       setActionSpaceState(createInitialActionSpaceState());
@@ -904,7 +1099,9 @@ function WorkspaceApp({
         error: '',
       }));
       setInput('');
-      setSelectedImages([]);
+      setSelectedFiles([]);
+      setAttachmentUploadState('idle');
+      setAttachmentError('');
       setMobileSidebarOpen(false);
       setAccountPanelOpen(false);
       void loadHistoricalTelemetry(threadId);
@@ -922,7 +1119,7 @@ function WorkspaceApp({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if ((!input.trim() && selectedImages.length === 0) || isInteractionLocked) return;
+    if ((!input.trim() && selectedFiles.length === 0) || isInteractionLocked) return;
 
     const submittedInput = input;
     const isNewThread = !activeThreadState.threadId;
@@ -934,13 +1131,7 @@ function WorkspaceApp({
           !message.content.startsWith('[User Action]:')
       ).length + 1;
 
-    const dataUrls = await Promise.all(selectedImages.map(fileToDataUrl));
-    const base64Images = dataUrls.map((url) => url.split(',')[1] || '');
-    const userAttachments: ChatAttachment[] = dataUrls.map((url, index) => ({
-      kind: 'image',
-      url,
-      alt: `첨부 이미지 ${index + 1}`,
-    }));
+    const userAttachments = buildOptimisticAttachments(selectedFiles);
     const userMessage: ChatMessage = {
       role: 'user',
       content: submittedInput,
@@ -976,7 +1167,9 @@ function WorkspaceApp({
     }));
     activeThreadIdRef.current = thread_id;
     setInput('');
-    setSelectedImages([]);
+    setSelectedFiles([]);
+    setAttachmentUploadState('idle');
+    setAttachmentError('');
     setMobileSidebarOpen(false);
     setStreamSessionState({
       ...createInitialStreamSessionState(),
@@ -985,10 +1178,19 @@ function WorkspaceApp({
     setActionSpaceState(createInitialActionSpaceState());
 
     try {
+      setAttachmentUploadState(userAttachments.length > 0 ? 'uploading' : 'idle');
+      const uploadedAttachments = selectedFiles.length > 0
+        ? await uploadChatAttachments({
+            threadId: thread_id,
+            files: selectedFiles,
+          })
+        : [];
+      setAttachmentUploadState('idle');
+
       const stream = await sendChatStream({
         message: submittedInput,
         threadId: thread_id,
-        images: base64Images,
+        attachmentIds: uploadedAttachments.map((attachment) => attachment.id),
       });
 
       if (isNewThread) {
@@ -1046,6 +1248,8 @@ function WorkspaceApp({
       console.error(err);
       const failureTimestamp = new Date().toISOString();
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setAttachmentUploadState('error');
+      setAttachmentError(errorMessage);
       setStreamSessionState(prev => ({
         ...prev,
         loading: false,
@@ -1461,29 +1665,12 @@ function WorkspaceApp({
 
         <div className="border-t border-[rgba(255,255,255,0.05)] bg-[rgba(29,31,40,0.8)] px-6 py-6 backdrop-blur-xl md:px-8">
           <form onSubmit={handleSubmit} className="mx-auto flex w-full max-w-[720px] flex-col gap-3">
-            {selectedImages.length > 0 ? (
-              <div className="flex flex-wrap gap-2 rounded-[12px] border border-[rgba(255,255,255,0.06)] bg-[rgba(29,31,40,0.4)] p-3">
-                {selectedImages.map((file, i) => (
-                  <div key={i} className="relative h-16 w-16 overflow-hidden rounded-[10px] border border-[rgba(255,255,255,0.08)]">
-                    <NextImage
-                      src={URL.createObjectURL(file)}
-                      alt="preview"
-                      width={64}
-                      height={64}
-                      className="h-full w-full object-cover"
-                      unoptimized
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeImage(i)}
-                      className="absolute right-1 top-1 rounded-full bg-[rgba(7,9,13,0.84)] p-1 text-white transition hover:bg-red-500"
-                    >
-                      <X size={10} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : null}
+            <SelectedAttachmentTray
+              files={selectedFiles}
+              uploadState={attachmentUploadState}
+              error={attachmentError}
+              onRemove={removeSelectedFile}
+            />
 
             <div className="relative">
               <input
@@ -1495,25 +1682,25 @@ function WorkspaceApp({
               />
               <button
                 type="button"
-                aria-label="Attach image"
+                aria-label="Add files"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isInteractionLocked}
                 className="absolute left-3 top-1/2 -translate-y-1/2 p-2 text-[rgba(170,170,179,0.72)] transition hover:text-[#8ff5ff] disabled:text-slate-800"
               >
-                <ImageIcon size={18} />
+                <Paperclip size={18} />
               </button>
               <input
                 type="file"
                 multiple
-                accept="image/*"
+                accept="image/*,.pdf,.xlsx,.csv,.json,.docx"
                 className="hidden"
                 ref={fileInputRef}
-                onChange={handleImageChange}
+                onChange={handleAttachmentChange}
               />
               <button
                 type="submit"
                 aria-label="Send message"
-                disabled={isInteractionLocked || (!input.trim() && selectedImages.length === 0)}
+                disabled={isInteractionLocked || (!input.trim() && selectedFiles.length === 0)}
                 className="absolute right-3 top-1/2 inline-flex -translate-y-1/2 items-center justify-center rounded-[12px] bg-[#8ff5ff] px-5 py-2.5 text-[12px] font-bold uppercase tracking-[0.18em] text-[#005d63] shadow-[0px_10px_15px_-3px_rgba(143,245,255,0.2),0px_4px_6px_-4px_rgba(143,245,255,0.2)] transition hover:brightness-105 disabled:bg-slate-800 disabled:text-slate-600"
               >
                 {streamSessionState.loading ? <Loader2 className="animate-spin" size={16} /> : 'Send'}

@@ -345,13 +345,59 @@ export async function deletePersonalMemory(memoryId: string): Promise<void> {
 export async function sendChatStream(params: {
   message: string;
   threadId: string;
-  images?: string[];
+  attachmentIds?: string[];
 }): Promise<ReadableStream<Uint8Array>> {
   return requestStream('/api/chat', {
     message: params.message,
     thread_id: params.threadId,
-    images: params.images && params.images.length > 0 ? params.images : undefined,
+    attachment_ids:
+      params.attachmentIds && params.attachmentIds.length > 0
+        ? params.attachmentIds
+        : undefined,
   });
+}
+
+export interface UploadedAttachment {
+  id: string;
+  kind: 'image' | 'pdf' | 'spreadsheet' | 'csv' | 'json' | 'docx' | 'artifact';
+  file_name: string;
+  mime_type: string;
+  size_bytes: number;
+  created_at: string | null;
+}
+
+export async function uploadChatAttachments(params: {
+  threadId: string;
+  files: File[];
+}): Promise<UploadedAttachment[]> {
+  const formData = new FormData();
+  formData.set('thread_id', params.threadId);
+  for (const file of params.files) {
+    formData.append('files', file);
+  }
+
+  const headers: Record<string, string> = {};
+  const csrfToken = readCsrfToken();
+  if (csrfToken) {
+    headers[CSRF_HEADER_NAME] = csrfToken;
+  }
+
+  const response = await fetch(`${API_BASE_URL}/api/uploads`, {
+    method: 'POST',
+    credentials: 'include',
+    headers,
+    body: formData,
+  });
+  if (response.status === 401) {
+    notifyUnauthorized();
+    throw new UnauthorizedError(await readErrorMessage(response));
+  }
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response));
+  }
+
+  const payload = (await response.json()) as { uploads: UploadedAttachment[] };
+  return payload.uploads;
 }
 
 export async function resumeChatStream(params: {
