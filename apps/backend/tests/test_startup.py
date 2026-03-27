@@ -115,6 +115,9 @@ async def test_initialize_runtime_dependencies_once_bootstraps_admin(monkeypatch
     async def fake_ensure_chat_message_patch(db):
         schema_patch_calls.append(db)
 
+    async def fake_ensure_upload_patch(db):
+        schema_patch_calls.append(db)
+
     monkeypatch.setattr("main.engine", DummyEngine())
     monkeypatch.setattr(
         "main.AsyncPostgresSaver",
@@ -128,6 +131,7 @@ async def test_initialize_runtime_dependencies_once_bootstraps_admin(monkeypatch
     monkeypatch.setattr("main.DatabaseTimeService.ensure_kst_timezone", fake_ensure_timezone)
     monkeypatch.setattr("main.SchemaPatchService.ensure_trace_event_columns", fake_ensure_schema_patch)
     monkeypatch.setattr("main.SchemaPatchService.ensure_chat_message_attachment_columns", fake_ensure_chat_message_patch)
+    monkeypatch.setattr("main.SchemaPatchService.ensure_uploaded_file_columns", fake_ensure_upload_patch)
     monkeypatch.setattr("main.ensure_bootstrap_admin", fake_bootstrap_admin)
     monkeypatch.setattr("main.LLMPricingService.ensure_default_pricing_snapshots", fake_ensure_pricing)
     monkeypatch.setattr("main.initialize_memory_store", AsyncMock())
@@ -138,6 +142,6 @@ async def test_initialize_runtime_dependencies_once_bootstraps_admin(monkeypatch
     assert "create_all" in sync_calls
     assert "checkpointer.setup" in sync_calls
     assert len(timezone_calls) == 1
-    assert len(schema_patch_calls) == 2
+    assert len(schema_patch_calls) == 3
     assert len(bootstrap_calls) == 1
     assert len(pricing_calls) == 1

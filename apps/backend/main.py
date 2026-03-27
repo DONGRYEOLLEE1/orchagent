@@ -36,6 +36,7 @@ async def _initialize_runtime_dependencies_once() -> None:
         await DatabaseTimeService.ensure_kst_timezone(db)
         await SchemaPatchService.ensure_trace_event_columns(db)
         await SchemaPatchService.ensure_chat_message_attachment_columns(db)
+        await SchemaPatchService.ensure_uploaded_file_columns(db)
         await ensure_bootstrap_admin(db)
         await LLMPricingService.ensure_default_pricing_snapshots(db)
         await initialize_memory_store()

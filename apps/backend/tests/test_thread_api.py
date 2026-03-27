@@ -365,14 +365,20 @@ def test_upload_files_returns_metadata(monkeypatch):
     upload_id = uuid4()
     created_at = datetime(2026, 3, 22, 10, 0, 0, tzinfo=timezone.utc)
 
-    async def mock_create_upload(db, *, user_id, file, thread_id):
+    async def mock_create_upload_from_prepared(db, *, user_id, prepared, thread_id, storage_path=None):
         assert user_id == "test-user"
         assert thread_id == "thread-upload"
         return SimpleNamespace(
             id=upload_id,
+            input_index=prepared.input_index,
             kind="csv",
-            file_name=file.filename,
-            mime_type=file.content_type,
+            source_type="device",
+            processing_status="ready",
+            preview_status="pending",
+            file_name=prepared.file_name,
+            declared_extension=".csv",
+            mime_type=prepared.mime_type,
+            sniffed_mime_type="text/csv",
             size_bytes=12,
             created_at=created_at,
         )
@@ -380,7 +386,7 @@ def test_upload_files_returns_metadata(monkeypatch):
     from services.upload_service import UploadService
 
     app.dependency_overrides[get_db] = _override_get_db
-    monkeypatch.setattr(UploadService, "create_upload", mock_create_upload)
+    monkeypatch.setattr(UploadService, "create_upload_from_prepared", mock_create_upload_from_prepared)
     try:
         response = client.post(
             "/api/uploads",
@@ -396,13 +402,23 @@ def test_upload_files_returns_metadata(monkeypatch):
         "uploads": [
             {
                 "id": str(upload_id),
+                "input_index": 0,
                 "kind": "csv",
+                "source_type": "device",
+                "processing_status": "ready",
+                "preview_status": "pending",
                 "file_name": "sales.csv",
+                "declared_extension": ".csv",
                 "mime_type": "text/csv",
+                "sniffed_mime_type": "text/csv",
                 "size_bytes": 12,
                 "created_at": "2026-03-22T10:00:00Z",
             }
-        ]
+        ],
+        "errors": [],
+        "accepted_count": 1,
+        "failed_count": 0,
+        "total_size_bytes": 8,
     }
 
 
@@ -426,7 +442,7 @@ def test_upload_files_rejects_too_many_files():
     app.dependency_overrides[get_db] = _override_get_db
     many_files = [
         ("files", (f"sample-{index}.csv", b"a,b\n1,2\n", "text/csv"))
-        for index in range(11)
+        for index in range(6)
     ]
     try:
         response = client.post(
@@ -439,7 +455,82 @@ def test_upload_files_rejects_too_many_files():
         app.dependency_overrides.pop(get_db, None)
 
     assert response.status_code == 400
-    assert response.json()["detail"] == "Too many files in a single request"
+    assert response.json()["detail"] == "Too many files in a single request (max 5)"
+
+
+def test_upload_files_rejects_total_size_limit(monkeypatch):
+    app.dependency_overrides[get_db] = _override_get_db
+    monkeypatch.setattr("api.routes.uploads.settings.ATTACHMENT_MAX_TOTAL_BYTES", 10)
+    try:
+        response = client.post(
+            "/api/uploads",
+            files=[
+                ("files", ("a.json", b'{"a":1}', "application/json")),
+                ("files", ("b.json", b'{"b":2}', "application/json")),
+            ],
+            data={"thread_id": "thread-upload"},
+            headers={"X-CSRF-Token": "csrf-token"},
+        )
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+        monkeypatch.setattr("api.routes.uploads.settings.ATTACHMENT_MAX_TOTAL_BYTES", 30 * 1024 * 1024)
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Total upload size exceeds 10B limit"
+
+
+def test_upload_files_returns_partial_success(monkeypatch):
+    upload_id = uuid4()
+    created_at = datetime(2026, 3, 22, 10, 0, 0, tzinfo=timezone.utc)
+
+    async def mock_create_upload_from_prepared(db, *, user_id, prepared, thread_id, storage_path=None):
+        return SimpleNamespace(
+            id=upload_id,
+            input_index=prepared.input_index,
+            kind=prepared.kind,
+            source_type="device",
+            processing_status="ready",
+            preview_status="pending",
+            file_name=prepared.file_name,
+            declared_extension=prepared.declared_extension,
+            mime_type=prepared.mime_type,
+            sniffed_mime_type=prepared.sniffed_mime_type,
+            size_bytes=prepared.size_bytes,
+            created_at=created_at,
+        )
+
+    from services.upload_service import UploadService
+
+    app.dependency_overrides[get_db] = _override_get_db
+    monkeypatch.setattr(UploadService, "create_upload_from_prepared", mock_create_upload_from_prepared)
+    monkeypatch.setattr("api.routes.uploads.settings.ATTACHMENT_MAX_CSV_BYTES", 4)
+    try:
+        response = client.post(
+            "/api/uploads",
+            files=[
+                ("files", ("keep.json", b'{"ok":1}', "application/json")),
+                ("files", ("reject.csv", b"a,b\n1,2\n", "text/csv")),
+            ],
+            data={"thread_id": "thread-upload"},
+            headers={"X-CSRF-Token": "csrf-token"},
+        )
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+        monkeypatch.setattr("api.routes.uploads.settings.ATTACHMENT_MAX_CSV_BYTES", 10 * 1024 * 1024)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["accepted_count"] == 1
+    assert payload["failed_count"] == 1
+    assert payload["uploads"][0]["file_name"] == "keep.json"
+    assert payload["errors"] == [
+        {
+            "input_index": 1,
+            "file_name": "reject.csv",
+            "error_code": "file_too_large",
+            "detail": "CSV file exceeds 4B limit",
+        }
+    ]
 
 
 def test_get_thread_returns_resume_messages_in_existing_order(monkeypatch):

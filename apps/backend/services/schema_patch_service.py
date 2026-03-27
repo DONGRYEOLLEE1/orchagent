@@ -36,3 +36,20 @@ class SchemaPatchService:
             await db.execute(text(statement))
 
         await db.commit()
+
+    @staticmethod
+    async def ensure_uploaded_file_columns(db: AsyncSession) -> None:
+        statements = [
+            "ALTER TABLE uploaded_files ADD COLUMN IF NOT EXISTS source_type VARCHAR NOT NULL DEFAULT 'device'",
+            "ALTER TABLE uploaded_files ADD COLUMN IF NOT EXISTS processing_status VARCHAR NOT NULL DEFAULT 'ready'",
+            "ALTER TABLE uploaded_files ADD COLUMN IF NOT EXISTS preview_status VARCHAR NOT NULL DEFAULT 'pending'",
+            "ALTER TABLE uploaded_files ADD COLUMN IF NOT EXISTS declared_extension VARCHAR",
+            "ALTER TABLE uploaded_files ADD COLUMN IF NOT EXISTS sniffed_mime_type VARCHAR",
+            "CREATE INDEX IF NOT EXISTS ix_uploaded_files_source_type ON uploaded_files (source_type)",
+            "CREATE INDEX IF NOT EXISTS ix_uploaded_files_processing_status ON uploaded_files (processing_status)",
+        ]
+
+        for statement in statements:
+            await db.execute(text(statement))
+
+        await db.commit()

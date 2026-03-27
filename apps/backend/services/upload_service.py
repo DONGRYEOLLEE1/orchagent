@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import mimetypes
+from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID
 
@@ -21,6 +22,43 @@ SUPPORTED_ATTACHMENT_KINDS: dict[str, tuple[str, ...]] = {
     "json": (".json",),
     "docx": (".docx",),
 }
+
+def _format_size_limit(size_bytes: int) -> str:
+    if size_bytes >= 1024 * 1024:
+        return f"{size_bytes / (1024 * 1024):.0f}MB"
+    if size_bytes >= 1024:
+        return f"{size_bytes / 1024:.0f}KB"
+    return f"{size_bytes}B"
+
+
+class UploadValidationError(Exception):
+    def __init__(self, error_code: str, detail: str):
+        super().__init__(detail)
+        self.error_code = error_code
+        self.detail = detail
+
+
+@dataclass(slots=True)
+class PreparedUpload:
+    input_index: int
+    file_name: str
+    declared_extension: str | None
+    kind: str
+    mime_type: str
+    sniffed_mime_type: str
+    size_bytes: int
+    content: bytes
+    source_type: str
+    processing_status: str
+    preview_status: str
+
+
+@dataclass(slots=True)
+class UploadBatchError:
+    input_index: int
+    file_name: str
+    error_code: str
+    detail: str
 
 
 class UploadService:
@@ -57,8 +95,8 @@ class UploadService:
         ):
             return "docx"
 
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise UploadValidationError(
+            error_code="unsupported_file_type",
             detail="Unsupported file type",
         )
 
@@ -68,6 +106,167 @@ class UploadService:
         return fallback or guessed or "application/octet-stream"
 
     @staticmethod
+    def sniff_mime_type(file_name: str, content: bytes, fallback: str) -> str:
+        extension = Path(file_name).suffix.lower()
+        if content.startswith(b"%PDF-"):
+            return "application/pdf"
+        if content.startswith(b"\x89PNG\r\n\x1a\n"):
+            return "image/png"
+        if content[:3] == b"\xff\xd8\xff":
+            return "image/jpeg"
+        if content[:4] == b"RIFF" and content[8:12] == b"WEBP":
+            return "image/webp"
+        if extension == ".json":
+            return "application/json"
+        if extension == ".csv":
+            return "text/csv"
+        if extension == ".docx":
+            return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        if extension == ".xlsx":
+            return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        return fallback
+
+    @staticmethod
+    def max_bytes_for_kind(kind: str) -> int:
+        limits = {
+            "image": settings.ATTACHMENT_MAX_IMAGE_BYTES,
+            "pdf": settings.ATTACHMENT_MAX_PDF_BYTES,
+            "spreadsheet": settings.ATTACHMENT_MAX_SPREADSHEET_BYTES,
+            "csv": settings.ATTACHMENT_MAX_CSV_BYTES,
+            "json": settings.ATTACHMENT_MAX_JSON_BYTES,
+            "docx": settings.ATTACHMENT_MAX_DOCX_BYTES,
+        }
+        return limits[kind]
+
+    @staticmethod
+    def preview_status_for_kind(kind: str) -> str:
+        if kind == "image":
+            return "ready"
+        return "pending"
+
+    @staticmethod
+    async def prepare_upload(
+        *,
+        file: UploadFile,
+        input_index: int,
+        source_type: str = "device",
+    ) -> PreparedUpload:
+        content = await file.read()
+        if not content:
+            raise UploadValidationError(
+                error_code="empty_file",
+                detail="Empty file upload is not allowed",
+            )
+
+        file_name = file.filename or "attachment"
+        declared_extension = Path(file_name).suffix.lower() or None
+        mime_type = UploadService.guess_mime_type(file_name, file.content_type)
+        sniffed_mime_type = UploadService.sniff_mime_type(file_name, content, mime_type)
+        kind = UploadService.infer_attachment_kind(
+            file_name=file_name,
+            mime_type=sniffed_mime_type,
+        )
+        size_bytes = len(content)
+        max_bytes = UploadService.max_bytes_for_kind(kind)
+        if size_bytes > max_bytes:
+            raise UploadValidationError(
+                error_code="file_too_large",
+                detail=f"{kind.upper()} file exceeds {_format_size_limit(max_bytes)} limit",
+            )
+
+        return PreparedUpload(
+            input_index=input_index,
+            file_name=file_name,
+            declared_extension=declared_extension,
+            kind=kind,
+            mime_type=mime_type,
+            sniffed_mime_type=sniffed_mime_type,
+            size_bytes=size_bytes,
+            content=content,
+            source_type=source_type,
+            processing_status="ready",
+            preview_status=UploadService.preview_status_for_kind(kind),
+        )
+
+    @staticmethod
+    async def prepare_upload_batch(
+        *,
+        files: list[UploadFile],
+        source_type: str = "device",
+    ) -> tuple[list[PreparedUpload], list[UploadBatchError], int]:
+        if len(files) > settings.ATTACHMENT_MAX_FILES_PER_REQUEST:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Too many files in a single request (max {settings.ATTACHMENT_MAX_FILES_PER_REQUEST})",
+            )
+
+        prepared_uploads: list[PreparedUpload] = []
+        errors: list[UploadBatchError] = []
+
+        for index, file in enumerate(files):
+            try:
+                prepared_uploads.append(
+                    await UploadService.prepare_upload(
+                        file=file,
+                        input_index=index,
+                        source_type=source_type,
+                    )
+                )
+            except UploadValidationError as exc:
+                errors.append(
+                    UploadBatchError(
+                        input_index=index,
+                        file_name=file.filename or f"file-{index + 1}",
+                        error_code=exc.error_code,
+                        detail=exc.detail,
+                    )
+                )
+
+        total_size_bytes = sum(upload.size_bytes for upload in prepared_uploads)
+        if total_size_bytes > settings.ATTACHMENT_MAX_TOTAL_BYTES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Total upload size exceeds {_format_size_limit(settings.ATTACHMENT_MAX_TOTAL_BYTES)} limit",
+            )
+
+        return prepared_uploads, errors, total_size_bytes
+
+    @staticmethod
+    async def create_upload_from_prepared(
+        db: AsyncSession,
+        *,
+        user_id: str,
+        prepared: PreparedUpload,
+        thread_id: str | None = None,
+        storage_path: str | None = None,
+    ) -> UploadedFile:
+        resolved_storage_path = storage_path or StorageService.save_bytes(
+            prepared.content,
+            extension=prepared.declared_extension,
+            subdir=prepared.kind,
+        )
+
+        upload = UploadedFile(
+            user_id=user_id,
+            thread_id=thread_id,
+            kind=prepared.kind,
+            source_type=prepared.source_type,
+            processing_status=prepared.processing_status,
+            preview_status=prepared.preview_status,
+            file_name=prepared.file_name,
+            declared_extension=prepared.declared_extension,
+            mime_type=prepared.mime_type,
+            sniffed_mime_type=prepared.sniffed_mime_type,
+            size_bytes=prepared.size_bytes,
+            storage_path=resolved_storage_path,
+        )
+        db.add(upload)
+        await db.commit()
+        await db.refresh(upload)
+        setattr(upload, "input_index", prepared.input_index)
+        return upload
+
+    @staticmethod
     async def create_upload(
         db: AsyncSession,
         *,
@@ -75,28 +274,45 @@ class UploadService:
         file: UploadFile,
         thread_id: str | None = None,
     ) -> UploadedFile:
-        content = await file.read()
-        if not content:
-            raise HTTPException(status_code=400, detail="Empty file upload is not allowed")
-        if len(content) > settings.ATTACHMENT_MAX_BYTES:
-            raise HTTPException(status_code=400, detail="File exceeds upload size limit")
+        try:
+            prepared = await UploadService.prepare_upload(file=file, input_index=0)
+        except UploadValidationError as exc:
+            raise HTTPException(status_code=400, detail=exc.detail) from exc
 
-        file_name = file.filename or "attachment"
-        mime_type = UploadService.guess_mime_type(file_name, file.content_type)
-        kind = UploadService.infer_attachment_kind(file_name=file_name, mime_type=mime_type)
-        storage_path = StorageService.save_bytes(
-            content,
-            extension=Path(file_name).suffix,
-            subdir=kind,
+        return await UploadService.create_upload_from_prepared(
+            db,
+            user_id=user_id,
+            prepared=prepared,
+            thread_id=thread_id,
         )
 
+    @staticmethod
+    async def register_generated_artifact(
+        db: AsyncSession,
+        *,
+        user_id: str,
+        thread_id: str,
+        artifact,
+    ) -> UploadedFile:
+        storage_path = str(artifact.storage_path)
+        path = Path(storage_path)
+        mime_type = artifact.mime_type or UploadService.guess_mime_type(path.name)
+        sniffed_mime_type = UploadService.guess_mime_type(path.name, mime_type)
+        kind = str(getattr(artifact, "kind", "artifact") or "artifact")
         upload = UploadedFile(
             user_id=user_id,
             thread_id=thread_id,
             kind=kind,
-            file_name=file_name,
+            source_type="generated_artifact",
+            processing_status="ready",
+            preview_status=UploadService.preview_status_for_kind(kind)
+            if kind in {"image", "pdf", "spreadsheet", "csv", "json", "docx"}
+            else "pending",
+            file_name=str(getattr(artifact, "file_name", path.name) or path.name),
+            declared_extension=path.suffix.lower() or None,
             mime_type=mime_type,
-            size_bytes=len(content),
+            sniffed_mime_type=sniffed_mime_type,
+            size_bytes=int(getattr(artifact, "size_bytes", path.stat().st_size) or path.stat().st_size),
             storage_path=storage_path,
         )
         db.add(upload)
@@ -134,12 +350,23 @@ class UploadService:
         return [upload for upload in ordered_uploads if upload is not None]
 
     @staticmethod
-    def build_attachment_snapshot(upload: UploadedFile) -> dict[str, str | int]:
+    def build_attachment_snapshot(
+        upload: UploadedFile,
+        *,
+        title: str | None = None,
+    ) -> dict[str, str | int | None]:
         return {
             "id": str(upload.id),
+            "upload_id": str(upload.id),
             "kind": upload.kind,
+            "source_type": upload.source_type,
+            "processing_status": upload.processing_status,
+            "preview_status": upload.preview_status,
             "storage_path": upload.storage_path,
             "file_name": upload.file_name,
+            "declared_extension": upload.declared_extension,
             "mime_type": upload.mime_type,
+            "sniffed_mime_type": upload.sniffed_mime_type,
             "size_bytes": upload.size_bytes,
+            "title": title,
         }
