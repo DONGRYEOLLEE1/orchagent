@@ -133,6 +133,13 @@ test('hydrates active thread state from detail and summary metadata', () => {
         role: 'user',
         content: 'hello',
         created_at: '2026-03-22T10:00:00Z',
+        attachments: [
+          {
+            kind: 'image',
+            url: 'http://localhost:8002/api/threads/thread-1/messages/m-1/attachments/0',
+            alt: '첨부 이미지 1',
+          },
+        ],
       },
       {
         id: 'm-2',
@@ -152,6 +159,7 @@ test('hydrates active thread state from detail and summary metadata', () => {
 
   expect(hydrated.viewMode).toBe('historical');
   expect(hydrated.messages).toHaveLength(2);
+  expect(hydrated.messages[0].attachments).toHaveLength(1);
   expect(updated.latestStatus).toBe('completed');
   expect(updated.checkpointId).toBe('cp-2');
 });

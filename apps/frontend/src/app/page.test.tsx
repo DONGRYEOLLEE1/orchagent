@@ -165,6 +165,13 @@ test('hydrates a selected thread and resets to a draft with New Chat', async () 
             role: 'user',
             content: 'Saved user question',
             created_at: '2026-03-22T10:00:00Z',
+            attachments: [
+              {
+                kind: 'image',
+                url: 'http://localhost:8002/api/threads/thread-1/messages/m-1/attachments/0',
+                alt: '첨부 이미지 1',
+              },
+            ],
           },
           {
             id: 'm-2',
@@ -186,6 +193,7 @@ test('hydrates a selected thread and resets to a draft with New Chat', async () 
   await user.click(await screen.findByRole('button', { name: /open thread existing thread/i }));
 
   expect(await screen.findByText('Saved user question')).toBeInTheDocument();
+  expect(screen.getByAltText('첨부 이미지 1')).toBeInTheDocument();
   expect(screen.getAllByText('Saved assistant answer').length).toBeGreaterThan(0);
   expect(screen.getByText(/historical timeline replay is not restored in v1/i)).toBeInTheDocument();
   expect(screen.queryByText(/session state/i)).not.toBeInTheDocument();

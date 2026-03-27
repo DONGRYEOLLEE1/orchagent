@@ -5,10 +5,17 @@ export interface TraceEvent {
     timestamp: string;
 }
 
+export interface ChatAttachment {
+    kind: 'image';
+    url: string;
+    alt: string;
+}
+
 export interface ChatMessage {
     role: 'user' | 'assistant';
     content: string;
     id: string;
+    attachments?: ChatAttachment[];
 }
 
 export interface AgentStatus {

@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ThreadSummaryResponse(BaseModel):
@@ -17,11 +17,18 @@ class ThreadSummaryResponse(BaseModel):
     archived: bool = False
 
 
+class ThreadAttachmentResponse(BaseModel):
+    kind: str
+    url: str
+    alt: str
+
+
 class ThreadMessageResponse(BaseModel):
     id: UUID
     role: str
     content: str
     created_at: datetime | None
+    attachments: list[ThreadAttachmentResponse] = Field(default_factory=list)
 
 
 class ThreadListResponse(BaseModel):

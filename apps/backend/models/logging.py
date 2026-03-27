@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 import pytz
 from sqlalchemy import Column, String, DateTime, ForeignKey, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 
 from core.database import Base
@@ -28,6 +28,7 @@ class ChatMessageLog(Base):
     session_id = Column(String, ForeignKey("chat_sessions.id"), nullable=False, index=True)
     role = Column(String, nullable=False) # 'user' or 'assistant'
     content = Column(Text, nullable=False)
+    attachments_json = Column("attachments", JSONB, nullable=False, default=list)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(KST))
     
     session = relationship("ChatSession", back_populates="messages")

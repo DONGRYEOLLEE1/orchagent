@@ -1,5 +1,11 @@
 import type { ChatMessage, StreamEvent, ToolExecution } from '@/types/agent';
 
+export interface ThreadAttachment {
+  kind: 'image';
+  url: string;
+  alt: string;
+}
+
 export interface ThreadSummary {
   thread_id: string;
   title: string;
@@ -18,6 +24,7 @@ export interface ThreadMessage {
   role: ChatMessage['role'];
   content: string;
   created_at: string | null;
+  attachments?: ThreadAttachment[];
 }
 
 export interface ThreadDetail {

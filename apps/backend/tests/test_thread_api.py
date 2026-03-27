@@ -242,8 +242,10 @@ def test_get_thread_returns_detail(monkeypatch):
         "role": "user",
         "content": "hello",
         "created_at": "2026-03-22T10:00:00Z",
+        "attachments": [],
     }
     assert body["messages"][1]["role"] == "assistant"
+    assert body["messages"][1]["attachments"] == []
 
 
 def test_get_thread_returns_user_only_detail(monkeypatch):
@@ -293,6 +295,64 @@ def test_get_thread_returns_user_only_detail(monkeypatch):
             "role": "user",
             "content": "only user message",
             "created_at": "2026-03-22T11:00:00Z",
+            "attachments": [],
+        }
+    ]
+
+
+def test_get_thread_absolutizes_message_attachment_urls(monkeypatch):
+    created_at = datetime(2026, 3, 22, 10, 0, 0, tzinfo=timezone.utc)
+    message_id = uuid4()
+    detail = ThreadDetail(
+        thread=ThreadSummary(
+            thread_id="thread-attachment",
+            title="Attachment thread",
+            preview="Image prompt",
+            created_at=created_at,
+            last_activity_at=created_at,
+            message_count=1,
+            latest_status="completed",
+            checkpoint_id="cp-attachment",
+            pinned=False,
+            archived=False,
+        ),
+        messages=[
+            ThreadMessage(
+                id=message_id,
+                role="user",
+                content="Describe the image",
+                created_at=created_at,
+                attachments=[
+                    {
+                        "kind": "image",
+                        "url": f"/api/threads/thread-attachment/messages/{message_id}/attachments/0",
+                        "alt": "첨부 이미지 1",
+                    }
+                ],
+            )
+        ],
+    )
+
+    async def mock_get_thread_detail(db, thread_id, *, user_id):
+        assert thread_id == "thread-attachment"
+        assert user_id == "test-user"
+        return detail
+
+    from services.thread_service import ThreadService
+
+    app.dependency_overrides[get_db] = _override_get_db
+    monkeypatch.setattr(ThreadService, "get_thread_detail", mock_get_thread_detail)
+    try:
+        response = client.get("/api/threads/thread-attachment")
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+    assert response.status_code == 200
+    assert response.json()["messages"][0]["attachments"] == [
+        {
+            "kind": "image",
+            "url": f"http://testserver/api/threads/thread-attachment/messages/{message_id}/attachments/0",
+            "alt": "첨부 이미지 1",
         }
     ]
 

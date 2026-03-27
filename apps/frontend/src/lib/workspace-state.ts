@@ -57,6 +57,7 @@ export function toChatMessages(messages: ThreadMessage[]): ChatMessage[] {
     id: message.id,
     role: message.role,
     content: message.content,
+    attachments: message.attachments || [],
   }));
 }
 

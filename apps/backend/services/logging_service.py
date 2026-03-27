@@ -33,12 +33,18 @@ class LoggingService:
         role: str,
         content: str,
         user_id: str | None = None,
+        attachments: list[dict[str, str]] | None = None,
     ) -> ChatMessageLog:
         # Ensure session exists first
         session = await LoggingService.get_or_create_session(db, thread_id, user_id)
         session.updated_at = datetime.now(KST)
 
-        msg = ChatMessageLog(session_id=thread_id, role=role, content=content)
+        msg = ChatMessageLog(
+            session_id=thread_id,
+            role=role,
+            content=content,
+            attachments_json=list(attachments or []),
+        )
         db.add(msg)
         await db.commit()
         await db.refresh(msg)

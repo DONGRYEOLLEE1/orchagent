@@ -1,4 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from pathlib import Path
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
@@ -23,6 +27,28 @@ from services.trace_service import TraceService
 router = APIRouter()
 
 
+def _absolutize_attachment_urls(
+    request: Request,
+    messages: list[ThreadMessageResponse],
+) -> list[ThreadMessageResponse]:
+    base_url = str(request.base_url).rstrip("/")
+    normalized: list[ThreadMessageResponse] = []
+    for message in messages:
+        attachments = [
+            attachment.model_copy(
+                update={
+                    "url": attachment.url
+                    if attachment.url.startswith("http://")
+                    or attachment.url.startswith("https://")
+                    else f"{base_url}{attachment.url}",
+                }
+            )
+            for attachment in message.attachments
+        ]
+        normalized.append(message.model_copy(update={"attachments": attachments}))
+    return normalized
+
+
 @router.get("/threads", response_model=ThreadListResponse)
 async def list_threads(
     limit: int = Query(ThreadService.DEFAULT_LIMIT, ge=1, le=100),
@@ -42,6 +68,7 @@ async def list_threads(
 
 @router.get("/threads/{thread_id}", response_model=ThreadDetailResponse)
 async def get_thread(
+    request: Request,
     thread_id: str,
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
@@ -50,13 +77,39 @@ async def get_thread(
     if detail is None:
         raise HTTPException(status_code=404, detail="Thread not found")
 
+    messages = [
+        ThreadMessageResponse.model_validate(message, from_attributes=True)
+        for message in detail.messages
+    ]
     return ThreadDetailResponse(
         thread=ThreadSummaryResponse.model_validate(detail.thread, from_attributes=True),
-        messages=[
-            ThreadMessageResponse.model_validate(message, from_attributes=True)
-            for message in detail.messages
-        ],
+        messages=_absolutize_attachment_urls(request, messages),
     )
+
+
+@router.get("/threads/{thread_id}/messages/{message_id}/attachments/{attachment_index}")
+async def get_thread_message_attachment(
+    thread_id: str,
+    message_id: UUID,
+    attachment_index: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    storage_path = await ThreadService.get_thread_message_attachment_path(
+        db,
+        thread_id=thread_id,
+        message_id=message_id,
+        attachment_index=attachment_index,
+        user_id=current_user.id,
+    )
+    if storage_path is None:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+
+    file_path = Path(storage_path)
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Attachment not found")
+
+    return FileResponse(file_path)
 
 
 @router.get("/threads/{thread_id}/telemetry", response_model=ThreadTelemetryResponse)

@@ -6,7 +6,7 @@ import { Send, Loader2, Bot, Image as ImageIcon, X } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import NextImage from 'next/image';
-import { ChatMessage, StreamEvent, ToolExecution } from '@/types/agent';
+import { ChatAttachment, ChatMessage, StreamEvent, ToolExecution } from '@/types/agent';
 import type { AuthUser } from '@/types/auth';
 import type { ActionSpaceState, ActiveThreadState, StreamSessionState, ThreadCollectionState } from '@/types/thread';
 import ReactMarkdown from 'react-markdown';
@@ -100,18 +100,60 @@ const MarkdownContent = ({ content }: { content: string }) => {
 };
 
 // --- Helper Functions ---
-const fileToBase64 = (file: File): Promise<string> => {
+const fileToDataUrl = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
     reader.onload = () => {
       if (typeof reader.result === 'string') {
-        // Remove data:image/...;base64, prefix
-        resolve(reader.result.split(',')[1]);
+        resolve(reader.result);
+      } else {
+        reject(new Error('Failed to read file.'));
       }
     };
     reader.onerror = error => reject(error);
   });
+};
+
+const UserAttachmentStrip = ({ attachments }: { attachments: ChatAttachment[] }) => {
+  const imageAttachments = attachments.filter((attachment) => attachment.kind === 'image');
+  if (imageAttachments.length === 0) {
+    return null;
+  }
+
+  const visibleAttachments = imageAttachments.slice(0, 4);
+  const hiddenCount = imageAttachments.length - visibleAttachments.length;
+  const isSingle = visibleAttachments.length === 1;
+
+  return (
+    <div className="mb-3 w-[188px] self-end">
+      <div className={cn('grid gap-2', isSingle ? 'grid-cols-1' : 'grid-cols-2')}>
+        {visibleAttachments.map((attachment, index) => (
+          <div
+            key={`${attachment.url}_${index}`}
+            className={cn(
+              'relative overflow-hidden rounded-[22px] border border-[rgba(255,255,255,0.1)] bg-[rgba(35,38,46,0.46)] shadow-[0px_18px_32px_-24px_rgba(0,0,0,0.9)]',
+              isSingle ? 'aspect-[4/3]' : 'aspect-square'
+            )}
+          >
+            <NextImage
+              src={attachment.url}
+              alt={attachment.alt}
+              fill
+              sizes={isSingle ? '188px' : '92px'}
+              className="object-cover"
+              unoptimized
+            />
+            {hiddenCount > 0 && index === visibleAttachments.length - 1 ? (
+              <div className="absolute inset-0 flex items-center justify-center bg-[rgba(7,9,13,0.64)] text-[18px] font-semibold text-white">
+                +{hiddenCount}
+              </div>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 };
 
 // --- Components ---
@@ -887,7 +929,6 @@ function WorkspaceApp({
     const submittedInput = input;
     const isNewThread = !activeThreadState.threadId;
     const thread_id = activeThreadState.threadId || `thread_${Date.now()}`;
-    const userMessage: ChatMessage = { role: 'user', content: submittedInput, id: Date.now().toString() };
     const nextThreadTurnCount =
       activeThreadState.messages.filter(
         (message) =>
@@ -895,8 +936,19 @@ function WorkspaceApp({
           !message.content.startsWith('[User Action]:')
       ).length + 1;
 
-    // Convert images to base64
-    const base64Images = await Promise.all(selectedImages.map(fileToBase64));
+    const dataUrls = await Promise.all(selectedImages.map(fileToDataUrl));
+    const base64Images = dataUrls.map((url) => url.split(',')[1] || '');
+    const userAttachments: ChatAttachment[] = dataUrls.map((url, index) => ({
+      kind: 'image',
+      url,
+      alt: `첨부 이미지 ${index + 1}`,
+    }));
+    const userMessage: ChatMessage = {
+      role: 'user',
+      content: submittedInput,
+      id: Date.now().toString(),
+      attachments: userAttachments,
+    };
     const existingThread = threadCollectionState.threads.find(
       (thread) => thread.thread_id === thread_id
     );
@@ -1327,8 +1379,13 @@ function WorkspaceApp({
                       )}
                     >
                       {isUser ? (
-                        <div className="max-w-[520px] rounded-bl-[14px] rounded-br-[14px] rounded-tl-[14px] border border-[rgba(143,245,255,0.14)] bg-[rgba(35,38,46,0.28)] px-4 py-3 text-[13px] leading-6 text-[#e7e7f0] backdrop-blur-[12px]">
-                          {message.content}
+                        <div className="flex w-full max-w-[520px] flex-col items-end">
+                          <UserAttachmentStrip attachments={message.attachments || []} />
+                          {message.content.trim() ? (
+                            <div className="rounded-bl-[14px] rounded-br-[14px] rounded-tl-[14px] border border-[rgba(143,245,255,0.14)] bg-[rgba(35,38,46,0.28)] px-4 py-3 text-[13px] leading-6 text-[#e7e7f0] backdrop-blur-[12px]">
+                              {message.content}
+                            </div>
+                          ) : null}
                         </div>
                       ) : (
                         <div className="flex w-full max-w-[680px] items-start gap-4">

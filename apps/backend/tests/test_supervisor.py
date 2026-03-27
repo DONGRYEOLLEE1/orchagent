@@ -108,6 +108,67 @@ async def test_supervisor_routes_to_vision_team():
 
 
 @pytest.mark.asyncio
+async def test_head_supervisor_forces_vision_team_before_direct_finish_for_image_turn():
+    fake_llm = FakeRouterLLM("FINISH")
+    supervisor_func = make_supervisor_node(
+        fake_llm,  # type: ignore
+        ["research_team", "writing_team", "vision_team"],
+        layer="head",
+        final_node_name="finalizer",
+    )
+
+    multimodal_content = [
+        {"type": "text", "text": "Describe this image."},
+        {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,..."}},
+    ]
+    state = cast(
+        BaseAgentState,
+        {
+            "messages": [HumanMessage(content=cast(list, multimodal_content))],
+            "shared_context": {"vision_routed_for_current_turn": False},
+            "next": "",
+        },
+    )
+
+    command = await supervisor_func(state)
+
+    assert command.goto == "vision_team"
+    assert command.update["active_team"] == "vision"
+    assert command.update["response_mode"] == "delegated"
+    assert command.update["shared_context"]["vision_routed_for_current_turn"] is True
+
+
+@pytest.mark.asyncio
+async def test_head_supervisor_does_not_loop_back_to_vision_after_vision_turn():
+    fake_llm = FakeRouterLLM("FINISH")
+    supervisor_func = make_supervisor_node(
+        fake_llm,  # type: ignore
+        ["research_team", "writing_team", "vision_team"],
+        layer="head",
+        final_node_name="finalizer",
+    )
+
+    multimodal_content = [
+        {"type": "text", "text": "Describe this image."},
+        {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,..."}},
+    ]
+    state = cast(
+        BaseAgentState,
+        {
+            "messages": [HumanMessage(content=cast(list, multimodal_content))],
+            "shared_context": {"vision_routed_for_current_turn": True},
+            "task_plan": "NO_PLAN",
+            "next": "",
+        },
+    )
+
+    command = await supervisor_func(state)
+
+    assert command.goto == "__end__"
+    assert command.update["response_mode"] == "direct"
+
+
+@pytest.mark.asyncio
 async def test_head_supervisor_routes_complex_finish_to_finalizer():
     fake_llm = FakeRouterLLM("FINISH")
     supervisor_func = make_supervisor_node(

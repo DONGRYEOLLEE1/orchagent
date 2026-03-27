@@ -70,6 +70,33 @@ def _latest_user_request_text(messages: list[Any]) -> str:
     return ""
 
 
+def _content_contains_image(content: Any) -> bool:
+    if isinstance(content, list):
+        for item in content:
+            if isinstance(item, dict) and item.get("type") == "image_url":
+                return True
+
+    return False
+
+
+def _latest_user_request_has_image(messages: list[Any]) -> bool:
+    for message in reversed(messages):
+        if getattr(message, "type", "") in {"human", "user"}:
+            return _content_contains_image(getattr(message, "content", ""))
+
+        if (
+            isinstance(message, tuple)
+            and len(message) == 2
+            and str(message[0]).lower() == "user"
+        ):
+            return _content_contains_image(message[1])
+
+        if isinstance(message, dict) and message.get("role") == "user":
+            return _content_contains_image(message.get("content", ""))
+
+    return False
+
+
 def _should_force_approval(messages: list[Any]) -> bool:
     latest_user_text = _latest_user_request_text(messages)
     if not latest_user_text:
@@ -348,6 +375,26 @@ def make_supervisor_node(
                 next_node = "FINISH"
                 content = ""  # Explicitly clear content when plan is complete to avoid mixing with finalizer
 
+        latest_user_has_image = _latest_user_request_has_image(state["messages"])
+        vision_already_routed = bool(
+            shared_context.get("vision_routed_for_current_turn", False)
+        )
+        if (
+            layer == "head"
+            and "vision_team" in members
+            and latest_user_has_image
+            and not vision_already_routed
+        ):
+            if next_node != "vision_team":
+                print(
+                    f"[Supervisor] Forcing head route {next_node} -> vision_team for image-bearing user turn.",
+                    flush=True,
+                )
+            if content:
+                discarded_content = content
+            next_node = "vision_team"
+            content = ""
+
         should_use_finalizer = (
             layer == "head"
             and next_node == "FINISH"
@@ -426,6 +473,12 @@ def make_supervisor_node(
                     ],
                 }
             )
+            if next_team == "vision" and latest_user_has_image:
+                existing_context = update_data.get("shared_context", {})
+                update_data["shared_context"] = {
+                    **existing_context,
+                    "vision_routed_for_current_turn": True,
+                }
         else:
             next_worker = None if next_node == "FINISH" else next_node
             update_data.update(

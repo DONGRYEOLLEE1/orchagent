@@ -25,3 +25,14 @@ class SchemaPatchService:
             await db.execute(text(statement))
 
         await db.commit()
+
+    @staticmethod
+    async def ensure_chat_message_attachment_columns(db: AsyncSession) -> None:
+        statements = [
+            "ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS attachments JSONB NOT NULL DEFAULT '[]'::jsonb",
+        ]
+
+        for statement in statements:
+            await db.execute(text(statement))
+
+        await db.commit()

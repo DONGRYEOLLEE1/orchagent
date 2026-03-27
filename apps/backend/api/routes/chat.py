@@ -667,11 +667,21 @@ def _checkpoint_requires_user_action(payload: dict[str, Any]) -> bool:
 
 
 async def _log_message_with_fresh_session(
-    thread_id: str, *, role: str, content: str, user_id: str
+    thread_id: str,
+    *,
+    role: str,
+    content: str,
+    user_id: str,
+    attachments: list[dict[str, str]] | None = None,
 ) -> Any:
     async with AsyncSessionLocal() as db:
         return await LoggingService.log_message(
-            db, thread_id, role=role, content=content, user_id=user_id
+            db,
+            thread_id,
+            role=role,
+            content=content,
+            user_id=user_id,
+            attachments=attachments,
         )
 
 
@@ -922,10 +932,19 @@ async def chat_stream(
     image_paths = []
     if request.images:
         image_paths = [StorageService.save_base64_image(img) for img in request.images]
+    request_attachments = [
+        {"kind": "image", "storage_path": path}
+        for path in image_paths
+        if path and path != "error_saving_image"
+    ]
 
     # 1. DB Logging
     request_message = await _log_message_with_fresh_session(
-        request.thread_id, role="user", content=request.message, user_id=user_id
+        request.thread_id,
+        role="user",
+        content=request.message,
+        user_id=user_id,
+        attachments=request_attachments,
     )
     turn_started_at = now_kst()
     started_turn = await _start_turn_with_fresh_session(
@@ -979,6 +998,7 @@ async def chat_stream(
                     "force_requires_approval": approval_requested,
                     "current_user_id": user_id,
                     "thread_id": request.thread_id,
+                    "vision_routed_for_current_turn": False,
                 },
             }
         else:
@@ -988,6 +1008,7 @@ async def chat_stream(
                     "force_requires_approval": approval_requested,
                     "current_user_id": user_id,
                     "thread_id": request.thread_id,
+                    "vision_routed_for_current_turn": False,
                 },
             }
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 from uuid import UUID
@@ -12,6 +12,13 @@ from models.logging import ChatMessageLog, ChatSession
 from models.trace import TraceEvent
 from models.thread_profile import ThreadProfile
 from services.thread_profile_service import ThreadProfileService
+
+
+@dataclass(slots=True)
+class ThreadAttachment:
+    kind: str
+    url: str
+    alt: str
 
 
 @dataclass(slots=True)
@@ -34,6 +41,7 @@ class ThreadMessage:
     role: str
     content: str
     created_at: datetime | None
+    attachments: list[ThreadAttachment] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -93,6 +101,40 @@ class ThreadService:
         latest_status: str | None, checkpoint_status: str | None
     ) -> str | None:
         return latest_status or checkpoint_status
+
+    @staticmethod
+    def _build_attachment_url(
+        *, thread_id: str, message_id: UUID, attachment_index: int
+    ) -> str:
+        return (
+            f"/api/threads/{thread_id}/messages/{message_id}/attachments/{attachment_index}"
+        )
+
+    @staticmethod
+    def _build_message_attachments(
+        *, thread_id: str, message_id: UUID, attachments_payload: Any
+    ) -> list[ThreadAttachment]:
+        attachments: list[ThreadAttachment] = []
+        for index, attachment in enumerate(attachments_payload or []):
+            if not isinstance(attachment, dict):
+                continue
+            if attachment.get("kind") != "image":
+                continue
+            storage_path = attachment.get("storage_path")
+            if not isinstance(storage_path, str) or not storage_path:
+                continue
+            attachments.append(
+                ThreadAttachment(
+                    kind="image",
+                    url=ThreadService._build_attachment_url(
+                        thread_id=thread_id,
+                        message_id=message_id,
+                        attachment_index=index,
+                    ),
+                    alt=f"첨부 이미지 {index + 1}",
+                )
+            )
+        return attachments
 
     @staticmethod
     def _build_summary(row: dict[str, Any]) -> ThreadSummary:
@@ -313,6 +355,7 @@ class ThreadService:
                 ChatMessageLog.role.label("role"),
                 ChatMessageLog.content.label("content"),
                 ChatMessageLog.created_at.label("created_at"),
+                ChatMessageLog.attachments_json.label("attachments"),
             )
             .where(ChatMessageLog.session_id == thread_id)
             .order_by(ChatMessageLog.created_at.asc(), ChatMessageLog.id.asc())
@@ -324,9 +367,54 @@ class ThreadService:
                 role=row["role"],
                 content=row["content"],
                 created_at=row["created_at"],
+                attachments=ThreadService._build_message_attachments(
+                    thread_id=thread_id,
+                    message_id=row["id"],
+                    attachments_payload=row.get("attachments"),
+                ),
             )
             for row in result.mappings().all()
         ]
+
+    @staticmethod
+    async def get_thread_message_attachment_path(
+        db: AsyncSession,
+        *,
+        thread_id: str,
+        message_id: UUID,
+        attachment_index: int,
+        user_id: str,
+    ) -> str | None:
+        session = await ThreadService.get_chat_session(db, thread_id, user_id=user_id)
+        if session is None:
+            return None
+
+        stmt = (
+            select(ChatMessageLog.attachments_json.label("attachments"))
+            .where(
+                ChatMessageLog.session_id == thread_id,
+                ChatMessageLog.id == message_id,
+            )
+            .limit(1)
+        )
+        result = await db.execute(stmt)
+        row = result.mappings().first()
+        if row is None:
+            return None
+
+        attachments = row.get("attachments") or []
+        if attachment_index < 0 or attachment_index >= len(attachments):
+            return None
+
+        attachment = attachments[attachment_index]
+        if not isinstance(attachment, dict) or attachment.get("kind") != "image":
+            return None
+
+        storage_path = attachment.get("storage_path")
+        if not isinstance(storage_path, str) or not storage_path:
+            return None
+
+        return storage_path
 
     @staticmethod
     async def get_latest_suggestion_context(
