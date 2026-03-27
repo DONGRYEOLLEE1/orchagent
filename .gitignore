@@ -48,3 +48,6 @@ Thumbs.db
 apps/backend/data/
 apps/backend/temp/
 AGENT_WORKSPACE/
+
+# tmp
+tmp/*
