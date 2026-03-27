@@ -125,6 +125,14 @@ def _messages_contain_chart_artifact_evidence(messages: list[Any]) -> bool:
     return False
 
 
+def _latest_message_signals_review_passed(messages: list[Any]) -> bool:
+    for message in reversed(messages):
+        content = _extract_message_text(getattr(message, "content", message)).strip()
+        if content:
+            return content.startswith("[Review Passed]")
+    return False
+
+
 def _latest_user_requested_visualization(messages: list[Any]) -> bool:
     latest_user_text = _latest_user_request_text(messages)
     if not latest_user_text:
@@ -465,6 +473,12 @@ def make_supervisor_node(
                 and next_node != "data_analyst"
             ):
                 next_node = "data_analyst"
+                content = ""
+            elif (
+                "data_analyst" in dispatched_workers
+                and _latest_message_signals_review_passed(state["messages"])
+            ):
+                next_node = "FINISH"
                 content = ""
             elif (
                 "data_analyst" in dispatched_workers

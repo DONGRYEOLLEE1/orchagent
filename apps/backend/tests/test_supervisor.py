@@ -418,6 +418,48 @@ async def test_data_science_team_supervisor_finishes_when_chart_artifact_evidenc
 
 
 @pytest.mark.asyncio
+async def test_data_science_team_supervisor_finishes_after_review_passed_without_chart():
+    fake_llm = FakeRouterLLM("data_analyst")
+    supervisor_func = make_supervisor_node(
+        fake_llm,  # type: ignore
+        ["data_engineer", "data_analyst"],
+        layer="team",
+        team_name="Data Science Team",
+    )
+
+    state = cast(
+        BaseAgentState,
+        {
+            "messages": [
+                HumanMessage(content="두 csv를 합쳐 월별 이익 표를 만들어줘"),
+                AIMessage(content="[Review Passed] Output materially satisfies the request.", name="data_science_team_reviewer"),
+            ],
+            "route_history": [
+                build_route_entry(
+                    layer="team",
+                    node="supervisor",
+                    next_node="data_engineer",
+                    team="data_science",
+                    worker="data_engineer",
+                ),
+                build_route_entry(
+                    layer="team",
+                    node="supervisor",
+                    next_node="data_analyst",
+                    team="data_science",
+                    worker="data_analyst",
+                ),
+            ],
+            "next": "",
+        },
+    )
+
+    command = await supervisor_func(state)
+
+    assert command.goto == "__end__"
+
+
+@pytest.mark.asyncio
 async def test_head_supervisor_routes_complex_finish_to_finalizer():
     fake_llm = FakeRouterLLM("FINISH")
     supervisor_func = make_supervisor_node(

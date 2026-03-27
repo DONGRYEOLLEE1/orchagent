@@ -74,7 +74,11 @@ def make_reviewer_node(
         )
 
         if result.is_valid:
-            return Command(goto="supervisor")
+            passed_message = AIMessage(
+                content="[Review Passed] Output materially satisfies the request.",
+                name=f"{team_name}_reviewer",
+            )
+            return Command(goto="supervisor", update={"messages": [passed_message]})
         else:
             # Add the critique and feedback to the state so the supervisor knows it failed
             feedback_message = AIMessage(

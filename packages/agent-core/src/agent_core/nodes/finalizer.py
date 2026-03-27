@@ -32,12 +32,61 @@ def _dedupe_consecutive_ai_messages(messages: list[object]) -> list[object]:
     return deduped
 
 
+def _extract_review_approved_worker_output(messages: list[object]) -> str:
+    for index in range(len(messages) - 1, -1, -1):
+        message = messages[index]
+        if not isinstance(message, AIMessage):
+            continue
+        content = str(message.content or "").strip()
+        if not content.startswith("[Review Passed]"):
+            continue
+
+        for previous in range(index - 1, -1, -1):
+            candidate = messages[previous]
+            if not isinstance(candidate, AIMessage):
+                continue
+            if candidate.name in {"supervisor", "planner", "reviewer"}:
+                continue
+            candidate_content = str(candidate.content or "").strip()
+            if candidate_content:
+                return candidate_content
+        break
+
+    return ""
+
+
 def make_finalizer_node(llm: BaseChatModel) -> Callable:
     system_prompt = FINALIZER_PROMPT.template
 
     async def finalizer_node(state: BaseAgentState) -> Command:
         print("[Finalizer] Synthesizing final answer...", flush=True)
         shared_context = state.get("shared_context", {}) or {}
+        review_approved_content = _extract_review_approved_worker_output(
+            state.get("messages", [])
+        )
+        if review_approved_content:
+            print(
+                "[Finalizer] Using review-approved worker output without additional synthesis.",
+                flush=True,
+            )
+            return Command(
+                update={
+                    "messages": [AIMessage(content=review_approved_content, name="assistant")],
+                    "active_team": None,
+                    "active_worker": None,
+                    "streaming_status": "completed",
+                    "route_history": [
+                        build_route_entry(
+                            layer="head",
+                            node="finalizer",
+                            next_node="FINISH",
+                            status="completed",
+                        )
+                    ],
+                },
+                goto=END,
+            )
+
         system_prompt_plus = f"{system_prompt}{build_personalization_prompt_block(shared_context)}"
         messages = [{"role": "system", "content": system_prompt_plus}] + _dedupe_consecutive_ai_messages(
             state.get("messages", [])
