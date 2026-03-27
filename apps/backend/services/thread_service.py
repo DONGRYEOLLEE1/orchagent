@@ -433,6 +433,32 @@ class ThreadService:
         return storage_path
 
     @staticmethod
+    async def get_latest_user_attachments(
+        db: AsyncSession, *, thread_id: str, user_id: str
+    ) -> list[dict[str, Any]]:
+        session = await ThreadService.get_chat_session(db, thread_id, user_id=user_id)
+        if session is None:
+            return []
+
+        stmt = (
+            select(ChatMessageLog.attachments_json.label("attachments"))
+            .where(
+                ChatMessageLog.session_id == thread_id,
+                ChatMessageLog.role == "user",
+                func.jsonb_array_length(ChatMessageLog.attachments_json) > 0,
+            )
+            .order_by(ChatMessageLog.created_at.desc(), ChatMessageLog.id.desc())
+            .limit(1)
+        )
+        result = await db.execute(stmt)
+        row = result.mappings().first()
+        if row is None:
+            return []
+
+        attachments = row.get("attachments") or []
+        return [attachment for attachment in attachments if isinstance(attachment, dict)]
+
+    @staticmethod
     async def get_latest_suggestion_context(
         db: AsyncSession, thread_id: str
     ) -> ThreadSuggestionContext | None:

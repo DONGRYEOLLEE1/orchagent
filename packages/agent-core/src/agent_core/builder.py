@@ -46,13 +46,17 @@ class TeamBuilder(ABC):
         self.builder.add_node(node_name, worker_graph)
 
     def build(
-        self, with_validator: bool = False, max_team_dispatches: int | None = None
+        self,
+        with_validator: bool = False,
+        max_team_dispatches: int | None = None,
+        system_prompt_template: str | None = None,
     ):
         """Compiles the subgraph with a supervisor."""
         # 1. Register Supervisor
         supervisor_node = make_supervisor_node(
             self.llm,
             self.members,
+            system_prompt_template=system_prompt_template,
             layer="team",
             team_name=self.team_name,
             max_team_dispatches=max_team_dispatches,

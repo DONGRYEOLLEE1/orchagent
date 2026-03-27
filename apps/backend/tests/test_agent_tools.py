@@ -9,6 +9,7 @@ from agent_tools.data import (
     preview_tabular_file,
     profile_dataframe,
     python_repl_data_tool,
+    register_analysis_artifact,
 )
 from agent_tools.file_io import write_document, read_document
 from agent_tools.runtime import (
@@ -140,6 +141,130 @@ def test_extract_document_text_reads_docx(tmp_path):
         reset_tool_runtime_context(token)
 
 
+def test_preview_tabular_file_reads_xlsx_and_json(tmp_path):
+    xlsx_path = tmp_path / "sales.xlsx"
+    json_path = tmp_path / "sales.json"
+    pd.DataFrame({"month": ["2026-01", "2026-02"], "revenue": [120, 160]}).to_excel(
+        xlsx_path, index=False
+    )
+    pd.DataFrame({"month": ["2026-01", "2026-02"], "revenue": [120, 160]}).to_json(
+        json_path, orient="records"
+    )
+
+    token = set_tool_runtime_context(
+        ToolRuntimeContext(
+            thread_id="thread-tabular",
+            user_id="user-1",
+            attachments={
+                "xlsx-1": ToolAttachment(
+                    id="xlsx-1",
+                    kind="spreadsheet",
+                    file_name="sales.xlsx",
+                    mime_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    size_bytes=xlsx_path.stat().st_size,
+                    storage_path=str(xlsx_path),
+                ),
+                "json-1": ToolAttachment(
+                    id="json-1",
+                    kind="json",
+                    file_name="sales.json",
+                    mime_type="application/json",
+                    size_bytes=json_path.stat().st_size,
+                    storage_path=str(json_path),
+                ),
+            },
+            workspace_dir=tmp_path / "workspace",
+            artifact_dir=tmp_path / "artifacts",
+        )
+    )
+    try:
+        xlsx_preview = json.loads(
+            preview_tabular_file.invoke({"attachment_id": "xlsx-1"})
+        )
+        assert xlsx_preview["file_name"] == "sales.xlsx"
+        assert xlsx_preview["preview_rows"][0]["month"] == "2026-01"
+
+        json_preview = json.loads(
+            preview_tabular_file.invoke({"attachment_id": "json-1"})
+        )
+        assert json_preview["file_name"] == "sales.json"
+        assert json_preview["preview_rows"][1]["revenue"] == 160
+    finally:
+        reset_tool_runtime_context(token)
+
+
+def test_extract_document_text_reads_pdf(tmp_path):
+    from matplotlib import pyplot as plt
+
+    pdf_path = tmp_path / "notes.pdf"
+    fig, ax = plt.subplots(figsize=(6, 3))
+    ax.axis("off")
+    ax.text(0.02, 0.7, "Q1 Revenue Notes", fontsize=16)
+    ax.text(0.02, 0.45, "Revenue increased every month from January to March.", fontsize=11)
+    fig.tight_layout()
+    fig.savefig(pdf_path)
+    plt.close(fig)
+
+    token = set_tool_runtime_context(
+        ToolRuntimeContext(
+            thread_id="thread-pdf",
+            user_id="user-1",
+            attachments={
+                "pdf-1": ToolAttachment(
+                    id="pdf-1",
+                    kind="pdf",
+                    file_name="notes.pdf",
+                    mime_type="application/pdf",
+                    size_bytes=pdf_path.stat().st_size,
+                    storage_path=str(pdf_path),
+                )
+            },
+            workspace_dir=tmp_path / "workspace",
+            artifact_dir=tmp_path / "artifacts",
+        )
+    )
+    try:
+        extracted = json.loads(extract_document_text.invoke({"attachment_id": "pdf-1"}))
+        assert "Q1 Revenue Notes" in extracted["text_excerpt"]
+        assert "Revenue increased every month" in extracted["text_excerpt"]
+    finally:
+        reset_tool_runtime_context(token)
+
+
+def test_extract_document_text_warns_for_image_based_pdf(tmp_path):
+    from PIL import Image, ImageDraw
+
+    pdf_path = tmp_path / "scanned-like.pdf"
+    image = Image.new("RGB", (400, 180), color="white")
+    draw = ImageDraw.Draw(image)
+    draw.text((20, 70), "Revenue Notes", fill="black")
+    image.save(pdf_path, "PDF")
+
+    token = set_tool_runtime_context(
+        ToolRuntimeContext(
+            thread_id="thread-scanned-pdf",
+            user_id="user-1",
+            attachments={
+                "pdf-2": ToolAttachment(
+                    id="pdf-2",
+                    kind="pdf",
+                    file_name="scanned-like.pdf",
+                    mime_type="application/pdf",
+                    size_bytes=pdf_path.stat().st_size,
+                    storage_path=str(pdf_path),
+                )
+            },
+            workspace_dir=tmp_path / "workspace",
+            artifact_dir=tmp_path / "artifacts",
+        )
+    )
+    try:
+        extracted = json.loads(extract_document_text.invoke({"attachment_id": "pdf-2"}))
+        assert extracted["warning"] is not None
+    finally:
+        reset_tool_runtime_context(token)
+
+
 def test_python_repl_data_tool_registers_generated_artifacts(tmp_path):
     csv_path = tmp_path / "trend.csv"
     pd.DataFrame({"x": [1, 2, 3], "y": [3, 5, 8]}).to_csv(csv_path, index=False)
@@ -180,5 +305,48 @@ def test_python_repl_data_tool_registers_generated_artifacts(tmp_path):
         assert "trend.png" in result["generated_files"]
         artifacts = collect_runtime_artifacts()
         assert any(artifact.file_name == "trend.png" for artifact in artifacts)
+    finally:
+        reset_tool_runtime_context(token)
+
+
+def test_register_analysis_artifact_reuses_latest_registered_artifact(tmp_path):
+    artifact_dir = tmp_path / "artifacts"
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+
+    token = set_tool_runtime_context(
+        ToolRuntimeContext(
+            thread_id="thread-chart",
+            user_id="user-1",
+            attachments={},
+            workspace_dir=tmp_path / "workspace",
+            artifact_dir=artifact_dir,
+        )
+    )
+    try:
+        result = json.loads(
+            python_repl_data_tool.invoke(
+                {
+                    "code": "\n".join(
+                        [
+                            "from pathlib import Path",
+                            "target = Path(artifact_path('sales_trend_chart.png'))",
+                            "target.write_bytes(b'png')",
+                        ]
+                    )
+                }
+            )
+        )
+        assert "sales_trend_chart.png" in result["registered_artifacts"]
+
+        reused = json.loads(
+            register_analysis_artifact.invoke(
+                {
+                    "file_name": "apps/backend/data/uploads/analysis/thread-x/artifacts/sales_trend_chart.png",
+                    "title": "sales trend chart",
+                }
+            )
+        )
+        assert reused["status"] in {"registered", "registered_existing"}
+        assert reused["file_name"] == "sales_trend_chart.png"
     finally:
         reset_tool_runtime_context(token)

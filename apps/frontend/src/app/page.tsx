@@ -179,9 +179,21 @@ const buildOptimisticAttachments = (files: File[]): ChatAttachment[] =>
     };
   });
 
-const UserAttachmentStrip = ({ attachments }: { attachments: ChatAttachment[] }) => {
-  const imageAttachments = attachments.filter((attachment) => attachment.kind === 'image');
-  const fileAttachments = attachments.filter((attachment) => attachment.kind !== 'image');
+const MessageAttachmentStrip = ({
+  attachments,
+  align = 'end',
+}: {
+  attachments: ChatAttachment[];
+  align?: 'start' | 'end';
+}) => {
+  const imageAttachments = attachments.filter(
+    (attachment) =>
+      attachment.kind === 'image' || Boolean(attachment.mime_type?.startsWith('image/'))
+  );
+  const fileAttachments = attachments.filter(
+    (attachment) =>
+      attachment.kind !== 'image' && !attachment.mime_type?.startsWith('image/')
+  );
   if (imageAttachments.length === 0 && fileAttachments.length === 0) {
     return null;
   }
@@ -191,7 +203,7 @@ const UserAttachmentStrip = ({ attachments }: { attachments: ChatAttachment[] })
   const isSingle = visibleAttachments.length === 1;
 
   return (
-    <div className="mb-3 w-[244px] self-end space-y-2">
+    <div className={cn('mb-3 w-[244px] space-y-2', align === 'end' ? 'self-end' : 'self-start')}>
       {visibleAttachments.length > 0 ? (
         <div className={cn('grid gap-2', isSingle ? 'grid-cols-1' : 'grid-cols-2')}>
           {visibleAttachments.map((attachment, index) => (
@@ -1032,6 +1044,27 @@ function WorkspaceApp({
       return;
     }
 
+    if (payload.event_type === 'attachments') {
+      setActiveThreadState(prev => {
+        const nextMessages = [...prev.messages];
+        for (let i = nextMessages.length - 1; i >= 0; i -= 1) {
+          if (nextMessages[i].role === payload.role) {
+            nextMessages[i] = {
+              ...nextMessages[i],
+              attachments: payload.attachments,
+            };
+            break;
+          }
+        }
+
+        return {
+          ...prev,
+          messages: nextMessages,
+        };
+      });
+      return;
+    }
+
     if (payload.event_type === 'checkpoint') {
       setThreadCollectionState(prev => ({
         ...prev,
@@ -1582,7 +1615,7 @@ function WorkspaceApp({
                     >
                       {isUser ? (
                         <div className="flex w-full max-w-[520px] flex-col items-end">
-                          <UserAttachmentStrip attachments={message.attachments || []} />
+                          <MessageAttachmentStrip attachments={message.attachments || []} align="end" />
                           {message.content.trim() ? (
                             <div className="rounded-bl-[14px] rounded-br-[14px] rounded-tl-[14px] border border-[rgba(143,245,255,0.14)] bg-[rgba(35,38,46,0.28)] px-4 py-3 text-[13px] leading-6 text-[#e7e7f0] backdrop-blur-[12px]">
                               {message.content}
@@ -1602,6 +1635,7 @@ function WorkspaceApp({
                                 loading={streamSessionState.loading}
                               />
                             ) : null}
+                            <MessageAttachmentStrip attachments={message.attachments || []} align="start" />
                             <div className="px-1 py-1 text-[14px] leading-7 text-[#e7e7f0]">
                               <MarkdownContent content={message.content} />
                             </div>

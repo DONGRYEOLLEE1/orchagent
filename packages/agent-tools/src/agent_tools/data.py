@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -72,6 +73,11 @@ def _extract_document_text_internal(attachment_id: str, max_chars: int = 6000) -
             "page_count": len(reader.pages),
             "text_excerpt": text,
             "truncated": len(text) >= max_chars,
+            "warning": (
+                "No extractable text was found. This PDF may be scanned or image-based and may require OCR."
+                if not text.strip()
+                else None
+            ),
         }
 
     if attachment.kind == "docx":
@@ -232,25 +238,64 @@ def _build_repl() -> PythonREPL:
     return PythonREPL(_globals=globals_dict, _locals={})
 
 
+def _stage_attachments_for_repl() -> None:
+    context = get_tool_runtime_context()
+
+    def _materialize(source: Path, destination: Path) -> None:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if destination.exists():
+            return
+        try:
+            destination.symlink_to(source)
+        except OSError:
+            shutil.copy2(source, destination)
+
+    for attachment in attachment_manifest():
+        source = Path(str(attachment["storage_path"]))
+        if not source.exists() or not source.is_file():
+            continue
+        aliases = {source.name}
+        file_name = attachment.get("file_name")
+        if isinstance(file_name, str) and file_name:
+            aliases.add(Path(file_name).name)
+
+        for alias in aliases:
+            _materialize(source, context.artifact_dir / alias)
+
+        storage_path_value = str(attachment.get("storage_path") or "")
+        if storage_path_value and not Path(storage_path_value).is_absolute():
+            _materialize(source, context.artifact_dir / storage_path_value)
+
+
 @tool
 def python_repl_data_tool(
     code: Annotated[str, "Python code for data processing or visualization."],
 ) -> str:
     """Execute Python for dataframe analysis and chart generation in a restricted analysis workspace."""
     context = get_tool_runtime_context()
+    _stage_attachments_for_repl()
     before_files = {path.name for path in context.artifact_dir.glob("*")}
     repl = _build_repl()
     prelude = f"""
 import os
 import socket
+import urllib.request
+import requests
 os.chdir(r"{context.artifact_dir}")
 
-def _disabled_socket(*args, **kwargs):
+def _disabled_network(*args, **kwargs):
     raise RuntimeError("Network access is disabled inside python_repl_data_tool.")
 
-socket.socket = _disabled_socket
+urllib.request.urlopen = _disabled_network
+requests.get = _disabled_network
+requests.post = _disabled_network
+requests.put = _disabled_network
+requests.delete = _disabled_network
+requests.sessions.Session.request = _disabled_network
+socket.create_connection = _disabled_network
 """
-    result = repl.run(f"{prelude}\n{code}")
+    normalized_code = code.replace("/mnt/data", str(context.artifact_dir))
+    result = repl.run(f"{prelude}\n{normalized_code}")
     after_files = {path.name for path in context.artifact_dir.glob("*")}
     new_files = sorted(after_files - before_files)
     auto_registered: list[str] = []
@@ -277,10 +322,18 @@ def register_analysis_artifact(
     title: Annotated[str | None, "Optional title for the artifact."] = None,
 ) -> str:
     """Register an analysis output file so it can be attached to the assistant response."""
-    artifact = register_runtime_artifact(file_path=file_name, title=title)
+    try:
+        artifact = register_runtime_artifact(file_path=file_name, title=title)
+        status = "registered"
+    except ValueError:
+        existing_artifacts = collect_runtime_artifacts()
+        if not existing_artifacts:
+            raise
+        artifact = existing_artifacts[-1]
+        status = "registered_existing"
     return json.dumps(
         {
-            "status": "registered",
+            "status": status,
             "file_name": artifact.file_name,
             "mime_type": artifact.mime_type,
             "storage_path": artifact.storage_path,

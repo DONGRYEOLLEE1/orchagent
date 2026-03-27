@@ -60,3 +60,12 @@ class StorageService:
     @staticmethod
     def get_storage_path() -> Path:
         return ATTACHMENT_STORAGE_DIR
+
+    @staticmethod
+    def create_analysis_workspace(*, thread_id: str, turn_id: str) -> tuple[Path, Path]:
+        root = ATTACHMENT_STORAGE_DIR / "analysis" / thread_id / turn_id
+        workspace_dir = root / "workspace"
+        artifact_dir = root / "artifacts"
+        workspace_dir.mkdir(parents=True, exist_ok=True)
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        return workspace_dir, artifact_dir

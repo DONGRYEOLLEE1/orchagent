@@ -402,6 +402,39 @@ async def test_get_thread_messages_maps_rows_in_created_order():
 
 
 @pytest.mark.asyncio
+async def test_get_latest_user_attachments_returns_latest_non_empty_payload():
+    result = SimpleNamespace(
+        mappings=lambda: SimpleNamespace(
+            first=lambda: {
+                "attachments": [
+                    {
+                        "kind": "csv",
+                        "storage_path": "apps/backend/data/uploads/csv/sales.csv",
+                        "file_name": "sales.csv",
+                    }
+                ]
+            }
+        )
+    )
+    db = AsyncMock()
+    db.execute = AsyncMock(side_effect=[SimpleNamespace(scalar_one_or_none=lambda: SimpleNamespace(id="thread-a")), result])
+
+    attachments = await ThreadService.get_latest_user_attachments(
+        db,
+        thread_id="thread-a",
+        user_id="user-1",
+    )
+
+    assert attachments == [
+        {
+            "kind": "csv",
+            "storage_path": "apps/backend/data/uploads/csv/sales.csv",
+            "file_name": "sales.csv",
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_get_thread_detail_returns_none_when_summary_is_missing():
     db = AsyncMock()
 

@@ -31,6 +31,17 @@ _APPROVAL_PATTERNS = [
     ),
 ]
 
+_DATA_ANALYSIS_PATTERNS = [
+    re.compile(
+        r"\b(analy[sz]e|analysis|trend|chart|plot|graph|visuali[sz]e|table|statistics?|aggregate|group by|pivot|forecast|outlier|dataset|csv|xlsx|json|pdf|docx)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"(분석|통계|시각화|차트|그래프|추세|집계|피벗|이상치|데이터셋|스프레드시트|엑셀|표)",
+        re.IGNORECASE,
+    ),
+]
+
 
 def requires_human_approval_for_text(text: str) -> bool:
     return any(pattern.search(text) for pattern in _APPROVAL_PATTERNS)
@@ -103,6 +114,41 @@ def _should_force_approval(messages: list[Any]) -> bool:
         return False
 
     return requires_human_approval_for_text(latest_user_text)
+
+
+def _shared_context_has_data_attachments(shared_context: dict[str, Any]) -> bool:
+    attachments = shared_context.get("attachments") or []
+    return any(
+        isinstance(attachment, dict)
+        and str(attachment.get("kind") or "") in {"pdf", "spreadsheet", "csv", "json", "docx"}
+        for attachment in attachments
+    )
+
+
+def _should_force_data_science_team(
+    messages: list[Any], shared_context: dict[str, Any]
+) -> bool:
+    if not _shared_context_has_data_attachments(shared_context):
+        return False
+
+    latest_user_text = _latest_user_request_text(messages)
+    if not latest_user_text:
+        return True
+
+    return any(pattern.search(latest_user_text) for pattern in _DATA_ANALYSIS_PATTERNS)
+
+
+def _dispatched_team_workers(route_history: list[Any], team_name: str) -> list[str]:
+    workers: list[str] = []
+    for entry in route_history:
+        if entry.get("layer") != "team":
+            continue
+        if entry.get("team") != team_name:
+            continue
+        worker = entry.get("worker")
+        if worker:
+            workers.append(worker)
+    return workers
 
 
 def _extract_team_stage_sequence(task_plan: str | None) -> list[str]:
@@ -375,7 +421,48 @@ def make_supervisor_node(
                 next_node = "FINISH"
                 content = ""  # Explicitly clear content when plan is complete to avoid mixing with finalizer
 
+        if layer == "team" and normalized_team == "data_science":
+            dispatched_workers = _dispatched_team_workers(route_history, normalized_team)
+            if "data_engineer" not in dispatched_workers and next_node != "data_engineer":
+                next_node = "data_engineer"
+                content = ""
+            elif (
+                "data_engineer" in dispatched_workers
+                and "data_analyst" not in dispatched_workers
+                and next_node != "data_analyst"
+            ):
+                next_node = "data_analyst"
+                content = ""
+
         latest_user_has_image = _latest_user_request_has_image(state["messages"])
+        data_science_already_routed = bool(
+            shared_context.get("data_science_routed_for_current_turn", False)
+        )
+        if (
+            layer == "head"
+            and "data_science_team" in members
+            and not data_science_already_routed
+            and _should_force_data_science_team(state["messages"], shared_context)
+        ):
+            if next_node != "data_science_team":
+                print(
+                    f"[Supervisor] Forcing head route {next_node} -> data_science_team for file analysis turn.",
+                    flush=True,
+                )
+            if content:
+                discarded_content = content
+            next_node = "data_science_team"
+            content = ""
+
+        if (
+            layer == "head"
+            and next_node == "research_team"
+            and data_science_already_routed
+            and _shared_context_has_data_attachments(shared_context)
+        ):
+            next_node = "FINISH"
+            content = ""
+
         vision_already_routed = bool(
             shared_context.get("vision_routed_for_current_turn", False)
         )
@@ -478,6 +565,12 @@ def make_supervisor_node(
                 update_data["shared_context"] = {
                     **existing_context,
                     "vision_routed_for_current_turn": True,
+                }
+            if next_team == "data_science":
+                existing_context = update_data.get("shared_context", {})
+                update_data["shared_context"] = {
+                    **existing_context,
+                    "data_science_routed_for_current_turn": True,
                 }
         else:
             next_worker = None if next_node == "FINISH" else next_node

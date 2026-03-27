@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sse_starlette.sse import EventSourceResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
@@ -43,10 +43,19 @@ from services.memory_service import MemoryService
 from services.file_logger import JsonLogger
 from services.storage_service import StorageService
 from services.upload_service import UploadService
+from agent_tools.runtime import (
+    ToolAttachment,
+    ToolRuntimeContext,
+    collect_runtime_artifacts,
+    reset_tool_runtime_context,
+    set_tool_runtime_context,
+)
 
 router = APIRouter()
 FINAL_TEXT_STREAM_NODES = {"head_supervisor", "finalizer"}
 INTERNAL_MESSAGE_NAMES = {"planner", "supervisor", "reviewer", "validator"}
+_BACKEND_APP_ROOT = Path(__file__).resolve().parents[2]
+_REPO_ROOT = Path(__file__).resolve().parents[4]
 
 
 def _utc_timestamp() -> str:
@@ -943,9 +952,81 @@ def _load_uploaded_image_base64(storage_path: str) -> str:
     return base64.b64encode(data).decode("utf-8")
 
 
+def _resolve_storage_path(storage_path: str) -> str:
+    candidate = Path(storage_path)
+    if candidate.is_absolute():
+        return str(candidate)
+
+    for root in (_REPO_ROOT, _BACKEND_APP_ROOT):
+        resolved = (root / candidate).resolve()
+        if resolved.exists():
+            return str(resolved)
+
+    return str((_BACKEND_APP_ROOT / candidate).resolve())
+
+
+def _build_tool_runtime_attachments(
+    attachments: list[dict[str, Any]],
+) -> dict[str, ToolAttachment]:
+    runtime_attachments: dict[str, ToolAttachment] = {}
+    for index, attachment in enumerate(attachments):
+        if not isinstance(attachment, dict):
+            continue
+        storage_path = attachment.get("storage_path")
+        if not isinstance(storage_path, str) or not storage_path:
+            continue
+        resolved_storage_path = _resolve_storage_path(storage_path)
+        attachment_id = str(attachment.get("id") or f"legacy-attachment-{index + 1}")
+        runtime_attachments[attachment_id] = ToolAttachment(
+            id=attachment_id,
+            kind=str(attachment.get("kind") or "artifact"),
+            file_name=str(attachment.get("file_name") or Path(storage_path).name),
+            mime_type=str(attachment.get("mime_type") or "application/octet-stream"),
+            size_bytes=(
+                int(attachment.get("size_bytes"))
+                if isinstance(attachment.get("size_bytes"), int)
+                else None
+            ),
+            storage_path=resolved_storage_path,
+        )
+    return runtime_attachments
+
+
+def _build_public_attachment_payloads(
+    *,
+    base_url: str,
+    thread_id: str,
+    message_id: UUID,
+    attachments: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    payloads: list[dict[str, Any]] = []
+    for index, attachment in enumerate(attachments):
+        if not isinstance(attachment, dict):
+            continue
+        payloads.append(
+            {
+                "kind": attachment.get("kind"),
+                "url": f"{base_url}{ThreadService._build_attachment_url(thread_id=thread_id, message_id=message_id, attachment_index=index)}",
+                "alt": attachment.get("file_name")
+                or attachment.get("title")
+                or (
+                    f"첨부 이미지 {index + 1}"
+                    if attachment.get("kind") == "image"
+                    else f"첨부 파일 {index + 1}"
+                ),
+                "file_name": attachment.get("file_name"),
+                "mime_type": attachment.get("mime_type"),
+                "size_bytes": attachment.get("size_bytes"),
+            }
+        )
+    return payloads
+
+
 @router.post("/chat")
 async def chat_stream(
+    http_request: Request,
     request: ChatRequest,
+    db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
     _: None = Depends(require_csrf),
 ):
@@ -977,13 +1058,24 @@ async def chat_stream(
     request_attachments = [
         UploadService.build_attachment_snapshot(upload) for upload in uploaded_files
     ] + [
-        {"kind": "image", "storage_path": path, "file_name": f"image_{index + 1}.jpg", "mime_type": "image/jpeg"}
+        {
+            "id": f"legacy-image-{index + 1}",
+            "kind": "image",
+            "storage_path": path,
+            "file_name": f"image_{index + 1}.jpg",
+            "mime_type": "image/jpeg",
+        }
         for index, path in enumerate(image_paths)
         if path and path != "error_saving_image"
     ]
+    analysis_attachments = request_attachments or await ThreadService.get_latest_user_attachments(
+        db,
+        thread_id=request.thread_id,
+        user_id=user_id,
+    )
     graph_user_message = _augment_user_message_with_attachment_context(
         request.message,
-        request_attachments,
+        analysis_attachments,
     )
     uploaded_image_payloads = [
         _load_uploaded_image_base64(upload.storage_path)
@@ -1053,7 +1145,7 @@ async def chat_stream(
                     "current_user_id": user_id,
                     "thread_id": request.thread_id,
                     "vision_routed_for_current_turn": False,
-                    "attachments": request_attachments,
+                    "attachments": analysis_attachments,
                 },
             }
         else:
@@ -1064,7 +1156,7 @@ async def chat_stream(
                     "current_user_id": user_id,
                     "thread_id": request.thread_id,
                     "vision_routed_for_current_turn": False,
-                    "attachments": request_attachments,
+                    "attachments": analysis_attachments,
                 },
             }
 
@@ -1076,6 +1168,8 @@ async def chat_stream(
         reasoning_chunks: list[str] = []
         trace_events = []
         graph = None
+        runtime_token = None
+        collected_artifacts: list[Any] = []
         completed_payload_emitted = False
         final_checkpoint_payload: dict[str, Any] | None = None
         first_token_recorded = False
@@ -1136,6 +1230,20 @@ async def chat_stream(
             async with AsyncPostgresSaver.from_conn_string(
                 settings.sync_database_uri
             ) as checkpointer:
+                if trace_context.turn_id is not None:
+                    workspace_dir, artifact_dir = StorageService.create_analysis_workspace(
+                        thread_id=request.thread_id,
+                        turn_id=str(trace_context.turn_id),
+                    )
+                    runtime_token = set_tool_runtime_context(
+                        ToolRuntimeContext(
+                            thread_id=request.thread_id,
+                            user_id=user_id,
+                            attachments=_build_tool_runtime_attachments(analysis_attachments),
+                            workspace_dir=workspace_dir,
+                            artifact_dir=artifact_dir,
+                        )
+                    )
                 builder = get_orchagent_graph()
                 graph = builder.compile(checkpointer=checkpointer)
 
@@ -1359,14 +1467,44 @@ async def chat_stream(
                     )
 
                 final_answer = collector.final_answer()
+                if runtime_token is not None:
+                    collected_artifacts = collect_runtime_artifacts()
                 if final_answer:
+                    assistant_attachments = [
+                        {
+                            "kind": artifact.kind,
+                            "storage_path": artifact.storage_path,
+                            "file_name": artifact.file_name,
+                            "mime_type": artifact.mime_type,
+                            "size_bytes": artifact.size_bytes,
+                            "title": artifact.title,
+                        }
+                        for artifact in collected_artifacts
+                    ]
                     assistant_message = await _log_message_with_fresh_session(
                         request.thread_id,
                         role="assistant",
                         content=final_answer,
                         user_id=user_id,
+                        attachments=assistant_attachments,
                     )
                     assistant_response_message_id = getattr(assistant_message, "id", None)
+                    if assistant_response_message_id and assistant_attachments:
+                        yield await emit(
+                            {
+                                "event_type": "attachments",
+                                "role": "assistant",
+                                "message_id": str(assistant_response_message_id),
+                                "attachments": _build_public_attachment_payloads(
+                                    base_url=str(http_request.base_url).rstrip("/"),
+                                    thread_id=request.thread_id,
+                                    message_id=assistant_response_message_id,
+                                    attachments=assistant_attachments,
+                                ),
+                                "timestamp": _utc_timestamp(),
+                            },
+                            persist=False,
+                        )
 
                     JsonLogger.log_session(
                         session_id=request.thread_id,
@@ -1419,6 +1557,8 @@ async def chat_stream(
                 }
             )
         finally:
+            if runtime_token is not None:
+                reset_tool_runtime_context(runtime_token)
             _append_summary_trace_events(
                 trace_context,
                 trace_events,

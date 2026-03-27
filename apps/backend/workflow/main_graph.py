@@ -8,6 +8,7 @@ from agent_core.nodes.planner import make_planner_node
 from workflow.teams.research import get_research_graph
 from workflow.teams.writing import get_writing_graph
 from workflow.teams.vision import get_vision_graph
+from workflow.teams.data_science import get_data_science_graph
 from workflow.load_memories import make_load_memories_node
 from core.config import settings
 
@@ -26,6 +27,7 @@ def get_orchagent_graph(llm_model: str = DEFAULT_LLM_MODEL):
     research_graph = get_research_graph(llm)
     writing_graph = get_writing_graph(llm)
     vision_graph = get_vision_graph(llm)
+    data_science_graph = get_data_science_graph(llm)
 
     # 2. Nodes
     planner_node = make_planner_node(llm)
@@ -33,12 +35,13 @@ def get_orchagent_graph(llm_model: str = DEFAULT_LLM_MODEL):
     finalizer_node = make_finalizer_node(llm)
     head_supervisor_node = make_supervisor_node(
         llm,
-        ["research_team", "writing_team", "vision_team"],
+        ["research_team", "writing_team", "vision_team", "data_science_team"],
         layer="head",
         final_node_name="finalizer",
         max_team_dispatches=max(
             settings.RESEARCH_TEAM_MAX_DISPATCHES,
             settings.WRITING_TEAM_MAX_DISPATCHES,
+            settings.DATA_SCIENCE_TEAM_MAX_DISPATCHES,
         ),
     )
 
@@ -53,6 +56,7 @@ def get_orchagent_graph(llm_model: str = DEFAULT_LLM_MODEL):
     builder.add_node("research_team", research_graph)
     builder.add_node("writing_team", writing_graph)
     builder.add_node("vision_team", vision_graph)
+    builder.add_node("data_science_team", data_science_graph)
 
     # 4. Set Edges
     builder.add_edge(START, "load_memories")
@@ -63,5 +67,6 @@ def get_orchagent_graph(llm_model: str = DEFAULT_LLM_MODEL):
     builder.add_edge("research_team", "head_supervisor")
     builder.add_edge("writing_team", "head_supervisor")
     builder.add_edge("vision_team", "head_supervisor")
+    builder.add_edge("data_science_team", "head_supervisor")
 
     return builder

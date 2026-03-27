@@ -2,7 +2,7 @@
 작업명: Data Science & Analytics Team Plan
 간단요약: 데이터 분석 전용 팀, 일반화된 파일 첨부, Python REPL 기반 시각화 아티팩트 반환을 단계적으로 도입한다.
 작성일시: 2026-03-27 11:27 KST
-최종 수정일시: 2026-03-27 12:12 KST
+최종 수정일시: 2026-03-27 13:49 KST
 ---
 
 # Data Science & Analytics Team 기능 추가 및 첨부 리팩토링 계획
@@ -155,60 +155,60 @@ V1에서 처음 노출할 툴은 작게 유지한다.
 
 ## Phase 4. Prompt Kit 확장
 
-- [ ] `prompt-kit`에 `DATA_ENGINEER_PROMPT` 추가
-- [ ] `prompt-kit`에 `DATA_ANALYST_PROMPT` 추가
-- [ ] reviewer가 데이터 분석 산출물을 검토할 때의 평가 기준 문구 보강
-- [ ] tool descriptions에 `when / when not` 규칙 추가
-- [ ] prompt에 `inspect -> profile -> analyze -> validate -> answer` 흐름 반영
-- [ ] prompt에 `Python REPL must be used for material calculations or charts` 규칙 반영
-- [ ] prompt에 `observations / interpretation / caveats` 출력 구조 반영
-- [ ] prompt 관련 테스트 또는 회귀 검증 추가
+- [x] `prompt-kit`에 `DATA_ENGINEER_PROMPT` 추가
+- [x] `prompt-kit`에 `DATA_ANALYST_PROMPT` 추가
+- [x] reviewer가 데이터 분석 산출물을 검토할 때의 평가 기준 문구 보강
+- [x] tool descriptions에 `when / when not` 규칙 추가
+- [x] prompt에 `inspect -> profile -> analyze -> validate -> answer` 흐름 반영
+- [x] prompt에 `Python REPL must be used for material calculations or charts` 규칙 반영
+- [x] prompt에 `observations / interpretation / caveats` 출력 구조 반영
+- [x] prompt 관련 테스트 또는 회귀 검증 추가
 
 ## Phase 5. Data Science Team 런타임 도입
 
-- [ ] `apps/backend/workflow/teams/data_science.py` 추가
-- [ ] `TeamBuilder` 기반으로 `data_engineer`, `data_analyst` worker 구성
-- [ ] `main_graph.py`에 `data_science_team` 등록
-- [ ] head supervisor team 목록에 `data_science_team` 추가
-- [ ] 첨부 종류와 질의 의도를 기준으로 한 data-science 라우팅 규칙 추가
-- [ ] 기존 `vision_team` 강제 라우팅과 충돌하지 않도록 우선순위 규칙 설계
-- [ ] reviewer loop가 데이터 분석 팀에도 정상 적용되는지 검증
-- [ ] 관련 pytest 추가 및 통과 확인
+- [x] `apps/backend/workflow/teams/data_science.py` 추가
+- [x] `TeamBuilder` 기반으로 `data_engineer`, `data_analyst` worker 구성
+- [x] `main_graph.py`에 `data_science_team` 등록
+- [x] head supervisor team 목록에 `data_science_team` 추가
+- [x] 첨부 종류와 질의 의도를 기준으로 한 data-science 라우팅 규칙 추가
+- [x] 기존 `vision_team` 강제 라우팅과 충돌하지 않도록 우선순위 규칙 설계
+- [x] reviewer loop가 데이터 분석 팀에도 정상 적용되는지 검증
+- [x] 관련 pytest 추가 및 통과 확인
 
 ## Phase 6. 아티팩트 반환 및 응답 통합
 
-- [ ] Python REPL 산출물 png/csv/html 메타데이터를 assistant attachment/artifact로 저장
-- [ ] finalizer가 artifacts 정보를 읽어 최종 응답에 자연스럽게 통합하도록 조정
-- [ ] assistant bubble 하단 artifact renderer 추가
-- [ ] 차트 이미지와 다운로드 링크 노출 방식 결정 및 구현
-- [ ] 실패한 artifact 생성 시 fallback 메시지 규칙 추가
-- [ ] 관련 프런트/백엔드 테스트 추가 및 통과 확인
+- [x] Python REPL 산출물 png/csv/html 메타데이터를 assistant attachment/artifact로 저장
+- [x] finalizer가 artifacts 정보를 읽어 최종 응답에 자연스럽게 통합하도록 조정
+- [x] assistant bubble 하단 artifact renderer 추가
+- [x] 차트 이미지와 다운로드 링크 노출 방식 결정 및 구현
+- [x] 실패한 artifact 생성 시 fallback 메시지 규칙 추가
+- [x] 관련 프런트/백엔드 테스트 추가 및 통과 확인
 
 ## Phase 7. 데이터 분석 품질 및 안전성 검증
 
-- [ ] csv 매출 추세 분석 시나리오 수동/자동 검증
-- [ ] xlsx 다중 시트 선택/집계 시나리오 검증
-- [ ] json 구조 분석 및 chart 생성 시나리오 검증
-- [ ] text PDF 요약/표현 가능 범위 검증
-- [ ] scanned PDF 입력 시 partial/unsupported 응답 검증
-- [ ] docx 텍스트 추출 및 요약 시나리오 검증
+- [x] csv 매출 추세 분석 시나리오 수동/자동 검증
+- [x] xlsx 다중 시트 선택/집계 시나리오 검증
+- [x] json 구조 분석 및 chart 생성 시나리오 검증
+- [x] text PDF 요약/표현 가능 범위 검증
+- [x] scanned PDF 입력 시 partial/unsupported 응답 검증
+- [x] docx 텍스트 추출 및 요약 시나리오 검증
 - [ ] 다중 파일 비교 분석 시나리오 검증
-- [ ] 잘못된 aggregation을 reviewer가 되돌리는 회귀 테스트 검증
+- [x] 잘못된 aggregation을 reviewer가 되돌리는 회귀 테스트 검증
 - [ ] unsupported mime / oversized file / corrupt file 처리 검증
-- [ ] 성능 관점에서 large spreadsheet preview/analysis p95 측정
+- [x] 성능 관점에서 large spreadsheet preview/analysis p95 측정
 
 ## Phase 8. 출시 전 마감 조건
 
-- [ ] backend 관련 pytest 통과
-- [ ] frontend 관련 테스트 통과
-- [ ] `npm run lint` 통과
-- [ ] `npm run build` 통과
-- [ ] 브라우저 수동 E2E:
-  - [ ] csv 업로드 후 추세 차트 확인
-  - [ ] xlsx 업로드 후 sheet 기반 분석 확인
-  - [ ] pdf/docx 업로드 후 텍스트 기반 분석 확인
-  - [ ] assistant artifact 재조회 확인
-- [ ] docs와 plan 체크리스트 최신화
+- [x] backend 관련 pytest 통과
+- [x] frontend 관련 테스트 통과
+- [x] `npm run lint` 통과
+- [x] `npm run build` 통과
+- [x] 브라우저 수동 E2E:
+  - [x] csv 업로드 후 추세 차트 확인
+  - [x] xlsx 업로드 후 sheet 기반 분석 확인
+  - [x] pdf/docx 업로드 후 텍스트 기반 분석 확인
+  - [x] assistant artifact 재조회 확인
+- [x] docs와 plan 체크리스트 최신화
 
 ## 구현 순서 메모
 

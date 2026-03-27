@@ -87,8 +87,34 @@ def register_runtime_artifact(
     context = get_tool_runtime_context()
     candidate = Path(file_path)
     if not candidate.is_absolute():
-        candidate = context.artifact_dir / candidate
-    candidate = candidate.resolve()
+        candidate_name = candidate.name
+        search_matches = [
+            *context.artifact_dir.rglob(candidate_name),
+            *context.workspace_dir.rglob(candidate_name),
+        ]
+        existing_search_match = next(
+            (match.resolve() for match in search_matches if match.exists()),
+            None,
+        )
+        cwd_candidate = (Path.cwd() / candidate).resolve()
+        artifact_candidate = (context.artifact_dir / candidate).resolve()
+        workspace_candidate = (context.workspace_dir / candidate).resolve()
+        existing_candidate = next(
+            (
+                option
+                for option in (
+                    existing_search_match,
+                    cwd_candidate,
+                    artifact_candidate,
+                    workspace_candidate,
+                )
+                if option is not None and option.exists()
+            ),
+            artifact_candidate,
+        )
+        candidate = existing_candidate
+    else:
+        candidate = candidate.resolve()
 
     allowed_roots = [context.workspace_dir.resolve(), context.artifact_dir.resolve()]
     if not any(str(candidate).startswith(str(root)) for root in allowed_roots):

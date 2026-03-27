@@ -108,10 +108,19 @@ export interface StreamErrorEvent {
     timestamp: string;
 }
 
+export interface StreamAttachmentEvent {
+    event_type: 'attachments';
+    role: 'assistant' | 'user';
+    message_id: string;
+    attachments: ChatAttachment[];
+    timestamp: string;
+}
+
 export type StreamEvent =
     | StreamStatusEvent
     | StreamRouteEvent
     | StreamTextEvent
     | StreamToolEvent
     | StreamCheckpointEvent
-    | StreamErrorEvent;
+    | StreamErrorEvent
+    | StreamAttachmentEvent;

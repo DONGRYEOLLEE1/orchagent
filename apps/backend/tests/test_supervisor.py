@@ -169,6 +169,175 @@ async def test_head_supervisor_does_not_loop_back_to_vision_after_vision_turn():
 
 
 @pytest.mark.asyncio
+async def test_head_supervisor_forces_data_science_team_for_file_analysis_turn():
+    fake_llm = FakeRouterLLM("writing_team")
+    supervisor_func = make_supervisor_node(
+        fake_llm,  # type: ignore
+        ["research_team", "writing_team", "vision_team", "data_science_team"],
+        layer="head",
+        final_node_name="finalizer",
+    )
+
+    state = cast(
+        BaseAgentState,
+        {
+            "messages": [HumanMessage(content="첨부한 csv 파일 매출 추세를 분석하고 차트로 그려줘")],
+            "shared_context": {
+                "attachments": [
+                    {
+                        "id": "upload-1",
+                        "kind": "csv",
+                        "file_name": "sales.csv",
+                        "mime_type": "text/csv",
+                        "storage_path": "/tmp/sales.csv",
+                    }
+                ],
+                "data_science_routed_for_current_turn": False,
+            },
+            "next": "",
+        },
+    )
+
+    command = await supervisor_func(state)
+
+    assert command.goto == "data_science_team"
+    assert command.update["active_team"] == "data_science"
+    assert command.update["shared_context"]["data_science_routed_for_current_turn"] is True
+
+
+@pytest.mark.asyncio
+async def test_head_supervisor_does_not_loop_back_to_data_science_team():
+    fake_llm = FakeRouterLLM("FINISH")
+    supervisor_func = make_supervisor_node(
+        fake_llm,  # type: ignore
+        ["research_team", "writing_team", "vision_team", "data_science_team"],
+        layer="head",
+        final_node_name="finalizer",
+    )
+
+    state = cast(
+        BaseAgentState,
+        {
+            "messages": [HumanMessage(content="첨부한 csv 파일 분석해줘")],
+            "shared_context": {
+                "attachments": [
+                    {
+                        "id": "upload-1",
+                        "kind": "csv",
+                        "file_name": "sales.csv",
+                        "mime_type": "text/csv",
+                        "storage_path": "/tmp/sales.csv",
+                    }
+                ],
+                "data_science_routed_for_current_turn": True,
+            },
+            "task_plan": "NO_PLAN",
+            "next": "",
+        },
+    )
+
+    command = await supervisor_func(state)
+
+    assert command.goto == "__end__"
+    assert command.update["response_mode"] == "direct"
+
+
+@pytest.mark.asyncio
+async def test_head_supervisor_does_not_route_attachment_turn_to_research_after_data_science():
+    fake_llm = FakeRouterLLM("research_team")
+    supervisor_func = make_supervisor_node(
+        fake_llm,  # type: ignore
+        ["research_team", "writing_team", "vision_team", "data_science_team"],
+        layer="head",
+        final_node_name="finalizer",
+    )
+
+    state = cast(
+        BaseAgentState,
+        {
+            "messages": [HumanMessage(content="이 docx 파일 핵심 내용을 요약해줘")],
+            "shared_context": {
+                "attachments": [
+                    {
+                        "id": "upload-1",
+                        "kind": "docx",
+                        "file_name": "notes.docx",
+                        "mime_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        "storage_path": "/tmp/notes.docx",
+                    }
+                ],
+                "data_science_routed_for_current_turn": True,
+            },
+            "next": "",
+        },
+    )
+
+    command = await supervisor_func(state)
+
+    assert command.goto == "__end__"
+    assert command.update["response_mode"] == "direct"
+
+
+@pytest.mark.asyncio
+async def test_data_science_team_supervisor_starts_with_data_engineer():
+    fake_llm = FakeRouterLLM("FINISH")
+    supervisor_func = make_supervisor_node(
+        fake_llm,  # type: ignore
+        ["data_engineer", "data_analyst"],
+        layer="team",
+        team_name="Data Science Team",
+    )
+
+    state = cast(
+        BaseAgentState,
+        {
+            "messages": [HumanMessage(content="첨부 csv 파일을 분석해줘")],
+            "route_history": [],
+            "next": "",
+        },
+    )
+
+    command = await supervisor_func(state)
+
+    assert command.goto == "data_engineer"
+    assert command.update["active_team"] == "data_science"
+    assert command.update["active_worker"] == "data_engineer"
+
+
+@pytest.mark.asyncio
+async def test_data_science_team_supervisor_forces_data_analyst_after_engineer():
+    fake_llm = FakeRouterLLM("FINISH")
+    supervisor_func = make_supervisor_node(
+        fake_llm,  # type: ignore
+        ["data_engineer", "data_analyst"],
+        layer="team",
+        team_name="Data Science Team",
+    )
+
+    state = cast(
+        BaseAgentState,
+        {
+            "messages": [HumanMessage(content="첨부 csv 파일을 분석하고 차트로 보여줘")],
+            "route_history": [
+                build_route_entry(
+                    layer="team",
+                    node="supervisor",
+                    next_node="data_engineer",
+                    team="data_science",
+                    worker="data_engineer",
+                )
+            ],
+            "next": "",
+        },
+    )
+
+    command = await supervisor_func(state)
+
+    assert command.goto == "data_analyst"
+    assert command.update["active_worker"] == "data_analyst"
+
+
+@pytest.mark.asyncio
 async def test_head_supervisor_routes_complex_finish_to_finalizer():
     fake_llm = FakeRouterLLM("FINISH")
     supervisor_func = make_supervisor_node(

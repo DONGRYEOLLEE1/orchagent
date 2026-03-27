@@ -523,6 +523,22 @@ test('uploads supported files before sending chat and forwards attachment ids', 
       timestamp: '2026-03-22T10:20:01Z',
     },
     {
+      event_type: 'attachments',
+      role: 'assistant',
+      message_id: 'assistant-db-id',
+      attachments: [
+        {
+          kind: 'artifact',
+          url: 'http://localhost:8002/api/threads/thread-uploaded/messages/assistant-db-id/attachments/0',
+          alt: 'trend.png',
+          file_name: 'trend.png',
+          mime_type: 'image/png',
+          size_bytes: 1200,
+        },
+      ],
+      timestamp: '2026-03-22T10:20:01Z',
+    },
+    {
       event_type: 'checkpoint',
       thread_id: 'thread-uploaded',
       checkpoint_id: 'cp-upload',
@@ -541,6 +557,7 @@ test('uploads supported files before sending chat and forwards attachment ids', 
   await waitFor(() => {
     expect(screen.getByText('CSV 분석 시작')).toBeInTheDocument();
   });
+  expect(screen.getByAltText('trend.png')).toBeInTheDocument();
 
   expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/api/uploads'))).toBe(true);
   expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/api/chat'))).toBe(true);

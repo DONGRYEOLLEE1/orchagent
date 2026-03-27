@@ -406,6 +406,42 @@ def test_upload_files_returns_metadata(monkeypatch):
     }
 
 
+def test_upload_files_rejects_unsupported_type():
+    app.dependency_overrides[get_db] = _override_get_db
+    try:
+        response = client.post(
+            "/api/uploads",
+            files=[("files", ("malware.exe", b"noop", "application/octet-stream"))],
+            data={"thread_id": "thread-upload"},
+            headers={"X-CSRF-Token": "csrf-token"},
+        )
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Unsupported file type"
+
+
+def test_upload_files_rejects_too_many_files():
+    app.dependency_overrides[get_db] = _override_get_db
+    many_files = [
+        ("files", (f"sample-{index}.csv", b"a,b\n1,2\n", "text/csv"))
+        for index in range(11)
+    ]
+    try:
+        response = client.post(
+            "/api/uploads",
+            files=many_files,
+            data={"thread_id": "thread-upload"},
+            headers={"X-CSRF-Token": "csrf-token"},
+        )
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Too many files in a single request"
+
+
 def test_get_thread_returns_resume_messages_in_existing_order(monkeypatch):
     created_at = datetime(2026, 3, 22, 12, 0, 0, tzinfo=timezone.utc)
     detail = ThreadDetail(
