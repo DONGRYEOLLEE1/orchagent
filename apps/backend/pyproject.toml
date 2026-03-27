@@ -40,6 +40,7 @@ dev = [
 
 [tool.pytest.ini_options]
 markers = [
+    "integration: marks tests that require live external integrations",
     "no_auth_override: disable the default authenticated dependency overrides for tests",
     "real_thread_ownership: disable the default thread ownership guard stub for tests",
 ]

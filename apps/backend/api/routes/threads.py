@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 from uuid import UUID
 
@@ -25,6 +26,7 @@ from services.thread_title_service import ThreadTitleService
 from services.trace_service import TraceService
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _absolutize_attachment_urls(
@@ -47,6 +49,14 @@ def _absolutize_attachment_urls(
         ]
         normalized.append(message.model_copy(update={"attachments": attachments}))
     return normalized
+
+
+async def _safe_create_trace_event(**kwargs) -> None:
+    db = kwargs.pop("db")
+    try:
+        await TraceService.create_event(db, **kwargs)
+    except Exception as exc:
+        logger.warning("Trace event persistence skipped: %s", exc)
 
 
 @router.get("/threads", response_model=ThreadListResponse)
@@ -158,8 +168,8 @@ async def patch_thread(
         raise HTTPException(status_code=404, detail="Thread not found")
 
     if payload.title is not None:
-        await TraceService.create_event(
-            db,
+        await _safe_create_trace_event(
+            db=db,
             thread_id=thread_id,
             event_type="thread_title_manual",
             node_name="thread_profile",
@@ -245,8 +255,8 @@ async def generate_ai_thread_title(
         user_id=user_id,
         title=title,
     )
-    await TraceService.create_event(
-        db,
+    await _safe_create_trace_event(
+        db=db,
         thread_id=thread_id,
         event_type="thread_title_ai_generated",
         node_name="thread_profile",
@@ -287,8 +297,8 @@ async def generate_suggested_queries(
             assistant_message=context.assistant_content,
         )
         if suggestions:
-            await TraceService.create_event(
-                db,
+            await _safe_create_trace_event(
+                db=db,
                 thread_id=thread_id,
                 event_type="suggested_queries_summary",
                 node_name="assistant",
