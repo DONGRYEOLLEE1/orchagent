@@ -97,5 +97,5 @@ def test_memory_agent_uses_low_reasoning_effort(monkeypatch):
 
     MemoryAgentService._get_agent()
 
-    assert captured["model"] == "gpt-5.4-nano"
+    assert captured["model"] == "gpt-5.4-mini"
     assert captured["reasoning"] == {"effort": "low"}

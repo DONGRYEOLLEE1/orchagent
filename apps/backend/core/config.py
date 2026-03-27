@@ -13,10 +13,10 @@ class Settings(BaseSettings):
     RESEARCH_TEAM_MAX_DISPATCHES: int = 5
     WRITING_TEAM_MAX_DISPATCHES: int = 5
     DATA_SCIENCE_TEAM_MAX_DISPATCHES: int = 5
-    MAIN_AGENT_MODEL: str = "gpt-5.4-mini"
-    THREAD_TITLE_MODEL: str = "gpt-5-nano"
-    THREAD_SUGGESTIONS_MODEL: str = "gpt-5-nano"
-    MEMORY_AGENT_MODEL: str = "gpt-5.4-nano"
+    MAIN_AGENT_MODEL: str = "gpt-5.4-nano"
+    THREAD_TITLE_MODEL: str = "gpt-5.4-mini"
+    THREAD_SUGGESTIONS_MODEL: str = "gpt-5.4-mini"
+    MEMORY_AGENT_MODEL: str = "gpt-5.4-mini"
     ATTACHMENT_STORAGE_DIR: str = "apps/backend/data/uploads"
     ATTACHMENT_MAX_BYTES: int = 20 * 1024 * 1024
     ATTACHMENT_MAX_FILES_PER_REQUEST: int = 10
