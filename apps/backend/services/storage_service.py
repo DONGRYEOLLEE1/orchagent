@@ -4,15 +4,21 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
-# Base directory for storing images
-IMAGE_STORAGE_DIR = Path(
-    os.environ.get("IMAGE_STORAGE_DIR", "apps/backend/data/images")
-)
-IMAGE_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
-ATTACHMENT_STORAGE_DIR = Path(
-    os.environ.get("ATTACHMENT_STORAGE_DIR", "apps/backend/data/uploads")
-)
-ATTACHMENT_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+BACKEND_APP_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _resolve_storage_root(env_name: str, default_relative_path: str) -> Path:
+    configured = Path(os.environ.get(env_name, default_relative_path))
+    if configured.is_absolute():
+        resolved = configured
+    else:
+        resolved = (BACKEND_APP_ROOT / configured).resolve()
+    resolved.mkdir(parents=True, exist_ok=True)
+    return resolved
+
+
+IMAGE_STORAGE_DIR = _resolve_storage_root("IMAGE_STORAGE_DIR", "data/images")
+ATTACHMENT_STORAGE_DIR = _resolve_storage_root("ATTACHMENT_STORAGE_DIR", "data/uploads")
 
 
 class StorageService:

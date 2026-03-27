@@ -29,6 +29,21 @@ from agent_tools.runtime import (
 plt.switch_backend("Agg")
 
 
+def _snapshot_workspace_files(context) -> set[str]:
+    roots = [context.artifact_dir, context.workspace_dir]
+    snapshot: set[str] = set()
+    for root in roots:
+        if not root.exists():
+            continue
+        for path in root.rglob("*"):
+            if path.is_file():
+                try:
+                    snapshot.add(str(path.relative_to(root)))
+                except ValueError:
+                    snapshot.add(path.name)
+    return snapshot
+
+
 def _load_dataframe(
     attachment_id: str,
     *,
@@ -274,13 +289,16 @@ def python_repl_data_tool(
     """Execute Python for dataframe analysis and chart generation in a restricted analysis workspace."""
     context = get_tool_runtime_context()
     _stage_attachments_for_repl()
-    before_files = {path.name for path in context.artifact_dir.glob("*")}
+    before_files = _snapshot_workspace_files(context)
     repl = _build_repl()
     prelude = f"""
 import os
 import socket
 import urllib.request
 import requests
+from pathlib import Path as _Path
+import matplotlib.pyplot as _plt
+from matplotlib.figure import Figure as _Figure
 os.chdir(r"{context.artifact_dir}")
 
 def _disabled_network(*args, **kwargs):
@@ -293,10 +311,32 @@ requests.put = _disabled_network
 requests.delete = _disabled_network
 requests.sessions.Session.request = _disabled_network
 socket.create_connection = _disabled_network
+
+_artifact_dir = r"{context.artifact_dir}"
+_original_pyplot_savefig = _plt.savefig
+_original_figure_savefig = _Figure.savefig
+
+def _safe_pyplot_savefig(fname=None, *args, _original=_original_pyplot_savefig, _artifact_dir_value=_artifact_dir, **kwargs):
+    rewritten = None if fname is None else os.path.join(_artifact_dir_value, os.path.basename(str(fname)))
+    return _original(rewritten, *args, **kwargs)
+
+def _safe_figure_savefig(self, fname=None, *args, _original=_original_figure_savefig, _artifact_dir_value=_artifact_dir, **kwargs):
+    rewritten = None if fname is None else os.path.join(_artifact_dir_value, os.path.basename(str(fname)))
+    return _original(self, rewritten, *args, **kwargs)
+
+_plt.savefig = _safe_pyplot_savefig
+_Figure.savefig = _safe_figure_savefig
 """
-    normalized_code = code.replace("/mnt/data", str(context.artifact_dir))
+    normalized_code = code
+    for legacy_prefix in (
+        "/mnt/data/artifact_workspace",
+        "/mnt/data",
+        "/app/apps/backend/artifacts",
+        "/app/artifacts",
+    ):
+        normalized_code = normalized_code.replace(legacy_prefix, str(context.artifact_dir))
     result = repl.run(f"{prelude}\n{normalized_code}")
-    after_files = {path.name for path in context.artifact_dir.glob("*")}
+    after_files = _snapshot_workspace_files(context)
     new_files = sorted(after_files - before_files)
     auto_registered: list[str] = []
     for file_name in new_files:

@@ -87,7 +87,7 @@ class ThreadTitleService:
         return init_chat_model(
             model=settings.THREAD_TITLE_MODEL,
             model_provider="openai",
-            reasoning={"effort": "minimal"},
+            reasoning={"effort": "low"},
         )
 
     @staticmethod

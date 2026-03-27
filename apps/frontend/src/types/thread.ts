@@ -69,9 +69,19 @@ export interface StreamSessionState {
   isInterrupted: boolean;
 }
 
+export interface ReasoningEntry {
+  id: string;
+  node?: string | null;
+  displayName?: string | null;
+  content: string;
+  timestamp?: string;
+  runId?: string;
+}
+
 export interface ActionSpaceState {
   toolExecutions: ToolExecution[];
   reasoning: string;
+  reasoningEntries: ReasoningEntry[];
   suggestedQueries: string[];
   suggestedQueriesState: 'idle' | 'loading' | 'success' | 'error';
   suggestedQueriesError: string;

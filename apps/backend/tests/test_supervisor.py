@@ -2,7 +2,7 @@ import pytest
 from typing import cast
 from agent_core.supervisor import make_supervisor_node, requires_human_approval_for_text
 from agent_core.state import BaseAgentState, build_route_entry
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
 
 class FakeRouterLLM:
@@ -281,6 +281,42 @@ async def test_head_supervisor_does_not_route_attachment_turn_to_research_after_
 
 
 @pytest.mark.asyncio
+async def test_head_supervisor_does_not_route_attachment_turn_to_writing_after_data_science():
+    fake_llm = FakeRouterLLM("writing_team")
+    supervisor_func = make_supervisor_node(
+        fake_llm,  # type: ignore
+        ["research_team", "writing_team", "vision_team", "data_science_team"],
+        layer="head",
+        final_node_name="finalizer",
+    )
+
+    state = cast(
+        BaseAgentState,
+        {
+            "messages": [HumanMessage(content="이 docx 파일을 요약해줘")],
+            "shared_context": {
+                "attachments": [
+                    {
+                        "id": "upload-1",
+                        "kind": "docx",
+                        "file_name": "notes.docx",
+                        "mime_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        "storage_path": "/tmp/notes.docx",
+                    }
+                ],
+                "data_science_routed_for_current_turn": True,
+            },
+            "next": "",
+        },
+    )
+
+    command = await supervisor_func(state)
+
+    assert command.goto == "__end__"
+    assert command.update["response_mode"] == "direct"
+
+
+@pytest.mark.asyncio
 async def test_data_science_team_supervisor_starts_with_data_engineer():
     fake_llm = FakeRouterLLM("FINISH")
     supervisor_func = make_supervisor_node(
@@ -337,6 +373,48 @@ async def test_data_science_team_supervisor_forces_data_analyst_after_engineer()
 
     assert command.goto == "data_analyst"
     assert command.update["active_worker"] == "data_analyst"
+
+
+@pytest.mark.asyncio
+async def test_data_science_team_supervisor_finishes_when_chart_artifact_evidence_exists():
+    fake_llm = FakeRouterLLM("data_analyst")
+    supervisor_func = make_supervisor_node(
+        fake_llm,  # type: ignore
+        ["data_engineer", "data_analyst"],
+        layer="team",
+        team_name="Data Science Team",
+    )
+
+    state = cast(
+        BaseAgentState,
+        {
+            "messages": [
+                HumanMessage(content="이 csv 파일을 차트로 시각화해줘"),
+                AIMessage(content='{"generated_files":["sales_trend_chart.png"],"artifact_count":1}', name="data_analyst"),
+            ],
+            "route_history": [
+                build_route_entry(
+                    layer="team",
+                    node="supervisor",
+                    next_node="data_engineer",
+                    team="data_science",
+                    worker="data_engineer",
+                ),
+                build_route_entry(
+                    layer="team",
+                    node="supervisor",
+                    next_node="data_analyst",
+                    team="data_science",
+                    worker="data_analyst",
+                ),
+            ],
+            "next": "",
+        },
+    )
+
+    command = await supervisor_func(state)
+
+    assert command.goto == "__end__"
 
 
 @pytest.mark.asyncio

@@ -64,6 +64,40 @@ import { SuggestedQueriesPanel } from '@/components/workspace/SuggestedQueriesPa
 import { AccountDrawer } from '@/components/workspace/AccountDrawer';
 import { WorkspaceTopNav } from '@/components/workspace/WorkspaceTopNav';
 
+function appendReasoningEntry(
+  entries: ActionSpaceState['reasoningEntries'],
+  payload: {
+    node?: string | null;
+    display_name?: string | null;
+    content: string;
+    timestamp: string;
+    run_id?: string;
+  }
+): ActionSpaceState['reasoningEntries'] {
+  const nextEntries = [...entries];
+  const mergeTargetId = payload.run_id || `${payload.node || 'reasoning'}:${payload.timestamp}`;
+  const lastEntry = nextEntries[nextEntries.length - 1];
+
+  if (lastEntry && payload.run_id && lastEntry.runId === payload.run_id) {
+    nextEntries[nextEntries.length - 1] = {
+      ...lastEntry,
+      content: lastEntry.content + payload.content,
+      timestamp: payload.timestamp || lastEntry.timestamp,
+    };
+    return nextEntries;
+  }
+
+  nextEntries.push({
+    id: mergeTargetId,
+    node: payload.node,
+    displayName: payload.display_name,
+    content: payload.content,
+    timestamp: payload.timestamp,
+    runId: payload.run_id,
+  });
+  return nextEntries;
+}
+
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
@@ -661,6 +695,15 @@ function WorkspaceApp({
       return {
         ...prev,
         reasoning: telemetry.reasoning_summary || prev.reasoning,
+        reasoningEntries: telemetry.reasoning_summary
+          ? [
+              {
+                id: `historical:${threadId}`,
+                displayName: 'Saved Summary',
+                content: telemetry.reasoning_summary,
+              },
+            ]
+          : prev.reasoningEntries,
         suggestedQueries: telemetry.suggested_queries,
         suggestedQueriesState: telemetry.suggested_queries.length > 0 ? 'success' : 'idle',
         suggestedQueriesError: '',
@@ -1024,6 +1067,7 @@ function WorkspaceApp({
       setActionSpaceState(prev => ({
         ...prev,
         reasoning: prev.reasoning + payload.content,
+        reasoningEntries: appendReasoningEntry(prev.reasoningEntries, payload),
       }));
       return;
     }
@@ -1758,6 +1802,7 @@ function WorkspaceApp({
 
           <ReasoningSummaryPanel
             content={actionSpaceState.reasoning}
+            entries={actionSpaceState.reasoningEntries}
             isThinking={streamSessionState.loading}
             historicalView={isHistoricalView}
             fallbackSummary={liveReasoningFallback}

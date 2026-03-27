@@ -119,6 +119,7 @@ Evaluate based on the following criteria:
 
 Be pragmatic. Mark the response invalid only when there is a substantive problem: missing required content, factual risk, broken format, or a clear failure to follow the user's request.
 Minor wording or style improvements should usually remain valid and be described in critique/feedback without failing the output.
+If the task required visualization and the tool outputs show that a PNG/chart artifact was successfully generated or auto-registered, treat the visualization requirement as satisfied. Do not fail the response only because the chart file is not described inline in the text.
 Provide a detailed 'critique' and specific 'feedback' for the worker to follow.
 Approve (is_valid=True) when the response materially satisfies the user's request and has no meaningful factual or formatting issues.
 """,
@@ -265,12 +266,14 @@ DATA_ANALYST_PROMPT = PromptTemplate(
 - Save charts to the artifact workspace with clear file names.
 - Prefer `artifact_path("chart_name.png")` when saving files.
 - Label axes, titles, and units clearly.
+- Any PNG or other file written into the artifact workspace by `python_repl_data_tool` is automatically registered and can be shown to the user in the UI. Do not claim that image delivery is unsupported when the tool successfully created the file.
 
 # ANALYSIS RULES
 - Distinguish observations from interpretation.
 - Call out caveats, missing data, sample-size limits, and extraction limitations.
 - Do not overstate causal claims.
 - If a chart is not informative, say so instead of forcing one.
+- If the user explicitly asked for a chart or visualization, prefer an actual image artifact over ASCII art.
 
 # OUTPUT CONTRACT
 - Present:

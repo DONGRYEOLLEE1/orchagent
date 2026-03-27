@@ -57,7 +57,7 @@ class ThreadSuggestedQueryService:
         return init_chat_model(
             model=settings.THREAD_SUGGESTIONS_MODEL,
             model_provider="openai",
-            reasoning={"effort": "minimal"},
+            reasoning={"effort": "low"},
         )
 
     @staticmethod

@@ -108,6 +108,36 @@ def _latest_user_request_has_image(messages: list[Any]) -> bool:
     return False
 
 
+def _messages_contain_chart_artifact_evidence(messages: list[Any]) -> bool:
+    patterns = (
+        ".png",
+        "registered_artifacts",
+        "generated_files",
+        "CHART_PATH=",
+        "artifact_count",
+    )
+    for message in messages:
+        text = _extract_message_text(getattr(message, "content", message))
+        if not text:
+            continue
+        if any(pattern in text for pattern in patterns):
+            return True
+    return False
+
+
+def _latest_user_requested_visualization(messages: list[Any]) -> bool:
+    latest_user_text = _latest_user_request_text(messages)
+    if not latest_user_text:
+        return False
+    return any(
+        pattern.search(latest_user_text)
+        for pattern in (
+            re.compile(r"\b(chart|plot|graph|visuali[sz]e|bar chart|line chart)\b", re.IGNORECASE),
+            re.compile(r"(차트|그래프|시각화)", re.IGNORECASE),
+        )
+    )
+
+
 def _should_force_approval(messages: list[Any]) -> bool:
     latest_user_text = _latest_user_request_text(messages)
     if not latest_user_text:
@@ -436,6 +466,13 @@ def make_supervisor_node(
             ):
                 next_node = "data_analyst"
                 content = ""
+            elif (
+                "data_analyst" in dispatched_workers
+                and _latest_user_requested_visualization(state["messages"])
+                and _messages_contain_chart_artifact_evidence(state["messages"])
+            ):
+                next_node = "FINISH"
+                content = ""
 
         latest_user_has_image = _latest_user_request_has_image(state["messages"])
         data_science_already_routed = bool(
@@ -461,7 +498,7 @@ def make_supervisor_node(
 
         if (
             layer == "head"
-            and next_node == "research_team"
+            and next_node in {"research_team", "writing_team"}
             and data_science_already_routed
             and _shared_context_has_data_attachments(shared_context)
         ):

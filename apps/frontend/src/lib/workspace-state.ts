@@ -44,6 +44,7 @@ export function createInitialActionSpaceState(): ActionSpaceState {
   return {
     toolExecutions: [],
     reasoning: '',
+    reasoningEntries: [],
     suggestedQueries: [],
     suggestedQueriesState: 'idle',
     suggestedQueriesError: '',
