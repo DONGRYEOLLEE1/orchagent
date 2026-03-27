@@ -562,6 +562,10 @@ test('uploads supported files before sending chat and forwards attachment ids', 
             created_at: '2026-03-22T10:00:00Z',
           },
         ],
+        errors: [],
+        accepted_count: 1,
+        failed_count: 0,
+        total_size_bytes: 12,
       });
     }
 
@@ -662,6 +666,186 @@ test('uploads supported files before sending chat and forwards attachment ids', 
 
   expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/api/uploads'))).toBe(true);
   expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/api/chat'))).toBe(true);
+});
+
+test('blocks selecting more than five files immediately', async () => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    const telemetryResponse = maybeHandleTelemetryRequest(url);
+    if (telemetryResponse) {
+      return telemetryResponse;
+    }
+
+    if (url.includes('/api/auth/me')) {
+      return jsonResponse({
+        id: 'user-1',
+        login_id: 'tester',
+        role: 'user',
+        status: 'active',
+        display_name: null,
+        email: null,
+        must_change_password: false,
+      });
+    }
+
+    if (url.includes('/api/threads?limit=50')) {
+      return jsonResponse({ threads: [] });
+    }
+
+    throw new Error(`Unhandled fetch: ${url}`);
+  });
+
+  vi.stubGlobal('fetch', fetchMock);
+
+  renderWorkspace();
+
+  await screen.findByPlaceholderText(/message orchagent/i);
+  const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+  const files = Array.from({ length: 6 }, (_, index) =>
+    new File([`{"index":${index}}`], `sample-${index}.json`, { type: 'application/json' })
+  );
+
+  fireEvent.change(fileInput, { target: { files } });
+
+  expect(await screen.findByText(/한 번에 최대 5개 파일만 첨부할 수 있습니다/i)).toBeInTheDocument();
+  expect(screen.getByText('sample-0.json')).toBeInTheDocument();
+  expect(screen.getByText('sample-4.json')).toBeInTheDocument();
+  expect(screen.queryByText('sample-5.json')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /send message/i })).toBeEnabled();
+});
+
+test('proceeds with uploaded files and keeps failed files in the tray on partial upload success', async () => {
+  const user = userEvent.setup();
+  const deferred = deferredSseResponse();
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    const telemetryResponse = maybeHandleTelemetryRequest(url);
+    if (telemetryResponse) {
+      return telemetryResponse;
+    }
+
+    if (url.includes('/api/auth/me')) {
+      return jsonResponse({
+        id: 'user-1',
+        login_id: 'tester',
+        role: 'user',
+        status: 'active',
+        display_name: null,
+        email: null,
+        must_change_password: false,
+      });
+    }
+
+    if (url.includes('/api/threads?limit=50')) {
+      return jsonResponse({ threads: [] });
+    }
+
+    if (url.endsWith('/api/uploads')) {
+      return jsonResponse({
+        uploads: [
+          {
+            id: 'upload-json',
+            input_index: 0,
+            kind: 'json',
+            source_type: 'device',
+            processing_status: 'ready',
+            preview_status: 'pending',
+            file_name: 'keep.json',
+            declared_extension: '.json',
+            mime_type: 'application/json',
+            sniffed_mime_type: 'application/json',
+            size_bytes: 12,
+            created_at: '2026-03-22T10:00:00Z',
+          },
+        ],
+        errors: [
+          {
+            input_index: 1,
+            file_name: 'reject.csv',
+            error_code: 'file_too_large',
+            detail: 'CSV file exceeds 10MB limit',
+          },
+        ],
+        accepted_count: 1,
+        failed_count: 1,
+        total_size_bytes: 12,
+      });
+    }
+
+    if (url.endsWith('/api/chat')) {
+      const body = JSON.parse(String(init?.body || '{}'));
+      expect(body.attachment_ids).toEqual(['upload-json']);
+      return deferred.response;
+    }
+
+    if (url.endsWith('/ai-title')) {
+      return jsonResponse({
+        thread_id: 'thread-partial',
+        title: '부분 업로드 테스트',
+        preview: '응답 대기 중',
+        created_at: '2026-03-22T10:00:00Z',
+        last_activity_at: '2026-03-22T10:00:00Z',
+        message_count: 1,
+        latest_status: 'running',
+        checkpoint_id: null,
+        pinned: false,
+        archived: false,
+      });
+    }
+
+    throw new Error(`Unhandled fetch: ${url}`);
+  });
+
+  Object.defineProperty(document, 'cookie', {
+    configurable: true,
+    get: () => 'orch_csrf=csrf-token',
+  });
+  vi.stubGlobal('fetch', fetchMock);
+
+  renderWorkspace();
+
+  await screen.findByPlaceholderText(/message orchagent/i);
+  const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+  fireEvent.change(fileInput, {
+    target: {
+      files: [
+        new File(['{"ok":1}'], 'keep.json', { type: 'application/json' }),
+        new File(['a,b\n1,2\n'], 'reject.csv', { type: 'text/csv' }),
+      ],
+    },
+  });
+
+  await user.type(screen.getByPlaceholderText(/message orchagent/i), '부분 업로드 테스트');
+  await user.click(screen.getByRole('button', { name: /send message/i }));
+
+  deferred.complete([
+    {
+      event_type: 'status',
+      status: 'running',
+      thread_id: 'thread-partial',
+      node: 'head_supervisor',
+      display_name: 'Head Supervisor',
+      timestamp: '2026-03-22T10:20:00Z',
+    },
+    {
+      event_type: 'text',
+      node: 'assistant',
+      content: '부분 업로드 응답',
+      timestamp: '2026-03-22T10:20:01Z',
+    },
+    {
+      event_type: 'status',
+      status: 'completed',
+      thread_id: 'thread-partial',
+      node: 'assistant',
+      display_name: 'Completed',
+      timestamp: '2026-03-22T10:20:03Z',
+    },
+  ]);
+
+  expect(await screen.findByText(/reject.csv: CSV file exceeds 10MB limit/i)).toBeInTheDocument();
+  expect(screen.getByText('reject.csv')).toBeInTheDocument();
+  expect(await screen.findByText('부분 업로드 응답')).toBeInTheDocument();
 });
 
 test('reuses the selected thread id for follow-up sends and disables switching while streaming', async () => {

@@ -1068,6 +1068,30 @@ def _build_visual_download_suffix(public_attachments: list[dict[str, Any]]) -> s
     return "\n".join(lines)
 
 
+async def _persist_generated_artifact_uploads(
+    db: AsyncSession,
+    *,
+    user_id: str,
+    thread_id: str,
+    collected_artifacts: list[Any],
+) -> list[dict[str, Any]]:
+    snapshots: list[dict[str, Any]] = []
+    for artifact in collected_artifacts:
+        upload = await UploadService.register_generated_artifact(
+            db,
+            user_id=user_id,
+            thread_id=thread_id,
+            artifact=artifact,
+        )
+        snapshots.append(
+            UploadService.build_attachment_snapshot(
+                upload,
+                title=getattr(artifact, "title", None),
+            )
+        )
+    return snapshots
+
+
 @router.post("/chat")
 async def chat_stream(
     http_request: Request,
@@ -1531,17 +1555,12 @@ async def chat_stream(
                 if runtime_token is not None:
                     collected_artifacts = collect_runtime_artifacts()
                 if final_answer:
-                    assistant_attachments = [
-                        {
-                            "kind": artifact.kind,
-                            "storage_path": artifact.storage_path,
-                            "file_name": artifact.file_name,
-                            "mime_type": artifact.mime_type,
-                            "size_bytes": artifact.size_bytes,
-                            "title": artifact.title,
-                        }
-                        for artifact in collected_artifacts
-                    ]
+                    assistant_attachments = await _persist_generated_artifact_uploads(
+                        db,
+                        user_id=user_id,
+                        thread_id=request.thread_id,
+                        collected_artifacts=collected_artifacts,
+                    )
                     assistant_message = await _log_message_with_fresh_session(
                         request.thread_id,
                         role="assistant",
@@ -2156,17 +2175,12 @@ async def chat_resume_stream(
                 if final_answer:
                     assistant_attachments = []
                     if runtime_token is not None:
-                        assistant_attachments = [
-                            {
-                                "kind": artifact.kind,
-                                "storage_path": artifact.storage_path,
-                                "file_name": artifact.file_name,
-                                "mime_type": artifact.mime_type,
-                                "size_bytes": artifact.size_bytes,
-                                "title": artifact.title,
-                            }
-                            for artifact in collected_artifacts
-                        ]
+                        assistant_attachments = await _persist_generated_artifact_uploads(
+                            db,
+                            user_id=user_id,
+                            thread_id=request.thread_id,
+                            collected_artifacts=collected_artifacts,
+                        )
                     assistant_message = await _log_message_with_fresh_session(
                         request.thread_id,
                         role="assistant",

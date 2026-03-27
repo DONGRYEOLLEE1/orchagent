@@ -359,17 +359,38 @@ export async function sendChatStream(params: {
 
 export interface UploadedAttachment {
   id: string;
+  input_index?: number | null;
   kind: 'image' | 'pdf' | 'spreadsheet' | 'csv' | 'json' | 'docx' | 'artifact';
+  source_type?: string;
+  processing_status?: string;
+  preview_status?: string;
   file_name: string;
+  declared_extension?: string | null;
   mime_type: string;
+  sniffed_mime_type?: string | null;
   size_bytes: number;
   created_at: string | null;
+}
+
+export interface UploadBatchError {
+  input_index: number;
+  file_name: string;
+  error_code: string;
+  detail: string;
+}
+
+export interface UploadBatchResult {
+  uploads: UploadedAttachment[];
+  errors: UploadBatchError[];
+  accepted_count: number;
+  failed_count: number;
+  total_size_bytes: number;
 }
 
 export async function uploadChatAttachments(params: {
   threadId: string;
   files: File[];
-}): Promise<UploadedAttachment[]> {
+}): Promise<UploadBatchResult> {
   const formData = new FormData();
   formData.set('thread_id', params.threadId);
   for (const file of params.files) {
@@ -396,8 +417,7 @@ export async function uploadChatAttachments(params: {
     throw new Error(await readErrorMessage(response));
   }
 
-  const payload = (await response.json()) as { uploads: UploadedAttachment[] };
-  return payload.uploads;
+  return (await response.json()) as UploadBatchResult;
 }
 
 export async function resumeChatStream(params: {

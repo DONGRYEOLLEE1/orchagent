@@ -36,6 +36,7 @@ import {
   patchThread,
   resumeChatStream,
   sendChatStream,
+  type UploadBatchError,
   uploadChatAttachments,
 } from '@/lib/api';
 import { appendAssistantText, parseSseBlock, pushUniqueHistory, splitSseBlocks } from '@/lib/chat-stream';
@@ -174,6 +175,31 @@ const MarkdownContent = ({ content }: { content: string }) => {
 
 // --- Helper Functions ---
 const SUPPORTED_ATTACHMENT_LABEL = '이미지, PDF, XLSX, CSV, JSON, DOCX만 지원합니다.';
+const ATTACHMENT_MAX_FILES = 5;
+const ATTACHMENT_MAX_TOTAL_BYTES = 30 * 1024 * 1024;
+const ATTACHMENT_MAX_BYTES_BY_KIND: Record<Exclude<ChatAttachment['kind'], 'artifact'>, number> = {
+  image: 10 * 1024 * 1024,
+  pdf: 20 * 1024 * 1024,
+  spreadsheet: 20 * 1024 * 1024,
+  csv: 10 * 1024 * 1024,
+  json: 20 * 1024 * 1024,
+  docx: 20 * 1024 * 1024,
+};
+
+type DraftAttachmentStatus = 'ready' | 'uploading' | 'failed';
+
+type DraftAttachmentItem = {
+  file: File;
+  localKey: string;
+};
+
+type DraftAttachmentStatusMap = Record<
+  string,
+  {
+    status: DraftAttachmentStatus;
+    error?: string;
+  }
+>;
 
 function inferDraftAttachmentKind(file: File): ChatAttachment['kind'] | null {
   const extension = file.name.split('.').pop()?.toLowerCase();
@@ -196,11 +222,84 @@ function inferDraftAttachmentKind(file: File): ChatAttachment['kind'] | null {
   return null;
 }
 
+function draftAttachmentKey(file: File): string {
+  return `${file.name}:${file.size}:${file.lastModified}`;
+}
+
 function formatAttachmentBytes(sizeBytes?: number | null): string {
   if (!sizeBytes || sizeBytes <= 0) return '';
   if (sizeBytes < 1024) return `${sizeBytes}B`;
   if (sizeBytes < 1024 * 1024) return `${(sizeBytes / 1024).toFixed(1)}KB`;
   return `${(sizeBytes / (1024 * 1024)).toFixed(1)}MB`;
+}
+
+function maxBytesForDraftKind(kind: Exclude<ChatAttachment['kind'], 'artifact'>): number {
+  return ATTACHMENT_MAX_BYTES_BY_KIND[kind];
+}
+
+function summarizeUploadErrors(errors: UploadBatchError[]): string {
+  return errors.map((error) => `${error.file_name}: ${error.detail}`).join('\n');
+}
+
+function validateIncomingDraftFiles(params: {
+  existingFiles: DraftAttachmentItem[];
+  existingStatuses: DraftAttachmentStatusMap;
+  incomingFiles: File[];
+}): {
+  accepted: DraftAttachmentItem[];
+  nextStatusPatch: DraftAttachmentStatusMap;
+  message: string;
+} {
+  const { existingFiles, existingStatuses, incomingFiles } = params;
+  const accepted: DraftAttachmentItem[] = [];
+  const nextStatusPatch: DraftAttachmentStatusMap = {};
+  const errors: string[] = [];
+
+  const existingReadyFiles = existingFiles.filter(
+    (item) => existingStatuses[item.localKey]?.status !== 'failed'
+  );
+  let acceptedCount = existingReadyFiles.length;
+  let acceptedBytes = existingReadyFiles.reduce((sum, item) => sum + item.file.size, 0);
+
+  for (const file of incomingFiles) {
+    const kind = inferDraftAttachmentKind(file);
+    if (!kind || kind === 'artifact') {
+      errors.push(`${file.name}: ${SUPPORTED_ATTACHMENT_LABEL}`);
+      continue;
+    }
+
+    if (acceptedCount >= ATTACHMENT_MAX_FILES) {
+      errors.push(`${file.name}: 한 번에 최대 ${ATTACHMENT_MAX_FILES}개 파일만 첨부할 수 있습니다.`);
+      continue;
+    }
+
+    const maxBytes = maxBytesForDraftKind(kind);
+    if (file.size > maxBytes) {
+      errors.push(
+        `${file.name}: ${kind.toUpperCase()} 파일은 ${formatAttachmentBytes(maxBytes)}까지 첨부할 수 있습니다.`
+      );
+      continue;
+    }
+
+    if (acceptedBytes + file.size > ATTACHMENT_MAX_TOTAL_BYTES) {
+      errors.push(
+        `${file.name}: 첨부 파일 총합은 ${formatAttachmentBytes(ATTACHMENT_MAX_TOTAL_BYTES)}를 넘을 수 없습니다.`
+      );
+      continue;
+    }
+
+    const localKey = draftAttachmentKey(file);
+    accepted.push({ file, localKey });
+    nextStatusPatch[localKey] = { status: 'ready' };
+    acceptedCount += 1;
+    acceptedBytes += file.size;
+  }
+
+  return {
+    accepted,
+    nextStatusPatch,
+    message: errors.join('\n'),
+  };
 }
 
 function attachmentIcon(attachment: ChatAttachment) {
@@ -391,11 +490,13 @@ const ImageLightbox = ({
 
 const SelectedAttachmentTray = ({
   files,
+  statuses,
   uploadState,
   error,
   onRemove,
 }: {
-  files: File[];
+  files: DraftAttachmentItem[];
+  statuses: DraftAttachmentStatusMap;
   uploadState: 'idle' | 'uploading' | 'error';
   error: string;
   onRemove: (index: number) => void;
@@ -406,13 +507,24 @@ const SelectedAttachmentTray = ({
 
   return (
     <div className="flex flex-wrap gap-2 rounded-[12px] border border-[rgba(255,255,255,0.06)] bg-[rgba(29,31,40,0.4)] p-3">
-      {files.map((file, i) => {
+      {files.map((item, i) => {
+        const { file, localKey } = item;
         const kind = inferDraftAttachmentKind(file);
         const isImage = kind === 'image';
+        const state = statuses[localKey]?.status || 'ready';
+        const stateError = statuses[localKey]?.error;
+        const stateLabel =
+          state === 'uploading' ? 'UPLOADING' : state === 'failed' ? 'FAILED' : 'READY';
+        const stateClassName =
+          state === 'uploading'
+            ? 'text-[#8ff5ff]'
+            : state === 'failed'
+              ? 'text-red-300'
+              : 'text-emerald-300';
 
         return (
           <div
-            key={`${file.name}_${i}`}
+            key={`${localKey}_${i}`}
             className={cn(
               'relative overflow-hidden rounded-[12px] border border-[rgba(255,255,255,0.08)] bg-[rgba(7,9,13,0.72)]',
               isImage ? 'h-16 w-16' : 'flex min-w-[168px] max-w-[240px] items-center gap-3 px-3 py-3'
@@ -444,6 +556,12 @@ const SelectedAttachmentTray = ({
                   <div className="text-[10px] uppercase tracking-[0.16em] text-[rgba(170,170,179,0.72)]">
                     {(kind || 'file').toUpperCase()} · {formatAttachmentBytes(file.size)}
                   </div>
+                  <div className={cn('mt-1 text-[10px] font-bold uppercase tracking-[0.18em]', stateClassName)}>
+                    {stateLabel}
+                  </div>
+                  {stateError ? (
+                    <div className="mt-1 text-[11px] leading-4 text-red-300">{stateError}</div>
+                  ) : null}
                 </div>
               </>
             )}
@@ -588,7 +706,8 @@ function WorkspaceApp({
 }) {
   const router = useRouter();
   const [input, setInput] = useState('');
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [selectedFiles, setSelectedFiles] = useState<DraftAttachmentItem[]>([]);
+  const [selectedFileStatuses, setSelectedFileStatuses] = useState<DraftAttachmentStatusMap>({});
   const [attachmentUploadState, setAttachmentUploadState] = useState<'idle' | 'uploading' | 'error'>('idle');
   const [attachmentError, setAttachmentError] = useState('');
   const [lightboxAttachment, setLightboxAttachment] = useState<ChatAttachment | null>(null);
@@ -708,6 +827,7 @@ function WorkspaceApp({
       pendingSuggestionRequestIdsRef.current = {};
       setInput('');
       setSelectedFiles([]);
+      setSelectedFileStatuses({});
       setAttachmentUploadState('idle');
       setAttachmentError('');
       setActiveThreadState(createInitialActiveThreadState());
@@ -744,6 +864,7 @@ function WorkspaceApp({
     }));
     setInput('');
     setSelectedFiles([]);
+    setSelectedFileStatuses({});
     setAttachmentUploadState('idle');
     setAttachmentError('');
     setMobileSidebarOpen(false);
@@ -812,20 +933,35 @@ function WorkspaceApp({
     }
 
     const incomingFiles = Array.from(e.target.files);
-    const supportedFiles = incomingFiles.filter((file) => inferDraftAttachmentKind(file));
-    if (supportedFiles.length !== incomingFiles.length) {
-      setAttachmentUploadState('error');
-      setAttachmentError(SUPPORTED_ATTACHMENT_LABEL);
-    } else {
-      setAttachmentUploadState('idle');
-      setAttachmentError('');
+    const validation = validateIncomingDraftFiles({
+      existingFiles: selectedFiles,
+      existingStatuses: selectedFileStatuses,
+      incomingFiles,
+    });
+    setAttachmentUploadState(validation.message ? 'error' : 'idle');
+    setAttachmentError(validation.message);
+    if (validation.accepted.length > 0) {
+      setSelectedFiles((prev) => [...prev, ...validation.accepted]);
+      setSelectedFileStatuses((prev) => ({
+        ...prev,
+        ...validation.nextStatusPatch,
+      }));
     }
-    setSelectedFiles(prev => [...prev, ...supportedFiles]);
     e.target.value = '';
   };
 
   const removeSelectedFile = (index: number) => {
-    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+    setSelectedFiles(prev => {
+      const target = prev[index];
+      if (target) {
+        setSelectedFileStatuses((previous) => {
+          const next = { ...previous };
+          delete next[target.localKey];
+          return next;
+        });
+      }
+      return prev.filter((_, i) => i !== index);
+    });
     setAttachmentUploadState('idle');
     setAttachmentError('');
   };
@@ -861,6 +997,7 @@ function WorkspaceApp({
 
     setInput('');
     setSelectedFiles([]);
+    setSelectedFileStatuses({});
     setAttachmentUploadState('idle');
     setAttachmentError('');
     setActiveThreadState(createInitialActiveThreadState());
@@ -1092,6 +1229,7 @@ function WorkspaceApp({
       activeThreadIdRef.current = '';
       setInput('');
       setSelectedFiles([]);
+      setSelectedFileStatuses({});
       setAttachmentUploadState('idle');
       setAttachmentError('');
       setActiveThreadState(createInitialActiveThreadState());
@@ -1402,6 +1540,7 @@ function WorkspaceApp({
     });
     setInput('');
     setSelectedFiles([]);
+    setSelectedFileStatuses({});
     setAttachmentUploadState('idle');
     setAttachmentError('');
     setMobileSidebarOpen(false);
@@ -1433,7 +1572,10 @@ function WorkspaceApp({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if ((!input.trim() && selectedFiles.length === 0) || isInteractionLocked) return;
+    const readyDraftItems = selectedFiles.filter(
+      (item) => selectedFileStatuses[item.localKey]?.status !== 'failed'
+    );
+    if ((!input.trim() && readyDraftItems.length === 0) || isInteractionLocked) return;
 
     const submittedInput = input;
     const isNewThread = !activeThreadState.threadId;
@@ -1444,67 +1586,124 @@ function WorkspaceApp({
           message.role === 'user' &&
           !message.content.startsWith('[User Action]:')
       ).length + 1;
-
-    const userAttachments = buildOptimisticAttachments(selectedFiles);
-    const userMessage: ChatMessage = {
-      role: 'user',
-      content: submittedInput,
-      id: Date.now().toString(),
-      attachments: userAttachments,
-    };
     const existingThread = threadCollectionState.threads.find(
       (thread) => thread.thread_id === thread_id
     );
-    const optimisticThread = createOptimisticThreadSummary({
-      threadId: thread_id,
-      content: submittedInput,
-      existingThread,
-    });
-    delete pendingTelemetryRequestIdsRef.current[thread_id];
-    delete pendingSuggestionRequestIdsRef.current[thread_id];
-
-    setActiveThreadState(prev => ({
-      ...prev,
-      threadId: thread_id,
-      title: prev.title || optimisticThread.title,
-      checkpointId: '',
-      messages: [...prev.messages, userMessage],
-      detailLoadState: 'success',
-      latestStatus: 'running',
-      lastActivityAt: optimisticThread.last_activity_at,
-      viewMode: 'live',
-    }));
-    setThreadCollectionState(prev => ({
-      ...prev,
-      threads: upsertThreadSummary(prev.threads, optimisticThread),
-      error: '',
-    }));
-    activeThreadIdRef.current = thread_id;
-    setInput('');
-    setSelectedFiles([]);
-    setAttachmentUploadState('idle');
-    setAttachmentError('');
-    setMobileSidebarOpen(false);
-    setStreamSessionState({
-      ...createInitialStreamSessionState(),
-      loading: true,
-    });
-    setActionSpaceState(createInitialActionSpaceState());
+    const readyLocalKeys = readyDraftItems.map((item) => item.localKey);
+    let uploadedAttachmentIds: string[] = [];
+    let successfulDraftFiles = readyDraftItems.map((item) => item.file);
 
     try {
-      setAttachmentUploadState(userAttachments.length > 0 ? 'uploading' : 'idle');
-      const uploadedAttachments = selectedFiles.length > 0
-        ? await uploadChatAttachments({
-            threadId: thread_id,
-            files: selectedFiles,
+      if (readyDraftItems.length > 0) {
+        setAttachmentUploadState('uploading');
+        setAttachmentError('');
+        setSelectedFileStatuses((prev) => {
+          const next = { ...prev };
+          for (const item of readyDraftItems) {
+            next[item.localKey] = { status: 'uploading' };
+          }
+          return next;
+        });
+
+        const uploadResult = await uploadChatAttachments({
+          threadId: thread_id,
+          files: readyDraftItems.map((item) => item.file),
+        });
+
+        const failedIndexes = new Map(
+          uploadResult.errors.map((error) => [error.input_index, error])
+        );
+        const successfulDraftItems = readyDraftItems.filter(
+          (_, index) => !failedIndexes.has(index)
+        );
+        successfulDraftFiles = successfulDraftItems.map((item) => item.file);
+        uploadedAttachmentIds = uploadResult.uploads.map((attachment) => attachment.id);
+
+        setSelectedFiles((prev) =>
+          prev.filter((item) => {
+            if (!readyLocalKeys.includes(item.localKey)) {
+              return true;
+            }
+            return !successfulDraftItems.some(
+              (successfulItem) => successfulItem.localKey === item.localKey
+            );
           })
-        : [];
-      setAttachmentUploadState('idle');
+        );
+        setSelectedFileStatuses((prev) => {
+          const next = { ...prev };
+          for (const item of successfulDraftItems) {
+            delete next[item.localKey];
+          }
+          for (const [index, error] of failedIndexes) {
+            const failedItem = readyDraftItems[index];
+            if (failedItem) {
+              next[failedItem.localKey] = {
+                status: 'failed',
+                error: error.detail,
+              };
+            }
+          }
+          return next;
+        });
+
+        if (uploadResult.errors.length > 0) {
+          setAttachmentUploadState('error');
+          setAttachmentError(summarizeUploadErrors(uploadResult.errors));
+        } else {
+          setAttachmentUploadState('idle');
+          setAttachmentError('');
+        }
+
+        if (readyDraftItems.length > 0 && successfulDraftFiles.length === 0) {
+          return;
+        }
+      }
+
+      const userAttachments = buildOptimisticAttachments(successfulDraftFiles);
+      const userMessage: ChatMessage = {
+        role: 'user',
+        content: submittedInput,
+        id: Date.now().toString(),
+        attachments: userAttachments,
+      };
+      const optimisticThread = createOptimisticThreadSummary({
+        threadId: thread_id,
+        content: submittedInput,
+        existingThread,
+      });
+      delete pendingTelemetryRequestIdsRef.current[thread_id];
+      delete pendingSuggestionRequestIdsRef.current[thread_id];
+
+      setActiveThreadState(prev => ({
+        ...prev,
+        threadId: thread_id,
+        title: prev.title || optimisticThread.title,
+        checkpointId: '',
+        messages: [...prev.messages, userMessage],
+        detailLoadState: 'success',
+        latestStatus: 'running',
+        lastActivityAt: optimisticThread.last_activity_at,
+        viewMode: 'live',
+      }));
+      setThreadCollectionState(prev => ({
+        ...prev,
+        threads: upsertThreadSummary(prev.threads, optimisticThread),
+        error: '',
+      }));
+      activeThreadIdRef.current = thread_id;
+      setInput('');
+      setMobileSidebarOpen(false);
+      setStreamSessionState({
+        ...createInitialStreamSessionState(),
+        loading: true,
+      });
+      setActionSpaceState(createInitialActionSpaceState());
 
       const stream = await sendChatStream({
         message: submittedInput,
         threadId: thread_id,
-        attachmentIds: uploadedAttachments.map((attachment) => attachment.id),
+        attachmentIds:
+          uploadedAttachmentIds.length > 0 ? uploadedAttachmentIds : undefined,
       });
 
       if (isNewThread) {
@@ -1568,6 +1767,16 @@ function WorkspaceApp({
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       setAttachmentUploadState('error');
       setAttachmentError(errorMessage);
+      setSelectedFileStatuses((prev) => {
+        const next = { ...prev };
+        for (const item of readyDraftItems) {
+          next[item.localKey] = {
+            status: 'failed',
+            error: errorMessage,
+          };
+        }
+        return next;
+      });
       setStreamSessionState(prev => ({
         ...prev,
         loading: false,
@@ -1738,6 +1947,9 @@ function WorkspaceApp({
   const latestThreadMessage = activeThreadState.messages[activeThreadState.messages.length - 1];
   const latestAssistantMessageId =
     latestThreadMessage?.role === 'assistant' ? latestThreadMessage.id : undefined;
+  const hasSendableAttachments = selectedFiles.some(
+    (item) => selectedFileStatuses[item.localKey]?.status !== 'failed'
+  );
 
   const handleSuggestedQuerySelect = (query: string) => {
     setInput(query);
@@ -1994,6 +2206,7 @@ function WorkspaceApp({
           <form onSubmit={handleSubmit} className="mx-auto flex w-full max-w-[720px] flex-col gap-3">
             <SelectedAttachmentTray
               files={selectedFiles}
+              statuses={selectedFileStatuses}
               uploadState={attachmentUploadState}
               error={attachmentError}
               onRemove={removeSelectedFile}
@@ -2027,7 +2240,7 @@ function WorkspaceApp({
               <button
                 type="submit"
                 aria-label="Send message"
-                disabled={isInteractionLocked || (!input.trim() && selectedFiles.length === 0)}
+                disabled={isInteractionLocked || (!input.trim() && !hasSendableAttachments)}
                 className="absolute right-3 top-1/2 inline-flex -translate-y-1/2 items-center justify-center rounded-[12px] bg-[#8ff5ff] px-5 py-2.5 text-[12px] font-bold uppercase tracking-[0.18em] text-[#005d63] shadow-[0px_10px_15px_-3px_rgba(143,245,255,0.2),0px_4px_6px_-4px_rgba(143,245,255,0.2)] transition hover:brightness-105 disabled:bg-slate-800 disabled:text-slate-600"
               >
                 {streamSessionState.loading ? <Loader2 className="animate-spin" size={16} /> : 'Send'}

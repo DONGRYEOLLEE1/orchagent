@@ -2,7 +2,7 @@
 작업명: Uploads Endpoint Evolution Plan
 간단요약: 업로드 기능을 프로덕션 지향 구조로 고도화하되, V1 운영 한도를 `최대 5개 파일`, `파일당 10~20MB`, `요청 총합 30MB`로 고정한다.
 작성일시: 2026-03-28 00:41 KST
-최종 수정일시: 2026-03-28 01:11 KST
+최종 수정일시: 2026-03-28 01:18 KST
 ---
 
 # Uploads Endpoint Evolution Plan
@@ -100,45 +100,45 @@ V1 이후 업로드 계층은 아래 구조를 목표로 한다.
 
 ## Phase 2. 프런트 업로드 UX 보강
 
-- [ ] 파일 선택 직후 `최대 5개` 정책을 즉시 검증
-- [ ] 파일별 크기 초과를 업로드 전 단계에서 즉시 노출
-- [ ] 총합 `30MB` 초과를 즉시 노출
-- [ ] 다중 파일 선택 시 per-file 상태가 보이도록 개선
-- [ ] 관련 테스트 추가 및 통과 확인
+- [x] 파일 선택 직후 `최대 5개` 정책을 즉시 검증
+- [x] 파일별 크기 초과를 업로드 전 단계에서 즉시 노출
+- [x] 총합 `30MB` 초과를 즉시 노출
+- [x] 다중 파일 선택 시 per-file 상태가 보이도록 개선
+- [x] 관련 테스트 추가 및 통과 확인
 
 ## Phase 3. 배치 업로드 흐름 정리
 
-- [ ] 업로드와 chat submit 흐름을 더 명확히 분리
-- [ ] 다중 파일에서 부분 성공/부분 실패 처리 정책 정리
-- [ ] 프런트가 업로드 완료 파일만 `attachment_ids[]`로 넘기도록 정리
-- [ ] 실패 파일 재시도 UX 가능성 검토
-- [ ] 관련 테스트 추가 및 통과 확인
+- [x] 업로드와 chat submit 흐름을 더 명확히 분리
+- [x] 다중 파일에서 부분 성공/부분 실패 처리 정책 정리
+- [x] 프런트가 업로드 완료 파일만 `attachment_ids[]`로 넘기도록 정리
+- [x] 실패 파일 재시도 UX 가능성 검토
+- [x] 관련 테스트 추가 및 통과 확인
 
 ## Phase 4. 파일 자산 모델 확장
 
-- [ ] `file_id` 중심 자산 모델 보강
-- [ ] `source_type` 구분
-  - [ ] `device`
-  - [ ] `generated_artifact`
-- [ ] `processing_status`, `preview_status` 같은 상태 필드 초안 도입
-- [ ] turn attachment와 file asset의 책임 경계 정리
-- [ ] 관련 테스트 추가 및 통과 확인
+- [x] `file_id` 중심 자산 모델 보강
+- [x] `source_type` 구분
+  - [x] `device`
+  - [x] `generated_artifact`
+- [x] `processing_status`, `preview_status` 같은 상태 필드 초안 도입
+- [x] turn attachment와 file asset의 책임 경계 정리
+- [x] 관련 테스트 추가 및 통과 확인
 
 ## Phase 5. 비동기 전처리 파이프라인 초안
 
-- [ ] MIME sniffing / 확장자-실제 타입 불일치 검사 추가
-- [ ] 문서/표 preview 생성 지점 정리
-- [ ] 이미지 썸네일 생성 지점 정리
+- [x] MIME sniffing / 확장자-실제 타입 불일치 검사 추가
+- [x] 문서/표 preview 생성 지점 정리
+- [x] 이미지 썸네일 생성 지점 정리
 - [ ] OCR / text extraction / token estimate를 비동기 단계로 넘길 기준 정의
-- [ ] 전처리 실패가 chat 전체 실패로 번지지 않도록 실패 분리 정책 정리
+- [x] 전처리 실패가 chat 전체 실패로 번지지 않도록 실패 분리 정책 정리
 
 ## Phase 6. 생성 artifact lifecycle 정리
 
-- [ ] data-science 팀 산출물을 `generated_artifact`로 표준화
-- [ ] 입력 파일과 같은 download contract 유지
-- [ ] artifact 메타데이터를 동일 file lifecycle로 수렴
+- [x] data-science 팀 산출물을 `generated_artifact`로 표준화
+- [x] 입력 파일과 같은 download contract 유지
+- [x] artifact 메타데이터를 동일 file lifecycle로 수렴
 - [ ] retention/delete 권한 정책 초안 정리
-- [ ] 관련 테스트 추가 및 통과 확인
+- [x] 관련 테스트 추가 및 통과 확인
 
 ## Phase 7. 운영 지표와 안정화
 
@@ -151,16 +151,16 @@ V1 이후 업로드 계층은 아래 구조를 목표로 한다.
 
 ## Phase 8. 출시 전 검증
 
-- [ ] `npm run test`
-- [ ] 백엔드 관련 `pytest` 통과
-- [ ] `npm run lint`
-- [ ] `npm run build`
+- [x] `npm run test`
+- [x] 백엔드 관련 `pytest` 통과
+- [x] `npm run lint`
+- [x] `npm run build`
 - [ ] 수동 검증
-  - [ ] 5개까지 업로드 가능 확인
-  - [ ] 6개 선택 시 즉시 차단 확인
+  - [x] 5개까지 업로드 가능 확인
+  - [x] 6개 선택 시 즉시 차단 확인
   - [ ] 파일당 크기 초과 차단 확인
   - [ ] 총합 30MB 초과 차단 확인
-  - [ ] 다중 파일 등록 -> 관련 질의 -> 예상된 답변 나타나는지 확인
+  - [x] 다중 파일 등록 -> 관련 질의 -> 예상된 답변 나타나는지 확인
   - [ ] 다중 파일 부분 실패 처리 확인
   - [ ] 생성 artifact download contract 확인
 

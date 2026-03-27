@@ -47,6 +47,8 @@ async def upload_files(
     current_user=Depends(get_current_user),
     _: None = Depends(require_csrf),
 ):
+    current_user_id = str(current_user.id)
+
     if len(files) > settings.ATTACHMENT_MAX_FILES_PER_REQUEST:
         raise HTTPException(
             status_code=400,
@@ -60,31 +62,43 @@ async def upload_files(
     if not prepared_uploads and errors:
         raise HTTPException(status_code=400, detail=errors[0].detail)
 
-    uploads = [
-        await UploadService.create_upload_from_prepared(
+    upload_responses: list[UploadedFileResponse] = []
+    for prepared_upload in prepared_uploads:
+        upload = await UploadService.create_upload_from_prepared(
             db,
-            user_id=current_user.id,
+            user_id=current_user_id,
             prepared=prepared_upload,
             thread_id=thread_id,
         )
-        for prepared_upload in prepared_uploads
-    ]
+        upload_responses.append(
+            UploadedFileResponse(
+                id=upload.id,
+                input_index=getattr(upload, "input_index", None),
+                kind=upload.kind,
+                source_type=upload.source_type,
+                processing_status=upload.processing_status,
+                preview_status=upload.preview_status,
+                file_name=upload.file_name,
+                declared_extension=upload.declared_extension,
+                mime_type=upload.mime_type,
+                sniffed_mime_type=upload.sniffed_mime_type,
+                size_bytes=upload.size_bytes,
+                created_at=upload.created_at,
+            )
+        )
     await _safe_create_upload_trace(
         db=db,
         thread_id=thread_id,
-        user_id=current_user.id,
+        user_id=current_user_id,
         payload={
-            "accepted_count": len(uploads),
+            "accepted_count": len(upload_responses),
             "failed_count": len(errors),
             "total_size_bytes": total_size_bytes,
-            "kinds": [upload.kind for upload in uploads],
+            "kinds": [prepared.kind for prepared in prepared_uploads],
         },
     )
     return UploadBatchResponse(
-        uploads=[
-            UploadedFileResponse.model_validate(upload, from_attributes=True)
-            for upload in uploads
-        ],
+        uploads=upload_responses,
         errors=[
             UploadErrorResponse(
                 input_index=error.input_index,
@@ -94,7 +108,7 @@ async def upload_files(
             )
             for error in errors
         ],
-        accepted_count=len(uploads),
+        accepted_count=len(upload_responses),
         failed_count=len(errors),
         total_size_bytes=total_size_bytes,
     )
