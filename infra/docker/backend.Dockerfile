@@ -18,6 +18,11 @@ COPY packages/prompt-kit/pyproject.toml ./packages/prompt-kit/
 # Install the dependencies for the workspace
 RUN uv sync --frozen --no-install-project --no-dev
 
+# Install CJK fonts so matplotlib charts can render Korean text.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends fonts-noto-cjk fontconfig \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copy the rest of the workspace source code
 COPY . .
 

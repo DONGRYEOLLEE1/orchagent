@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.logging import KST, ChatMessageLog, ChatSession
@@ -49,3 +49,17 @@ class LoggingService:
         await db.commit()
         await db.refresh(msg)
         return msg
+
+    @staticmethod
+    async def update_message_content(
+        db: AsyncSession,
+        *,
+        message_id,
+        content: str,
+    ) -> None:
+        await db.execute(
+            update(ChatMessageLog)
+            .where(ChatMessageLog.id == message_id)
+            .values(content=content)
+        )
+        await db.commit()

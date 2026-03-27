@@ -706,6 +706,19 @@ async def _persist_trace_events_with_fresh_session(trace_events: list[Any]) -> N
         await TraceService.create_events(db, trace_events)
 
 
+async def _update_message_content_with_fresh_session(
+    *,
+    message_id: UUID,
+    content: str,
+) -> None:
+    async with AsyncSessionLocal() as db:
+        await LoggingService.update_message_content(
+            db,
+            message_id=message_id,
+            content=content,
+        )
+
+
 async def _start_turn_with_fresh_session(
     *,
     thread_id: str,
@@ -1021,6 +1034,38 @@ def _build_public_attachment_payloads(
             }
         )
     return payloads
+
+
+def _rewrite_attachment_markdown_links(
+    content: str,
+    public_attachments: list[dict[str, Any]],
+) -> str:
+    rewritten = content
+    for attachment in public_attachments:
+        file_name = str(attachment.get("file_name") or "").strip()
+        url = str(attachment.get("url") or "").strip()
+        if not file_name or not url:
+            continue
+        rewritten = rewritten.replace(f"({file_name})", f"({url})")
+    return rewritten
+
+
+def _build_visual_download_suffix(public_attachments: list[dict[str, Any]]) -> str:
+    downloadables = [
+        attachment
+        for attachment in public_attachments
+        if str(attachment.get("mime_type") or "").startswith("image/")
+        or str(attachment.get("file_name") or "").lower().endswith((".png", ".jpg", ".jpeg", ".webp"))
+    ]
+    if not downloadables:
+        return ""
+
+    lines = ["", "다운로드", ""]
+    for attachment in downloadables:
+        label = str(attachment.get("file_name") or attachment.get("alt") or "artifact")
+        url = str(attachment.get("url") or "")
+        lines.append(f"- [{label}]({url})")
+    return "\n".join(lines)
 
 
 @router.post("/chat")
@@ -1506,17 +1551,39 @@ async def chat_stream(
                     )
                     assistant_response_message_id = getattr(assistant_message, "id", None)
                     if assistant_response_message_id and assistant_attachments:
+                        public_attachments = _build_public_attachment_payloads(
+                            base_url=str(http_request.base_url).rstrip("/"),
+                            thread_id=request.thread_id,
+                            message_id=assistant_response_message_id,
+                            attachments=assistant_attachments,
+                        )
+                        answer_with_links = _rewrite_attachment_markdown_links(
+                            final_answer,
+                            public_attachments,
+                        )
+                        download_suffix = _build_visual_download_suffix(public_attachments)
+                        if download_suffix and download_suffix not in answer_with_links:
+                            answer_with_links = f"{answer_with_links.rstrip()}\n\n{download_suffix}"
+                            await _update_message_content_with_fresh_session(
+                                message_id=assistant_response_message_id,
+                                content=answer_with_links,
+                            )
+                            yield await emit(
+                                {
+                                    "event_type": "text",
+                                    "node": "assistant",
+                                    "display_name": _display_name("assistant"),
+                                    "content": f"\n\n{download_suffix}",
+                                    "timestamp": _utc_timestamp(),
+                                },
+                                persist=False,
+                            )
                         yield await emit(
                             {
                                 "event_type": "attachments",
                                 "role": "assistant",
                                 "message_id": str(assistant_response_message_id),
-                                "attachments": _build_public_attachment_payloads(
-                                    base_url=str(http_request.base_url).rstrip("/"),
-                                    thread_id=request.thread_id,
-                                    message_id=assistant_response_message_id,
-                                    attachments=assistant_attachments,
-                                ),
+                                "attachments": public_attachments,
                                 "timestamp": _utc_timestamp(),
                             },
                             persist=False,
@@ -1677,6 +1744,7 @@ async def chat_stream(
 
 @router.post("/chat/resume")
 async def chat_resume_stream(
+    http_request: Request,
     request: ResumeRequest,
     current_user=Depends(get_current_user),
     _: None = Depends(require_csrf),
@@ -1787,6 +1855,8 @@ async def chat_resume_stream(
         reasoning_chunks: list[str] = []
         trace_events = []
         graph = None
+        runtime_token = None
+        collected_artifacts: list[Any] = []
         completed_payload_emitted = False
         final_checkpoint_payload: dict[str, Any] | None = None
         first_token_recorded = False
@@ -1993,7 +2063,22 @@ async def chat_resume_stream(
                             update = output.update or {}
                             route_history = update.get("route_history") or []
                             if route_history:
-                                yield await emit(_route_payload(name, route_history[-1]))
+                                latest_route = route_history[-1]
+                                yield await emit(_route_payload(name, latest_route))
+                                route_reasoning = str(latest_route.get("reasoning") or "").strip()
+                                if route_reasoning:
+                                    reasoning_chunks.append(route_reasoning)
+                                    yield await emit(
+                                        {
+                                            "event_type": "reasoning",
+                                            "node": name,
+                                            "display_name": _display_name(name),
+                                            "content": route_reasoning,
+                                            "run_id": run_id,
+                                            "timestamp": _utc_timestamp(),
+                                        },
+                                        persist=False,
+                                    )
 
                             if name == "head_supervisor":
                                 status = update.get("streaming_status")
@@ -2069,13 +2154,65 @@ async def chat_resume_stream(
 
                 final_answer = collector.final_answer()
                 if final_answer:
+                    assistant_attachments = []
+                    if runtime_token is not None:
+                        assistant_attachments = [
+                            {
+                                "kind": artifact.kind,
+                                "storage_path": artifact.storage_path,
+                                "file_name": artifact.file_name,
+                                "mime_type": artifact.mime_type,
+                                "size_bytes": artifact.size_bytes,
+                                "title": artifact.title,
+                            }
+                            for artifact in collected_artifacts
+                        ]
                     assistant_message = await _log_message_with_fresh_session(
                         request.thread_id,
                         role="assistant",
                         content=final_answer,
                         user_id=user_id,
+                        attachments=assistant_attachments,
                     )
                     assistant_response_message_id = getattr(assistant_message, "id", None)
+                    if assistant_response_message_id and assistant_attachments:
+                        public_attachments = _build_public_attachment_payloads(
+                            base_url=str(http_request.base_url).rstrip("/"),
+                            thread_id=request.thread_id,
+                            message_id=assistant_response_message_id,
+                            attachments=assistant_attachments,
+                        )
+                        answer_with_links = _rewrite_attachment_markdown_links(
+                            final_answer,
+                            public_attachments,
+                        )
+                        download_suffix = _build_visual_download_suffix(public_attachments)
+                        if download_suffix and download_suffix not in answer_with_links:
+                            answer_with_links = f"{answer_with_links.rstrip()}\n\n{download_suffix}"
+                            await _update_message_content_with_fresh_session(
+                                message_id=assistant_response_message_id,
+                                content=answer_with_links,
+                            )
+                            yield await emit(
+                                {
+                                    "event_type": "text",
+                                    "node": "assistant",
+                                    "display_name": _display_name("assistant"),
+                                    "content": f"\n\n{download_suffix}",
+                                    "timestamp": _utc_timestamp(),
+                                },
+                                persist=False,
+                            )
+                        yield await emit(
+                            {
+                                "event_type": "attachments",
+                                "role": "assistant",
+                                "message_id": str(assistant_response_message_id),
+                                "attachments": public_attachments,
+                                "timestamp": _utc_timestamp(),
+                            },
+                            persist=False,
+                        )
 
                     JsonLogger.log_session(
                         session_id=request.thread_id,
@@ -2123,6 +2260,9 @@ async def chat_resume_stream(
                 }
             )
         finally:
+            if runtime_token is not None:
+                collected_artifacts = collect_runtime_artifacts()
+                reset_tool_runtime_context(runtime_token)
             _append_summary_trace_events(
                 trace_context,
                 trace_events,

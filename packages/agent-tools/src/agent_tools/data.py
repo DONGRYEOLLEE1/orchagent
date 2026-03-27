@@ -299,6 +299,7 @@ import requests
 from pathlib import Path as _Path
 import matplotlib.pyplot as _plt
 from matplotlib.figure import Figure as _Figure
+from matplotlib import font_manager as _font_manager
 os.chdir(r"{context.artifact_dir}")
 
 def _disabled_network(*args, **kwargs):
@@ -326,6 +327,21 @@ def _safe_figure_savefig(self, fname=None, *args, _original=_original_figure_sav
 
 _plt.savefig = _safe_pyplot_savefig
 _Figure.savefig = _safe_figure_savefig
+
+_preferred_fonts = [
+    'Noto Sans CJK KR',
+    'Noto Sans CJK JP',
+    'Noto Sans CJK SC',
+    'NanumGothic',
+    'Malgun Gothic',
+    'AppleGothic',
+]
+_available_fonts = {{font.name for font in _font_manager.fontManager.ttflist}}
+for _font_name in _preferred_fonts:
+    if _font_name in _available_fonts:
+        _plt.rcParams['font.family'] = _font_name
+        break
+_plt.rcParams['axes.unicode_minus'] = False
 """
     normalized_code = code
     for legacy_prefix in (
@@ -333,6 +349,7 @@ _Figure.savefig = _safe_figure_savefig
         "/mnt/data",
         "/app/apps/backend/artifacts",
         "/app/artifacts",
+        "/app/outputs",
     ):
         normalized_code = normalized_code.replace(legacy_prefix, str(context.artifact_dir))
     result = repl.run(f"{prelude}\n{normalized_code}")
