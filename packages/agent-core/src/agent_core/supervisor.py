@@ -81,6 +81,36 @@ def _latest_user_request_text(messages: list[Any]) -> str:
     return ""
 
 
+def _orchagent_identity_response(user_text: str) -> str | None:
+    normalized = user_text.strip().lower()
+    if not normalized:
+        return None
+
+    name_patterns = (
+        "너 이름",
+        "네 이름",
+        "이름이 뭐",
+        "what is your name",
+        "your name",
+        "who are you",
+    )
+    identity_patterns = (
+        "너 정체",
+        "네 정체",
+        "정체가 뭐",
+        "what are you",
+        "who are you really",
+        "what is orchagent",
+    )
+
+    if any(pattern in normalized for pattern in name_patterns):
+        return "저는 OrchAgent입니다."
+    if any(pattern in normalized for pattern in identity_patterns):
+        return "저는 여러 전문 팀을 오케스트레이션하는 OrchAgent입니다."
+
+    return None
+
+
 def _content_contains_image(content: Any) -> bool:
     if isinstance(content, list):
         for item in content:
@@ -357,6 +387,14 @@ def make_supervisor_node(
         next_node = response["next"]
         goto = next_node
         content = response.get("content", "")
+        latest_user_text = _latest_user_request_text(state["messages"])
+        orchagent_identity_content = (
+            _orchagent_identity_response(latest_user_text)
+            if layer == "head" and next_node == "FINISH"
+            else None
+        )
+        if orchagent_identity_content:
+            content = orchagent_identity_content
         state_requires_approval = bool(
             shared_context.get("force_requires_approval", False)
         )
@@ -544,6 +582,7 @@ def make_supervisor_node(
             layer == "head"
             and next_node == "FINISH"
             and final_node_name is not None
+            and not str(content or "").strip()
             and (
                 (task_plan and task_plan != "NO_PLAN")
                 or any(

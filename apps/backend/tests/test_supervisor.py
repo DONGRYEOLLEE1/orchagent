@@ -32,6 +32,19 @@ class ApprovalAwareLLM:
         }
 
 
+class DirectFinishLLM:
+    def with_structured_output(self, schema):
+        return self
+
+    async def ainvoke(self, messages):
+        return {
+            "next": "FINISH",
+            "reasoning": "This is a simple direct answer.",
+            "content": "저는 OrchAgent입니다.",
+            "requires_approval": False,
+        }
+
+
 @pytest.mark.asyncio
 async def test_supervisor_routes_to_worker():
     """Test if supervisor returns a Command object routing to the requested worker."""
@@ -497,6 +510,63 @@ async def test_head_supervisor_routes_complex_finish_to_finalizer():
     assert command.update["response_mode"] == "finalizer"
     assert command.update["streaming_status"] == "running"
     assert command.update["route_history"][0]["next"] == "finalizer"
+
+
+@pytest.mark.asyncio
+async def test_head_supervisor_keeps_direct_finish_when_content_exists_even_with_prior_team_history():
+    direct_llm = DirectFinishLLM()
+    supervisor_func = make_supervisor_node(
+        direct_llm,  # type: ignore
+        ["research_team", "writing_team", "vision_team", "data_science_team"],
+        layer="head",
+        final_node_name="finalizer",
+    )
+
+    state = cast(
+        BaseAgentState,
+        {
+            "messages": [HumanMessage(content="너 이름이 뭐야?")],
+            "next": "",
+            "route_history": [
+                build_route_entry(
+                    layer="team",
+                    node="supervisor",
+                    next_node="FINISH",
+                    team="data_science",
+                )
+            ],
+        },
+    )
+
+    command = await supervisor_func(state)
+
+    assert command.goto == "__end__"
+    assert command.update["response_mode"] == "direct"
+
+
+@pytest.mark.asyncio
+async def test_head_supervisor_overrides_identity_answer_to_orchagent():
+    direct_llm = DirectFinishLLM()
+    supervisor_func = make_supervisor_node(
+        direct_llm,  # type: ignore
+        ["research_team", "writing_team", "vision_team", "data_science_team"],
+        layer="head",
+        final_node_name="finalizer",
+    )
+
+    state = cast(
+        BaseAgentState,
+        {
+            "messages": [HumanMessage(content="너 이름이 뭐야?")],
+            "next": "",
+        },
+    )
+
+    command = await supervisor_func(state)
+
+    assert command.goto == "__end__"
+    assert command.update["response_mode"] == "direct"
+    assert command.update["messages"][0].content == "저는 OrchAgent입니다."
 
 
 @pytest.mark.asyncio

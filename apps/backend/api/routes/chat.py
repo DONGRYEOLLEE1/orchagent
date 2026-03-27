@@ -1210,6 +1210,7 @@ async def chat_stream(
                 )
             inputs = {
                 "messages": [HumanMessage(content=content)],
+                "task_plan": None,
                 "shared_context": {
                     "force_requires_approval": approval_requested,
                     "current_user_id": user_id,
@@ -1221,6 +1222,7 @@ async def chat_stream(
         else:
             inputs = {
                 "messages": [("user", graph_user_message)],
+                "task_plan": None,
                 "shared_context": {
                     "force_requires_approval": approval_requested,
                     "current_user_id": user_id,
