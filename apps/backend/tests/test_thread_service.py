@@ -435,6 +435,33 @@ async def test_get_latest_user_attachments_returns_latest_non_empty_payload():
 
 
 @pytest.mark.asyncio
+async def test_delete_thread_cleans_turn_dependencies_before_session_delete():
+    db = AsyncMock()
+    session = SimpleNamespace(id="thread-delete", user_id="user-1")
+
+    original_get_chat_session = ThreadService.get_chat_session
+    ThreadService.get_chat_session = AsyncMock(return_value=session)
+    db.execute.side_effect = (
+        [SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [uuid4(), uuid4()]))]
+        + [None] * 20
+    )
+    try:
+        deleted = await ThreadService.delete_thread(
+            db,
+            "thread-delete",
+            user_id="user-1",
+        )
+    finally:
+        ThreadService.get_chat_session = original_get_chat_session
+
+    assert deleted is True
+    assert db.execute.await_count >= 5
+    assert db.delete.await_count == 1
+    assert db.delete.await_args.args[0] is session
+    assert db.commit.await_count == 1
+
+
+@pytest.mark.asyncio
 async def test_get_thread_detail_returns_none_when_summary_is_missing():
     db = AsyncMock()
 

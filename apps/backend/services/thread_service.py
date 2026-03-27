@@ -5,12 +5,14 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import delete, desc, func, select
+from sqlalchemy import delete, desc, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from models.analytics import ChatTurn, LLMUsageEvent, ToolExecutionEvent
 from models.logging import ChatMessageLog, ChatSession
 from models.trace import TraceEvent
 from models.thread_profile import ThreadProfile
+from models.user_memory import MemoryReferenceEvent, UserMemoryEntry
 from services.thread_profile_service import ThreadProfileService
 
 
@@ -585,13 +587,45 @@ class ThreadService:
         if session is None:
             return False
 
+        turn_ids_stmt = select(ChatTurn.id).where(ChatTurn.thread_id == thread_id)
+        turn_ids_result = await db.execute(turn_ids_stmt)
+        turn_ids = list(turn_ids_result.scalars().all())
+
         await db.execute(
             delete(ThreadProfile).where(
                 ThreadProfile.thread_id == thread_id,
                 ThreadProfile.user_id == user_id,
             )
         )
+        await db.execute(
+            delete(MemoryReferenceEvent).where(MemoryReferenceEvent.thread_id == thread_id)
+        )
+        await db.execute(
+            update(UserMemoryEntry)
+            .where(UserMemoryEntry.thread_id == thread_id)
+            .values(thread_id=None)
+        )
+        if turn_ids:
+            await db.execute(
+                update(UserMemoryEntry)
+                .where(UserMemoryEntry.created_from_turn_id.in_(turn_ids))
+                .values(created_from_turn_id=None)
+            )
+            await db.execute(
+                delete(LLMUsageEvent).where(LLMUsageEvent.turn_id.in_(turn_ids))
+            )
+            await db.execute(
+                delete(ToolExecutionEvent).where(ToolExecutionEvent.turn_id.in_(turn_ids))
+            )
+            await db.execute(
+                delete(TraceEvent).where(TraceEvent.turn_id.in_(turn_ids))
+            )
         await db.execute(delete(TraceEvent).where(TraceEvent.thread_id == thread_id))
+        await db.execute(delete(LLMUsageEvent).where(LLMUsageEvent.thread_id == thread_id))
+        await db.execute(
+            delete(ToolExecutionEvent).where(ToolExecutionEvent.thread_id == thread_id)
+        )
+        await db.execute(delete(ChatTurn).where(ChatTurn.thread_id == thread_id))
         await db.delete(session)
         await db.commit()
         return True
