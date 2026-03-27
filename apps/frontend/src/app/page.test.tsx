@@ -6,14 +6,26 @@ import React from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
 
 import { AuthProvider } from '@/components/auth/AuthProvider';
-import ChatWorkspace from '@/app/page';
+import ChatWorkspace from '@/components/workspace/WorkspaceRouteRoot';
 
-const replaceMock = vi.fn();
-const pushMock = vi.fn();
+const pathnameSubscribers = new Set<() => void>();
+let mockPathname = '/';
+
+function setMockPathname(nextPath: string) {
+  mockPathname = nextPath;
+  pathnameSubscribers.forEach((callback) => callback());
+}
+
+const replaceMock = vi.fn((nextPath: string) => setMockPathname(nextPath));
+const pushMock = vi.fn((nextPath: string) => setMockPathname(nextPath));
 
 beforeEach(() => {
   replaceMock.mockReset();
   pushMock.mockReset();
+  pathnameSubscribers.clear();
+  mockPathname = '/';
+  replaceMock.mockImplementation((nextPath: string) => setMockPathname(nextPath));
+  pushMock.mockImplementation((nextPath: string) => setMockPathname(nextPath));
 });
 
 vi.mock('next/image', () => ({
@@ -25,6 +37,19 @@ vi.mock('next/navigation', () => ({
     replace: replaceMock,
     push: pushMock,
   }),
+  usePathname: () => {
+    const [pathname, setPathname] = React.useState(mockPathname);
+
+    React.useEffect(() => {
+      const sync = () => setPathname(mockPathname);
+      pathnameSubscribers.add(sync);
+      return () => {
+        pathnameSubscribers.delete(sync);
+      };
+    }, []);
+
+    return pathname;
+  },
 }));
 
 vi.mock('react-markdown', () => ({
@@ -97,7 +122,8 @@ function maybeHandleTelemetryRequest(url: string): Response | null {
   return null;
 }
 
-function renderWorkspace() {
+function renderWorkspace(pathname = '/') {
+  mockPathname = pathname;
   return render(
     <AuthProvider>
       <ChatWorkspace />
@@ -191,6 +217,7 @@ test('hydrates a selected thread and resets to a draft with New Chat', async () 
   renderWorkspace();
 
   await user.click(await screen.findByRole('button', { name: /open thread existing thread/i }));
+  expect(pushMock).toHaveBeenCalledWith('/c/thread-1');
 
   expect(await screen.findByText('Saved user question')).toBeInTheDocument();
   expect(screen.getByAltText('첨부 이미지 1')).toBeInTheDocument();
@@ -206,9 +233,76 @@ test('hydrates a selected thread and resets to a draft with New Chat', async () 
   });
 
   await user.click(screen.getByRole('button', { name: /new chat/i }));
+  expect(pushMock).toHaveBeenCalledWith('/');
 
   expect(await screen.findByText('System Ready')).toBeInTheDocument();
   expect(screen.queryByText('draft_session')).not.toBeInTheDocument();
+});
+
+test('hydrates a thread when directly entering /c/{threadId}', async () => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    const telemetryResponse = maybeHandleTelemetryRequest(url);
+    if (telemetryResponse) {
+      return telemetryResponse;
+    }
+
+    if (url.includes('/api/auth/me')) {
+      return jsonResponse({
+        id: 'user-1',
+        login_id: 'tester',
+        role: 'user',
+        status: 'active',
+        display_name: null,
+        email: null,
+        must_change_password: false,
+      });
+    }
+
+    if (url.includes('/api/threads?limit=50')) {
+      return jsonResponse({ threads: [] });
+    }
+
+    if (url.includes('/api/threads/thread-1')) {
+      return jsonResponse({
+        thread: {
+          thread_id: 'thread-1',
+          title: 'Direct route thread',
+          preview: 'Saved assistant answer',
+          created_at: '2026-03-22T10:00:00Z',
+          last_activity_at: '2026-03-22T10:15:00Z',
+          message_count: 2,
+          latest_status: 'completed',
+          checkpoint_id: 'cp-1',
+          pinned: false,
+          archived: false,
+        },
+        messages: [
+          {
+            id: 'm-1',
+            role: 'user',
+            content: 'Direct route question',
+            created_at: '2026-03-22T10:00:00Z',
+          },
+          {
+            id: 'm-2',
+            role: 'assistant',
+            content: 'Direct route answer',
+            created_at: '2026-03-22T10:01:00Z',
+          },
+        ],
+      });
+    }
+
+    throw new Error(`Unhandled fetch: ${url}`);
+  });
+
+  vi.stubGlobal('fetch', fetchMock);
+
+  renderWorkspace('/c/thread-1');
+
+  expect(await screen.findByText('Direct route question')).toBeInTheDocument();
+  expect(screen.getByText('Direct route answer')).toBeInTheDocument();
 });
 
 test('hydrates historical reasoning summary and suggested queries for a selected thread', async () => {
@@ -669,6 +763,7 @@ test('reuses the selected thread id for follow-up sends and disables switching w
 
   await user.click(await screen.findByRole('button', { name: /open thread primary thread/i }));
   expect(await screen.findByText('Original question')).toBeInTheDocument();
+  expect(pushMock).toHaveBeenCalledWith('/c/thread-1');
 
   await user.type(screen.getByPlaceholderText(/message orchagent/i), 'Follow up request');
   await user.click(screen.getByRole('button', { name: /send message/i }));
@@ -795,6 +890,10 @@ test('starts ai title generation in parallel for a new thread and patches the ti
   const prompt = '웹검색을 통해 RoPE 논문을 탐색하고 메인 연구자가 원하는 바는 무엇인지 설명해주세요.';
   await user.type(await screen.findByPlaceholderText(/message orchagent/i), prompt);
   await user.click(screen.getByRole('button', { name: /send message/i }));
+
+  await waitFor(() => {
+    expect(replaceMock).toHaveBeenCalledWith(`/c/${generatedThreadId}`);
+  });
 
   await waitFor(() => {
     expect(screen.getAllByText('RoPE 논문 탐색').length).toBeGreaterThan(0);
@@ -1740,6 +1839,8 @@ test('marks a thread as errored when a send request fails before streaming start
     expect(screen.getByText('Backend exploded')).toBeInTheDocument();
   });
 
+  expect(replaceMock).not.toHaveBeenCalledWith(expect.stringMatching(/^\/c\//));
+
   expect(screen.getAllByText('Errored').length).toBeGreaterThan(0);
   expect(screen.getByRole('button', { name: /open thread primary thread/i })).toBeEnabled();
 });
@@ -1939,6 +2040,10 @@ test('renames and pins a thread optimistically', async () => {
       return url.endsWith('/api/threads/thread-1') && init?.method === 'PATCH';
     });
     expect(patchCalls.length).toBeGreaterThan(0);
+  });
+
+  await waitFor(() => {
+    expect(screen.getByRole('button', { name: /thread actions/i })).toBeEnabled();
   });
 
   await user.click(screen.getByRole('button', { name: /thread actions/i }));
@@ -2231,6 +2336,7 @@ test('deletes a thread and returns to draft when the active thread is removed', 
   await user.hover(deleteThreadButton);
   await user.click(screen.getByRole('button', { name: /thread actions delete me/i }));
   await user.click(screen.getByRole('button', { name: /delete delete me/i }));
+  expect(replaceMock).toHaveBeenCalledWith('/');
 
   expect(await screen.findByText('System Ready')).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /open thread delete me/i })).not.toBeInTheDocument();

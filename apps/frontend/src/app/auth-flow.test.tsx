@@ -8,12 +8,14 @@ import { beforeEach, expect, test, vi } from 'vitest';
 import { AuthProvider } from '@/components/auth/AuthProvider';
 import LoginPage from '@/app/(auth)/login/page';
 import SignupPage from '@/app/(auth)/signup/page';
-import ChatWorkspace from '@/app/page';
+import ChatWorkspace from '@/components/workspace/WorkspaceRouteRoot';
 
 const replaceMock = vi.fn();
+const pushMock = vi.fn();
 
 beforeEach(() => {
   replaceMock.mockReset();
+  pushMock.mockReset();
 });
 
 vi.mock('next/image', () => ({
@@ -23,7 +25,9 @@ vi.mock('next/image', () => ({
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
     replace: replaceMock,
+    push: pushMock,
   }),
+  usePathname: () => '/',
 }));
 
 vi.mock('react-markdown', () => ({

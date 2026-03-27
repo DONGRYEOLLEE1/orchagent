@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   Send,
   Loader2,
@@ -100,6 +100,23 @@ function appendReasoningEntry(
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
+}
+
+function deriveRouteThreadId(pathname: string): string | null {
+  const match = pathname.match(/^\/c\/([^/?#]+)/);
+  if (!match) {
+    return null;
+  }
+
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return match[1];
+  }
+}
+
+function buildThreadPath(threadId: string): string {
+  return `/c/${encodeURIComponent(threadId)}`;
 }
 // --- Markdown Renderer ---
 const MarkdownContent = ({ content }: { content: string }) => {
@@ -562,11 +579,14 @@ function WorkspaceApp({
   currentUser,
   onLogout,
   onUserUpdated,
+  routeThreadId,
 }: {
   currentUser: AuthUser;
   onLogout: () => Promise<void> | void;
   onUserUpdated: (user: AuthUser) => void;
+  routeThreadId: string | null;
 }) {
+  const router = useRouter();
   const [input, setInput] = useState('');
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [attachmentUploadState, setAttachmentUploadState] = useState<'idle' | 'uploading' | 'error'>('idle');
@@ -589,8 +609,7 @@ function WorkspaceApp({
   const actionSpaceRef = useRef<HTMLDivElement>(null);
   const isInteractionLocked =
     streamSessionState.loading ||
-    streamSessionState.isInterrupted ||
-    activeThreadState.detailLoadState === 'loading';
+    streamSessionState.isInterrupted;
   const isHistoricalView = activeThreadState.viewMode === 'historical';
 
   useEffect(() => {
@@ -649,6 +668,143 @@ function WorkspaceApp({
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!isInteractionLocked) {
+      return;
+    }
+
+    if (!activeThreadState.threadId) {
+      return;
+    }
+
+    if (routeThreadId === activeThreadState.threadId) {
+      return;
+    }
+
+    router.replace(buildThreadPath(activeThreadState.threadId));
+  }, [activeThreadState.threadId, isInteractionLocked, routeThreadId, router]);
+
+  // Route hydration must not depend on intermediate loading state updates,
+  // or the in-flight detail fetch gets cancelled by its own optimistic reset.
+  /* eslint-disable react-hooks/exhaustive-deps */
+  useEffect(() => {
+    if (streamSessionState.loading || streamSessionState.isInterrupted) {
+      return;
+    }
+
+    if (!routeThreadId) {
+      if (
+        !activeThreadState.threadId &&
+        activeThreadState.viewMode === 'draft' &&
+        activeThreadState.messages.length === 0 &&
+        activeThreadState.detailLoadState !== 'error'
+      ) {
+        return;
+      }
+
+      activeThreadIdRef.current = '';
+      pendingTelemetryRequestIdsRef.current = {};
+      pendingSuggestionRequestIdsRef.current = {};
+      setInput('');
+      setSelectedFiles([]);
+      setAttachmentUploadState('idle');
+      setAttachmentError('');
+      setActiveThreadState(createInitialActiveThreadState());
+      setStreamSessionState(createInitialStreamSessionState());
+      setActionSpaceState(createInitialActionSpaceState());
+      setMobileSidebarOpen(false);
+      setAccountPanelOpen(false);
+      return;
+    }
+
+    if (routeThreadId === activeThreadState.threadId) {
+      if (activeThreadState.viewMode === 'live') {
+        return;
+      }
+
+      if (activeThreadState.detailLoadState === 'loading') {
+        return;
+      }
+
+      if (activeThreadState.detailLoadState === 'success' && activeThreadState.messages.length > 0) {
+        return;
+      }
+    }
+
+    let cancelled = false;
+
+    activeThreadIdRef.current = routeThreadId;
+    pendingTelemetryRequestIdsRef.current = {};
+    pendingSuggestionRequestIdsRef.current = {};
+
+    setThreadCollectionState((prev) => ({
+      ...prev,
+      error: '',
+    }));
+    setInput('');
+    setSelectedFiles([]);
+    setAttachmentUploadState('idle');
+    setAttachmentError('');
+    setMobileSidebarOpen(false);
+    setAccountPanelOpen(false);
+    setActiveThreadState({
+      ...createInitialActiveThreadState(),
+      threadId: routeThreadId,
+      detailLoadState: 'loading',
+    });
+    setStreamSessionState(createInitialStreamSessionState());
+    setActionSpaceState({
+      ...createInitialActionSpaceState(),
+      suggestedQueriesState: 'loading',
+    });
+
+    const hydrateThread = async () => {
+      try {
+        const detail = await fetchThreadDetail(routeThreadId);
+        if (cancelled) {
+          return;
+        }
+
+        activeThreadIdRef.current = routeThreadId;
+        setActiveThreadState(createActiveThreadStateFromDetail(detail));
+        setStreamSessionState(createHistoricalStreamSessionState(detail.thread.latest_status));
+        setThreadCollectionState((prev) => ({
+          ...prev,
+          threads: upsertThreadSummary(prev.threads, detail.thread),
+          error: '',
+        }));
+        void loadHistoricalTelemetry(routeThreadId);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        activeThreadIdRef.current = '';
+        setThreadCollectionState((prev) => ({
+          ...prev,
+          error: message,
+        }));
+        setActiveThreadState(createInitialActiveThreadState());
+        setStreamSessionState(createInitialStreamSessionState());
+        setActionSpaceState(createInitialActionSpaceState());
+        router.replace('/');
+      }
+    };
+
+    void hydrateThread();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    routeThreadId,
+    router,
+    streamSessionState.isInterrupted,
+    streamSessionState.loading,
+  ]);
+  /* eslint-enable react-hooks/exhaustive-deps */
 
   const handleAttachmentChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) {
@@ -714,6 +870,7 @@ function WorkspaceApp({
     pendingSuggestionRequestIdsRef.current = {};
     setMobileSidebarOpen(false);
     setAccountPanelOpen(false);
+    router.push('/');
   };
 
   const applyGeneratedThreadTitle = (threadId: string, requestId: string, summary: { title: string }) => {
@@ -932,6 +1089,7 @@ function WorkspaceApp({
       error: '',
     }));
     if (deletingActiveThread) {
+      activeThreadIdRef.current = '';
       setInput('');
       setSelectedFiles([]);
       setAttachmentUploadState('idle');
@@ -939,6 +1097,7 @@ function WorkspaceApp({
       setActiveThreadState(createInitialActiveThreadState());
       setStreamSessionState(createInitialStreamSessionState());
       setActionSpaceState(createInitialActionSpaceState());
+      router.replace('/');
     }
 
     try {
@@ -952,9 +1111,11 @@ function WorkspaceApp({
         error: error instanceof Error ? error.message : 'Unknown error',
       }));
       if (deletingActiveThread) {
+        activeThreadIdRef.current = threadId;
         setActiveThreadState(previousActiveThreadState);
         setStreamSessionState(previousStreamSessionState);
         setActionSpaceState(previousActionSpaceState);
+        router.replace(buildThreadPath(threadId));
       }
     }
   };
@@ -1219,23 +1380,32 @@ function WorkspaceApp({
       return;
     }
 
-    if (threadId === activeThreadState.threadId && activeThreadState.messages.length > 0) {
+    if (threadId === routeThreadId) {
       setMobileSidebarOpen(false);
       return;
     }
 
+    router.push(buildThreadPath(threadId));
     setThreadCollectionState(prev => ({
       ...prev,
       error: '',
     }));
-    setActiveThreadState(prev => ({
-      ...prev,
+    setActiveThreadState({
+      ...createInitialActiveThreadState(),
+      threadId,
       detailLoadState: 'loading',
-    }));
+    });
+    setStreamSessionState(createInitialStreamSessionState());
     setActionSpaceState({
       ...createInitialActionSpaceState(),
       suggestedQueriesState: 'loading',
     });
+    setInput('');
+    setSelectedFiles([]);
+    setAttachmentUploadState('idle');
+    setAttachmentError('');
+    setMobileSidebarOpen(false);
+    setAccountPanelOpen(false);
 
     try {
       const detail = await fetchThreadDetail(threadId);
@@ -1244,15 +1414,9 @@ function WorkspaceApp({
       setStreamSessionState(createHistoricalStreamSessionState(detail.thread.latest_status));
       setThreadCollectionState(prev => ({
         ...prev,
-        threads: patchThreadSummary(prev.threads, detail.thread.thread_id, detail.thread),
+        threads: upsertThreadSummary(prev.threads, detail.thread),
         error: '',
       }));
-      setInput('');
-      setSelectedFiles([]);
-      setAttachmentUploadState('idle');
-      setAttachmentError('');
-      setMobileSidebarOpen(false);
-      setAccountPanelOpen(false);
       void loadHistoricalTelemetry(threadId);
     } catch (error) {
       setActiveThreadState(prev => ({
@@ -1263,6 +1427,7 @@ function WorkspaceApp({
         ...prev,
         error: error instanceof Error ? error.message : 'Unknown error',
       }));
+      router.replace('/');
     }
   };
 
@@ -1341,6 +1506,10 @@ function WorkspaceApp({
         threadId: thread_id,
         attachmentIds: uploadedAttachments.map((attachment) => attachment.id),
       });
+
+      if (isNewThread) {
+        router.replace(buildThreadPath(thread_id));
+      }
 
       if (isNewThread) {
         requestAiThreadTitleUpdate(thread_id, submittedInput);
@@ -1907,9 +2076,11 @@ function WorkspaceApp({
   );
 }
 
-export default function ChatWorkspacePage() {
+export default function WorkspaceRouteRoot() {
   const router = useRouter();
+  const pathname = usePathname();
   const { user, loading, refreshUser, updateUser, logout } = useAuth();
+  const routeThreadId = deriveRouteThreadId(pathname);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -1940,5 +2111,12 @@ export default function ChatWorkspacePage() {
     );
   }
 
-  return <WorkspaceApp currentUser={user} onLogout={handleLogout} onUserUpdated={updateUser} />;
+  return (
+    <WorkspaceApp
+      currentUser={user}
+      onLogout={handleLogout}
+      onUserUpdated={updateUser}
+      routeThreadId={routeThreadId}
+    />
+  );
 }
