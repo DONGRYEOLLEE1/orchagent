@@ -2,7 +2,7 @@
 작업명: Data Science & Analytics Team Plan
 간단요약: 데이터 분석 전용 팀, 일반화된 파일 첨부, Python REPL 기반 시각화 아티팩트 반환을 단계적으로 도입한다.
 작성일시: 2026-03-27 11:27 KST
-최종 수정일시: 2026-03-27 12:06 KST
+최종 수정일시: 2026-03-27 12:12 KST
 ---
 
 # Data Science & Analytics Team 기능 추가 및 첨부 리팩토링 계획
@@ -142,16 +142,16 @@ V1에서 처음 노출할 툴은 작게 유지한다.
 
 ## Phase 3. 데이터 분석 전용 툴 추가
 
-- [ ] `agent-tools`에 `inspect_attachments` 추가
-- [ ] `agent-tools`에 `preview_tabular_file` 추가
-- [ ] `agent-tools`에 `extract_document_text` 추가
-- [ ] `agent-tools`에 `profile_dataframe` 추가
-- [ ] 기존 `python_repl_tool`을 감싼 `python_repl_data_tool` 설계
-- [ ] 분석용 REPL workspace, artifact directory, generated files collection 추가
-- [ ] 허용 라이브러리 preload 규칙 정의
-- [ ] 네트워크 사용 금지, 외부 경로 접근 제한, 파일 수 제한 등 안전장치 추가
-- [ ] assistant artifact 등록용 helper/tool 추가
-- [ ] 관련 pytest 추가 및 통과 확인
+- [x] `agent-tools`에 `inspect_attachments` 추가
+- [x] `agent-tools`에 `preview_tabular_file` 추가
+- [x] `agent-tools`에 `extract_document_text` 추가
+- [x] `agent-tools`에 `profile_dataframe` 추가
+- [x] 기존 `python_repl_tool`을 감싼 `python_repl_data_tool` 설계
+- [x] 분석용 REPL workspace, artifact directory, generated files collection 추가
+- [x] 허용 라이브러리 preload 규칙 정의
+- [x] 네트워크 사용 금지, 외부 경로 접근 제한, 파일 수 제한 등 안전장치 추가
+- [x] assistant artifact 등록용 helper/tool 추가
+- [x] 관련 pytest 추가 및 통과 확인
 
 ## Phase 4. Prompt Kit 확장
 
