@@ -67,6 +67,7 @@ class MemoryService:
         *,
         user_id: str,
         memory_enabled: bool | None = None,
+        instructions_enabled: bool | None = None,
         allow_explicit_memory: bool | None = None,
         allow_inferred_memory: bool | None = None,
         allow_chat_history_reference: bool | None = None,
@@ -75,6 +76,8 @@ class MemoryService:
         settings = await MemoryService.get_or_create_settings(db, user_id)
         if memory_enabled is not None:
             settings.memory_enabled = memory_enabled
+        if instructions_enabled is not None:
+            settings.instructions_enabled = instructions_enabled
         if allow_explicit_memory is not None:
             settings.allow_explicit_memory = allow_explicit_memory
         if allow_inferred_memory is not None:

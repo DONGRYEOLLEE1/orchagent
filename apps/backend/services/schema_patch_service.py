@@ -53,3 +53,14 @@ class SchemaPatchService:
             await db.execute(text(statement))
 
         await db.commit()
+
+    @staticmethod
+    async def ensure_user_memory_settings_columns(db: AsyncSession) -> None:
+        statements = [
+            "ALTER TABLE user_memory_settings ADD COLUMN IF NOT EXISTS instructions_enabled BOOLEAN NOT NULL DEFAULT TRUE",
+        ]
+
+        for statement in statements:
+            await db.execute(text(statement))
+
+        await db.commit()

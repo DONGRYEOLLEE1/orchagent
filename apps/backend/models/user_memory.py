@@ -15,6 +15,7 @@ class UserMemorySettings(Base):
 
     user_id = Column(String, ForeignKey("auth_users.id"), primary_key=True)
     memory_enabled = Column(Boolean, nullable=False, default=True)
+    instructions_enabled = Column(Boolean, nullable=False, default=True)
     allow_explicit_memory = Column(Boolean, nullable=False, default=True)
     allow_inferred_memory = Column(Boolean, nullable=False, default=True)
     allow_chat_history_reference = Column(Boolean, nullable=False, default=True)
@@ -66,6 +67,30 @@ class UserMemoryEntry(Base):
         index=True,
     )
     deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
+
+
+class UserPersonalizationInstruction(Base):
+    __tablename__ = "user_personalization_instructions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(String, ForeignKey("auth_users.id"), nullable=False, index=True)
+    instruction_type = Column(String, nullable=False, index=True)
+    title = Column(String, nullable=False)
+    content_text = Column(Text, nullable=False)
+    enabled = Column(Boolean, nullable=False, default=True, index=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(KST),
+        index=True,
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(KST),
+        onupdate=lambda: datetime.now(KST),
+        index=True,
+    )
 
 
 class MemoryReferenceEvent(Base):
