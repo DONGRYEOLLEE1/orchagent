@@ -2,7 +2,7 @@
 작업명: Personal Memory Custom Instructions Plan
 간단요약: 기존 Personal Memory 화면 하단에 명시적 개인화 지침 목록을 추가하고, backend/frontend/runtime prompt 주입 경로를 memory와 분리된 explicit-instructions 레이어로 단계적으로 확장한다.
 작성일시: 2026-03-28 19:10 KST
-최종 수정일시: 2026-03-30 16:09 KST
+최종 수정일시: 2026-03-30 16:13 KST
 ---
 
 # Personal Memory Custom Instructions Plan
@@ -202,19 +202,19 @@
 
 태스크:
 
-- [ ] personalization policy/renderer에 필요한 문구를 `packages/prompt-kit/src/prompt_kit/prompts.py`로 이동 또는 추가한다.
-- [ ] `packages/agent-core/src/agent_core/personalization.py`를 `profile / instructions / memory` 블록 렌더링 방식으로 확장한다.
-- [ ] `apps/backend/services`에 runtime personalization payload를 조립하는 전용 orchestration service를 추가한다.
-- [ ] `apps/backend/workflow/load_memories.py`가 memory store payload와 explicit instruction payload를 함께 조립하도록 확장한다.
-- [ ] `shared_context.personalization` 구조를 `context_block` 단일 필드에서 분리된 block 중심 구조로 확장한다.
-- [ ] `shared_context.personalization_meta`에 `instruction_ids`, `instruction_count`, `instructions_enabled`를 추가한다.
-- [ ] `packages/agent-core/src/agent_core/supervisor.py`가 새 personalization renderer 출력만 참조하도록 유지한다.
-- [ ] `packages/agent-core/src/agent_core/nodes/finalizer.py`도 같은 renderer 출력만 참조하도록 유지한다.
-- [ ] explicit instruction은 SQL canonical source에서 deterministic order로 로드하고, 기존 `MemoryStoreService`는 soft memory retrieval만 담당하도록 경계를 명확히 한다.
-- [ ] current-turn override 규칙을 prompt policy와 테스트 양쪽에 반영한다.
-- [ ] prompt injection 범위를 벗어나는 instruction text가 저장/렌더링되지 않도록 validator를 service layer에 추가한다.
-- [ ] `test_load_memories_node.py`를 확장해 instruction payload merge를 검증한다.
-- [ ] `test_supervisor.py`와 `test_finalizer_node.py`에 personalization block 반영 여부를 캡처하는 테스트를 추가한다.
+- [x] personalization policy/renderer에 필요한 문구를 `packages/prompt-kit/src/prompt_kit/prompts.py`로 이동 또는 추가한다.
+- [x] `packages/agent-core/src/agent_core/personalization.py`를 `profile / instructions / memory` 블록 렌더링 방식으로 확장한다.
+- [x] `apps/backend/services`에 runtime personalization payload를 조립하는 전용 orchestration service를 추가한다.
+- [x] `apps/backend/workflow/load_memories.py`가 memory store payload와 explicit instruction payload를 함께 조립하도록 확장한다.
+- [x] `shared_context.personalization` 구조를 `context_block` 단일 필드에서 분리된 block 중심 구조로 확장한다.
+- [x] `shared_context.personalization_meta`에 `instruction_ids`, `instruction_count`, `instructions_enabled`를 추가한다.
+- [x] `packages/agent-core/src/agent_core/supervisor.py`가 새 personalization renderer 출력만 참조하도록 유지한다.
+- [x] `packages/agent-core/src/agent_core/nodes/finalizer.py`도 같은 renderer 출력만 참조하도록 유지한다.
+- [x] explicit instruction은 SQL canonical source에서 deterministic order로 로드하고, 기존 `MemoryStoreService`는 soft memory retrieval만 담당하도록 경계를 명확히 한다.
+- [x] current-turn override 규칙을 prompt policy와 테스트 양쪽에 반영한다.
+- [x] prompt injection 범위를 벗어나는 instruction text가 저장/렌더링되지 않도록 validator를 service layer에 추가한다.
+- [x] `test_load_memories_node.py`를 확장해 instruction payload merge를 검증한다.
+- [x] `test_supervisor.py`와 `test_finalizer_node.py`에 personalization block 반영 여부를 캡처하는 테스트를 추가한다.
 
 검증 기준:
 

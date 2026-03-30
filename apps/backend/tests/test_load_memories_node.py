@@ -16,34 +16,38 @@ async def test_load_memories_node_skips_when_user_missing():
 async def test_load_memories_node_populates_personalization(monkeypatch):
     node = make_load_memories_node()
 
-    async def fake_get_or_create_settings(db, user_id):
-        return type(
-            "Settings",
-            (),
-            {
-                "memory_enabled": True,
-                "allow_chat_history_reference": True,
+    async def fake_build_runtime_payload(db, *, user_id, thread_id):
+        assert user_id == "user-1"
+        assert thread_id == "thread-1"
+        return {
+            "personalization": {
+                "enabled": True,
+                "profile_block": "- 직업: AI Engineer",
+                "instructions_block": "- 설명 방식: 추상 개념은 예시와 함께 설명한다",
+                "memory_block": "- [personal_interest] 가수 백예린을 굉장히 좋아한다",
+                "context_block": "- [personal_interest] 가수 백예린을 굉장히 좋아한다",
             },
-        )()
-
-    monkeypatch.setattr("workflow.load_memories.MemoryService.get_or_create_settings", fake_get_or_create_settings)
-    async def fake_count_active_memories(db, *, user_id):
-        return 1
+            "personalization_meta": {
+                "memory_ids": ["00000000-0000-0000-0000-000000000001"],
+                "hit_count": 1,
+                "active_memory_count": 1,
+                "source": "hybrid_personalization",
+                "summary_used": True,
+                "recent_used": False,
+                "cache_hit": False,
+                "hit_miss": "hit",
+                "context_chars": 32,
+                "instruction_ids": ["00000000-0000-0000-0000-000000000010"],
+                "instruction_count": 1,
+                "instructions_enabled": True,
+                "profile_count": 1,
+                "response_preference_count": 1,
+            },
+        }
 
     monkeypatch.setattr(
-        "workflow.load_memories.MemoryService.count_active_memories",
-        fake_count_active_memories,
-    )
-    monkeypatch.setattr(
-        "workflow.load_memories.MemoryStoreService.build_personalization_payload",
-        lambda *, user_id, thread_id: {
-            "context_block": "- [personal_interest] 가수 백예린을 굉장히 좋아한다",
-            "memory_ids": [],
-            "hit_count": 0,
-            "summary_used": True,
-            "recent_used": False,
-            "cache_hit": False,
-        },
+        "workflow.load_memories.PersonalizationService.build_runtime_payload",
+        fake_build_runtime_payload,
     )
 
     command = await node(
@@ -57,31 +61,57 @@ async def test_load_memories_node_populates_personalization(monkeypatch):
 
     assert command.goto == "planner"
     assert (
-        command.update["shared_context"]["personalization"]["context_block"]
+        command.update["shared_context"]["personalization"]["profile_block"]
+        == "- 직업: AI Engineer"
+    )
+    assert (
+        command.update["shared_context"]["personalization"]["instructions_block"]
+        == "- 설명 방식: 추상 개념은 예시와 함께 설명한다"
+    )
+    assert (
+        command.update["shared_context"]["personalization"]["memory_block"]
         == "- [personal_interest] 가수 백예린을 굉장히 좋아한다"
     )
     assert command.update["shared_context"]["personalization_meta"]["summary_used"] is True
+    assert command.update["shared_context"]["personalization_meta"]["instruction_count"] == 1
+    assert command.update["shared_context"]["personalization_meta"]["retrieval_ms"] >= 0
 
 
 @pytest.mark.asyncio
-async def test_load_memories_node_short_circuits_when_no_active_memory(monkeypatch):
+async def test_load_memories_node_handles_instruction_only_payload(monkeypatch):
     node = make_load_memories_node()
 
-    async def fake_get_or_create_settings(db, user_id):
-        return type(
-            "Settings",
-            (),
-            {
-                "memory_enabled": True,
-                "allow_chat_history_reference": True,
+    async def fake_build_runtime_payload(db, *, user_id, thread_id):
+        return {
+            "personalization": {
+                "enabled": True,
+                "profile_block": "",
+                "instructions_block": "- 답변 언어: 한국어 답변을 선호한다",
+                "memory_block": "",
+                "context_block": "",
             },
-        )()
+            "personalization_meta": {
+                "memory_ids": [],
+                "hit_count": 0,
+                "active_memory_count": 0,
+                "source": "sql_personalization_instructions",
+                "summary_used": False,
+                "recent_used": False,
+                "cache_hit": False,
+                "hit_miss": "miss",
+                "context_chars": 0,
+                "instruction_ids": ["00000000-0000-0000-0000-000000000020"],
+                "instruction_count": 1,
+                "instructions_enabled": True,
+                "profile_count": 0,
+                "response_preference_count": 1,
+            },
+        }
 
-    async def fake_count_active_memories(db, *, user_id):
-        return 0
-
-    monkeypatch.setattr("workflow.load_memories.MemoryService.get_or_create_settings", fake_get_or_create_settings)
-    monkeypatch.setattr("workflow.load_memories.MemoryService.count_active_memories", fake_count_active_memories)
+    monkeypatch.setattr(
+        "workflow.load_memories.PersonalizationService.build_runtime_payload",
+        fake_build_runtime_payload,
+    )
 
     command = await node(
         {
@@ -93,5 +123,6 @@ async def test_load_memories_node_short_circuits_when_no_active_memory(monkeypat
     )
 
     assert command.goto == "planner"
-    assert command.update["shared_context"]["personalization_meta"]["source"] == "empty"
+    assert command.update["shared_context"]["personalization_meta"]["source"] == "sql_personalization_instructions"
     assert command.update["shared_context"]["personalization_meta"]["active_memory_count"] == 0
+    assert command.update["shared_context"]["personalization"]["instructions_block"] != ""

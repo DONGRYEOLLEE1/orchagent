@@ -7,8 +7,7 @@ from langgraph.types import Command
 from agent_core.state import BaseAgentState
 from core.database import AsyncSessionLocal
 from core.timezone import now_kst
-from services.memory_service import MemoryService
-from services.memory_store_service import MemoryStoreService
+from services.personalization_service import PersonalizationService
 
 
 def make_load_memories_node() -> Callable:
@@ -22,76 +21,23 @@ def make_load_memories_node() -> Callable:
             return Command(goto="planner")
 
         async with AsyncSessionLocal() as db:
-            settings = await MemoryService.get_or_create_settings(db, user_id)
-            if not settings.memory_enabled or not settings.allow_chat_history_reference:
-                return Command(
-                    update={
-                        "shared_context": {
-                            "personalization": {
-                                "enabled": False,
-                                "context_block": "",
-                            },
-                            "personalization_meta": {
-                                "memory_ids": [],
-                                "hit_count": 0,
-                                "source": "disabled",
-                                "retrieval_ms": 0,
-                            },
-                        }
-                    },
-                    goto="planner",
-                )
-            active_count = await MemoryService.count_active_memories(db, user_id=user_id)
-            if active_count == 0:
-                return Command(
-                    update={
-                        "shared_context": {
-                            "personalization": {
-                                "enabled": True,
-                                "context_block": "",
-                            },
-                            "personalization_meta": {
-                                "memory_ids": [],
-                                "hit_count": 0,
-                                "active_memory_count": 0,
-                                "source": "empty",
-                                "retrieval_ms": 0,
-                            },
-                        }
-                    },
-                    goto="planner",
-                )
+            runtime_payload = await PersonalizationService.build_runtime_payload(
+                db,
+                user_id=user_id,
+                thread_id=thread_id,
+            )
 
-        personalization_payload = MemoryStoreService.build_personalization_payload(
-            user_id=user_id,
-            thread_id=thread_id,
-        )
-        context_block = personalization_payload["context_block"]
-        memory_ids = personalization_payload["memory_ids"]
         retrieval_ms = max(
             int((now_kst() - started_at).total_seconds() * 1000),
             0,
         )
+        runtime_payload["personalization_meta"]["retrieval_ms"] = retrieval_ms
 
         return Command(
             update={
                 "shared_context": {
-                    "personalization": {
-                        "enabled": True,
-                        "context_block": context_block,
-                    },
-                    "personalization_meta": {
-                        "memory_ids": [str(memory_id) for memory_id in memory_ids],
-                        "hit_count": len(memory_ids),
-                        "active_memory_count": active_count,
-                        "source": "langgraph_postgres_store",
-                        "summary_used": personalization_payload.get("summary_used", False),
-                        "recent_used": personalization_payload.get("recent_used", False),
-                        "cache_hit": personalization_payload.get("cache_hit", False),
-                        "hit_miss": "hit" if memory_ids else "miss",
-                        "context_chars": len(context_block),
-                        "retrieval_ms": retrieval_ms,
-                    },
+                    "personalization": runtime_payload["personalization"],
+                    "personalization_meta": runtime_payload["personalization_meta"],
                 }
             },
             goto="planner",

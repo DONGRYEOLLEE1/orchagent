@@ -45,6 +45,24 @@ class DirectFinishLLM:
         }
 
 
+class CapturingRouterLLM:
+    def __init__(self, next_node: str):
+        self.next_node = next_node
+        self.captured_messages = None
+
+    def with_structured_output(self, schema):
+        return self
+
+    async def ainvoke(self, messages):
+        self.captured_messages = messages
+        return {
+            "next": self.next_node,
+            "reasoning": "captured",
+            "content": "",
+            "requires_approval": False,
+        }
+
+
 @pytest.mark.asyncio
 async def test_supervisor_routes_to_worker():
     """Test if supervisor returns a Command object routing to the requested worker."""
@@ -255,6 +273,43 @@ async def test_head_supervisor_does_not_loop_back_to_data_science_team():
 
     assert command.goto == "__end__"
     assert command.update["response_mode"] == "direct"
+
+
+@pytest.mark.asyncio
+async def test_head_supervisor_includes_split_personalization_blocks_in_system_prompt():
+    fake_llm = CapturingRouterLLM("research_team")
+    supervisor_func = make_supervisor_node(
+        fake_llm,  # type: ignore[arg-type]
+        ["research_team", "writing_team", "vision_team", "data_science_team"],
+        layer="head",
+        final_node_name="finalizer",
+    )
+
+    state = cast(
+        BaseAgentState,
+        {
+            "messages": [HumanMessage(content="최근 LLM 동향을 조사해줘")],
+            "shared_context": {
+                "personalization": {
+                    "enabled": True,
+                    "profile_block": "- 직업: AI Engineer",
+                    "instructions_block": "- 답변 길이: 기본적으로 간결한 답변을 선호한다",
+                    "memory_block": "- [technical_stack] LangGraph와 LangChain을 자주 다룬다",
+                }
+            },
+            "next": "",
+        },
+    )
+
+    command = await supervisor_func(state)
+
+    assert command.goto == "research_team"
+    assert fake_llm.captured_messages is not None
+    system_prompt = fake_llm.captured_messages[0]["content"]
+    assert "USER PERSONALIZATION PROFILE" in system_prompt
+    assert "USER RESPONSE PREFERENCES" in system_prompt
+    assert "USER MEMORY NOTES" in system_prompt
+    assert "The latest user request in the current turn overrides saved personalization." in system_prompt
 
 
 @pytest.mark.asyncio
