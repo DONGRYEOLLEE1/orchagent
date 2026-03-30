@@ -81,7 +81,7 @@ def _build_simple_research_plan(user_text: str) -> str | None:
 
     return (
         "1. [research_team] 사용자 요청을 답할 만큼만 신뢰할 수 있는 최신 자료를 조사한다.\n"
-        "2. [writing_team] 조사 결과를 바탕으로 요청한 언어/분량/형식에 맞춰 최종 답변을 작성한다."
+        "2. 조사 결과를 바탕으로 최종 답변을 완성한다."
     )
 
 

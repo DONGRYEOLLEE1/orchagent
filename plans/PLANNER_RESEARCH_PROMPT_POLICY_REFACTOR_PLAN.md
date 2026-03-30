@@ -2,7 +2,7 @@
 작업명: Planner Research Prompt Policy Refactor Plan
 간단요약: planner와 research team의 프롬프트 계약을 재정렬해 불필요한 handoff, worker-tool mismatch, research routing 불안정을 줄인다.
 작성일시: 2026-03-30 17:56 KST
-최종 수정일시: 2026-03-30 18:00 KST
+최종 수정일시: 2026-03-30 18:02 KST
 ---
 
 # Planner / Research Prompt Policy Refactor Plan
@@ -139,8 +139,8 @@
 
 ## Phase 2. Planner Policy Alignment
 
-- [ ] `PLANNER_PROMPT`와 `planner.py` 휴리스틱을 수정해 simple research-answer 기본 전략을 `research -> final synthesis`로 정렬하고, writing deliverable이 명시된 경우에만 `writing_team`이 들어가도록 재정의한다.
-- [ ] planner 관련 회귀 테스트를 보강해 canonical team token과 lightweight planning 조건을 검증한다.
+- [x] `PLANNER_PROMPT`와 `planner.py` 휴리스틱을 수정해 simple research-answer 기본 전략을 `research -> final synthesis`로 정렬하고, writing deliverable이 명시된 경우에만 `writing_team`이 들어가도록 재정의한다.
+- [x] planner 관련 회귀 테스트를 보강해 canonical team token과 lightweight planning 조건을 검증한다.
 
 ## Phase 3. Supervisor Consistency and Regression
 

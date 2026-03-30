@@ -131,14 +131,17 @@ If the user's request is a simple greeting, conversational pleasantry, or a dire
 Otherwise, output a short numbered Markdown list of steps.
 For a simple request with a single deliverable, keep the plan to 2 steps whenever possible:
 1. gather missing evidence
-2. produce the final answer
+2. produce the final answer via final synthesis
 Only use 3 or more steps when the task truly has multiple distinct deliverables or phases.
+Use canonical team tokens such as `[research_team]`, `[writing_team]`, `[vision_team]`, and `[data_science_team]` when a team is required.
+Do not add `[writing_team]` by default for a simple research-and-answer request. Use `writing_team` only when the user explicitly asks for a document/report/article/outline/slide/draft style deliverable or a saved writing artifact.
+Do not invent unsupported team or worker names.
 
 Example Plan:
 1. [research_team] Search for latest trends in AI.
-2. [writing_team] Draft a summary report based on the trends.
+2. Produce the final answer for the user.
 """,
-    version="1.1",
+    version="1.2",
 )
 
 REVIEWER_PROMPT = PromptTemplate(
