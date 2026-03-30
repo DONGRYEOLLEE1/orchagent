@@ -2,7 +2,7 @@
 작업명: Planner Research Prompt Policy Refactor Plan
 간단요약: planner와 research team의 프롬프트 계약을 재정렬해 불필요한 handoff, worker-tool mismatch, research routing 불안정을 줄인다.
 작성일시: 2026-03-30 17:56 KST
-최종 수정일시: 2026-03-30 18:04 KST
+최종 수정일시: 2026-03-30 18:05 KST
 ---
 
 # Planner / Research Prompt Policy Refactor Plan
@@ -149,7 +149,7 @@
 
 ## Phase 4. Hardening and Evaluation
 
-- [ ] 최신성/source-quality 규칙, unnecessary `writing_team` handoff 감소, existing SSE/finalizer 계약 유지까지 포함한 회귀 테스트를 추가하고 전체 관련 테스트를 통과시킨다.
+- [x] 최신성/source-quality 규칙, unnecessary `writing_team` handoff 감소, existing SSE/finalizer 계약 유지까지 포함한 회귀 테스트를 추가하고 전체 관련 테스트를 통과시킨다.
 
 ## 완료 기준
 
