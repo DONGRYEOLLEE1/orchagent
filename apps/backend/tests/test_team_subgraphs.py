@@ -4,8 +4,13 @@ import pytest
 
 from agent_core.builder import TeamBuilder
 from agent_core.state import BaseAgentState
-from workflow.teams.research import get_research_graph
+from workflow.teams.research import ResearchTeamBuilder, get_research_graph
 from workflow.teams.writing import get_writing_graph
+from prompt_kit.prompts import (
+    RESEARCH_TEAM_SUPERVISOR_PROMPT,
+    SEARCH_WORKER_PROMPT,
+    WEB_SCRAPER_PROMPT,
+)
 
 
 class DummyTeamBuilder(TeamBuilder):
@@ -40,6 +45,37 @@ def test_team_builder_registers_native_worker_subgraphs(monkeypatch):
     assert "worker_b" in graph.nodes
     assert ("worker_a", "supervisor") in edges
     assert ("worker_b", "supervisor") in edges
+
+
+def test_research_team_builder_uses_split_worker_prompts(monkeypatch):
+    created = []
+
+    def fake_create_agent(
+        *, model, tools=None, system_prompt=None, state_schema=None, name=None, **kwargs
+    ):
+        created.append(
+            {
+                "name": name,
+                "system_prompt": system_prompt,
+            }
+        )
+        return lambda state: {}
+
+    monkeypatch.setattr("agent_core.builder.create_agent", fake_create_agent)
+
+    builder = ResearchTeamBuilder(object(), "ResearchTeam", ["search", "web_scraper"])  # type: ignore[arg-type]
+    builder.register_nodes()
+
+    assert created == [
+        {
+            "name": "search",
+            "system_prompt": SEARCH_WORKER_PROMPT.template,
+        },
+        {
+            "name": "web_scraper",
+            "system_prompt": WEB_SCRAPER_PROMPT.template,
+        },
+    ]
 
 
 @pytest.mark.parametrize(
@@ -84,16 +120,34 @@ def test_team_graphs_use_configured_dispatch_limits(
 ):
     captured: dict[str, object] = {}
 
-    def fake_build(self, with_validator=False, max_team_dispatches=None):
+    def fake_build(
+        self,
+        with_validator=False,
+        max_team_dispatches=None,
+        system_prompt_template=None,
+    ):
         captured["with_validator"] = with_validator
         captured["max_team_dispatches"] = max_team_dispatches
+        captured["system_prompt_template"] = system_prompt_template
         return "compiled-graph"
 
     monkeypatch.setattr(builder_path, fake_build)
     monkeypatch.setattr(settings_path, configured_limit)
 
     assert factory(object()) == "compiled-graph"
-    assert captured == {
+    expected = {
         "with_validator": True,
         "max_team_dispatches": configured_limit,
+        "system_prompt_template": None,
     }
+    if "research" in builder_path:
+        expected["system_prompt_template"] = RESEARCH_TEAM_SUPERVISOR_PROMPT.template
+    assert captured == expected
+
+
+def test_research_team_supervisor_prompt_encodes_search_then_scrape_order():
+    prompt = RESEARCH_TEAM_SUPERVISOR_PROMPT.template
+
+    assert "Start with `search`" in prompt
+    assert "Use `web_scraper` only after `search`" in prompt
+    assert "Do not call `web_scraper` first" in prompt
