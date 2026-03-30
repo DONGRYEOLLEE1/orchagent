@@ -23,6 +23,8 @@ class ResearchTeamBuilder(TeamBuilder):
 
 
 def get_research_graph(llm):
+    # Research keeps a dedicated supervisor contract because its workers have a
+    # natural evidence-gathering order: search first, scrape only when needed.
     return ResearchTeamBuilder(llm, "ResearchTeam", ["search", "web_scraper"]).build(
         with_validator=True,
         max_team_dispatches=settings.RESEARCH_TEAM_MAX_DISPATCHES,

@@ -730,6 +730,65 @@ async def test_head_supervisor_clears_content_on_finish_override():
 
 
 @pytest.mark.asyncio
+async def test_head_supervisor_routes_completed_research_only_plan_to_finalizer():
+    fake_llm = FakeRouterLLM("FINISH")
+    supervisor_func = make_supervisor_node(
+        fake_llm,  # type: ignore[arg-type]
+        ["research_team", "writing_team", "vision_team"],
+        layer="head",
+        final_node_name="finalizer",
+    )
+
+    state = cast(
+        BaseAgentState,
+        {
+            "messages": [HumanMessage(content="최신 AI 반도체 동향을 조사해서 설명해줘")],
+            "next": "",
+            "task_plan": "1. [research_team] 필요한 최신 근거를 조사한다.\n2. 최종 답변을 완성한다.",
+            "route_history": [
+                build_route_entry(
+                    layer="team",
+                    node="supervisor",
+                    next_node="FINISH",
+                    team="research",
+                )
+            ],
+        },
+    )
+
+    command = await supervisor_func(state)
+
+    assert command.goto == "finalizer"
+    assert command.update["response_mode"] == "finalizer"
+    assert command.update["route_history"][0]["next"] == "finalizer"
+
+
+@pytest.mark.asyncio
+async def test_head_supervisor_prompt_discourages_writing_team_for_simple_research_answer():
+    fake_llm = CapturingRouterLLM("research_team")
+    supervisor_func = make_supervisor_node(
+        fake_llm,  # type: ignore[arg-type]
+        ["research_team", "writing_team", "vision_team"],
+        layer="head",
+        final_node_name="finalizer",
+    )
+
+    state = cast(
+        BaseAgentState,
+        {
+            "messages": [HumanMessage(content="최신 AI 반도체 동향을 조사해서 설명해줘")],
+            "next": "",
+        },
+    )
+
+    await supervisor_func(state)
+
+    assert fake_llm.captured_messages is not None
+    system_prompt = fake_llm.captured_messages[0]["content"]
+    assert "Do NOT route to `writing_team` by default after `research_team`" in system_prompt
+
+
+@pytest.mark.asyncio
 async def test_research_team_supervisor_stops_after_dispatch_limit():
     fake_llm = FakeRouterLLM("search_agent")
     supervisor_func = make_supervisor_node(

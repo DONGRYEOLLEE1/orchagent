@@ -2,7 +2,7 @@
 작업명: Planner Research Prompt Policy Refactor Plan
 간단요약: planner와 research team의 프롬프트 계약을 재정렬해 불필요한 handoff, worker-tool mismatch, research routing 불안정을 줄인다.
 작성일시: 2026-03-30 17:56 KST
-최종 수정일시: 2026-03-30 18:02 KST
+최종 수정일시: 2026-03-30 18:04 KST
 ---
 
 # Planner / Research Prompt Policy Refactor Plan
@@ -144,8 +144,8 @@
 
 ## Phase 3. Supervisor Consistency and Regression
 
-- [ ] `SYSTEM_SUPERVISOR_PROMPT`와 research 전용 supervisor prompt의 책임 경계를 정리하고, head supervisor가 research evidence만으로 충분한 경우 finalizer로 자연스럽게 넘어가는지 관련 테스트를 추가한다.
-- [ ] workflow/team wiring 테스트를 보강해 research team prompt wiring이 유지되는지 검증한다.
+- [x] `SYSTEM_SUPERVISOR_PROMPT`와 research 전용 supervisor prompt의 책임 경계를 정리하고, head supervisor가 research evidence만으로 충분한 경우 finalizer로 자연스럽게 넘어가는지 관련 테스트를 추가한다.
+- [x] workflow/team wiring 테스트를 보강해 research team prompt wiring이 유지되는지 검증한다.
 
 ## Phase 4. Hardening and Evaluation
 

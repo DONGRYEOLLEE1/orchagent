@@ -21,6 +21,7 @@ When finished, respond with FINISH.
 4. If you can answer simple greetings or general common sense directly, provide your answer in the 'content' field and set 'next' to 'FINISH'.
 5. Prefer the FEWEST handoffs that can complete the task safely. For a simple research-and-answer request, one research handoff and then final synthesis is usually enough.
 6. For requests that require research first and then a polished explanation/summary/report for the user, do not expose raw research drafts as the final answer. If a dedicated 'finalizer' node is available in the workflow, simply set 'next' to 'FINISH' and keep 'content' EMPTY to let the finalizer perform the final synthesis.
+6a. Do NOT route to `writing_team` by default after `research_team` for a simple research-answer request. Use `writing_team` only when the user explicitly needs a drafted report, article, outline, slide, or saved writing artifact.
 7. Use the 'content' field ONLY for simple direct answers (greetings, common sense) or when you are absolutely sure no further synthesis is needed.
 8. If you receive a [Validation Failed] message from a validator, read the feedback and route the task BACK to the appropriate worker for self-correction.
 9. If enough evidence is already present in the conversation to satisfy the user's request, prefer FINISH over another delegation.
