@@ -2,13 +2,13 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import { BrainCircuit, KeyRound, UserCircle2 } from 'lucide-react';
+import { BrainCircuit, Sparkles, UserCircle2 } from 'lucide-react';
 
 import type { AuthUser } from '@/types/auth';
 import { AccountDrawer } from '@/components/workspace/AccountDrawer';
 import { WorkspaceTopNav } from '@/components/workspace/WorkspaceTopNav';
 
-type SettingsSection = 'profile' | 'personal-memory';
+type SettingsSection = 'profile' | 'personal-memory' | 'personalization';
 
 const SECTIONS: Array<{
   id: SettingsSection;
@@ -28,8 +28,15 @@ const SECTIONS: Array<{
     id: 'personal-memory',
     href: '/settings/personal-memory',
     label: 'Personal Memory',
-    description: 'Durable preferences and personalization memory',
+    description: 'Durable preferences and remembered tendencies',
     icon: BrainCircuit,
+  },
+  {
+    id: 'personalization',
+    href: '/settings/personalization',
+    label: 'Personalization',
+    description: 'About-you context and response style defaults',
+    icon: Sparkles,
   },
 ];
 
@@ -75,14 +82,11 @@ export function SettingsShell({
             <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[rgba(143,245,255,0.72)]">
               Settings
             </div>
-            <div className="mt-3 font-[var(--font-display)] text-[28px] font-semibold tracking-[-0.05em] text-white">
-              Account Control
-            </div>
-            <p className="mt-2 max-w-[22rem] text-[13px] leading-6 text-[rgba(170,170,179,0.76)]">
-              Profile identity, credential posture, and personalization memory all live here in one consistent control surface.
+            <p className="mt-3 max-w-[22rem] text-[13px] leading-6 text-[rgba(170,170,179,0.76)]">
+              Manage your AI core
             </p>
 
-            <div className="mt-8 space-y-2">
+            <div className="mt-6 space-y-2">
               {SECTIONS.map((section) => {
                 const Icon = section.icon;
                 const active = section.id === activeSection;
@@ -115,16 +119,6 @@ export function SettingsShell({
                 );
               })}
             </div>
-
-            <div className="mt-8 rounded-[18px] border border-[rgba(255,255,255,0.05)] bg-[rgba(255,255,255,0.03)] px-4 py-4">
-              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[rgba(143,245,255,0.72)]">
-                <KeyRound size={13} />
-                Security Posture
-              </div>
-              <div className="mt-3 text-[13px] leading-6 text-[rgba(170,170,179,0.74)]">
-                Password rotation stays separated from profile identity so credential changes remain visible, deliberate, and reversible.
-              </div>
-            </div>
           </div>
         </aside>
 
@@ -132,7 +126,7 @@ export function SettingsShell({
           <div className="rounded-[28px] border border-[rgba(255,255,255,0.06)] bg-[rgba(11,14,22,0.78)] px-6 py-6 shadow-[0_30px_90px_rgba(0,0,0,0.38)] backdrop-blur-xl md:px-8 md:py-8">
             <div className="max-w-[48rem]">
               <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[rgba(143,245,255,0.72)]">
-                Settings / {activeSection === 'profile' ? 'Profile' : 'Personal Memory'}
+                Settings / {SECTIONS.find((section) => section.id === activeSection)?.label || 'Settings'}
               </div>
               <h1 className="mt-3 font-[var(--font-display)] text-[34px] font-semibold tracking-[-0.06em] text-white md:text-[42px]">
                 {title}
