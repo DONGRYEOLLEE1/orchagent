@@ -1,6 +1,7 @@
 export interface UserMemorySettings {
   user_id: string;
   memory_enabled: boolean;
+  instructions_enabled: boolean;
   allow_explicit_memory: boolean;
   allow_inferred_memory: boolean;
   allow_chat_history_reference: boolean;
@@ -24,4 +25,17 @@ export interface PersonalMemoryEntry {
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
+}
+
+export type PersonalizationInstructionType = 'response_style' | 'user_profile';
+
+export interface PersonalizationInstruction {
+  id: string;
+  user_id: string;
+  instruction_type: PersonalizationInstructionType;
+  title: string;
+  content_text: string;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
 }

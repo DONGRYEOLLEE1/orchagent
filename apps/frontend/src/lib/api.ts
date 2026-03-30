@@ -4,7 +4,12 @@ import type {
   DashboardLiveTracesResponse,
   DashboardSummary,
 } from '@/types/dashboard';
-import type { PersonalMemoryEntry, UserMemorySettings } from '@/types/memory';
+import type {
+  PersonalMemoryEntry,
+  PersonalizationInstruction,
+  PersonalizationInstructionType,
+  UserMemorySettings,
+} from '@/types/memory';
 import type { ThreadDetail, ThreadSummary, ThreadTelemetry } from '@/types/thread';
 
 const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8002').replace(/\/$/, '');
@@ -310,8 +315,13 @@ export async function fetchMemorySettings(): Promise<UserMemorySettings> {
   return requestJson<UserMemorySettings>('/api/users/me/memory/settings');
 }
 
+export async function fetchPersonalizationSettings(): Promise<UserMemorySettings> {
+  return requestJson<UserMemorySettings>('/api/users/me/personalization/settings');
+}
+
 export async function patchMemorySettings(params: {
   memoryEnabled?: boolean;
+  instructionsEnabled?: boolean;
   allowExplicitMemory?: boolean;
   allowInferredMemory?: boolean;
   allowChatHistoryReference?: boolean;
@@ -322,10 +332,23 @@ export async function patchMemorySettings(params: {
     includeCsrf: true,
     body: {
       memory_enabled: params.memoryEnabled,
+      instructions_enabled: params.instructionsEnabled,
       allow_explicit_memory: params.allowExplicitMemory,
       allow_inferred_memory: params.allowInferredMemory,
       allow_chat_history_reference: params.allowChatHistoryReference,
       default_memory_mode: params.defaultMemoryMode,
+    },
+  });
+}
+
+export async function patchPersonalizationSettings(params: {
+  instructionsEnabled?: boolean;
+}): Promise<UserMemorySettings> {
+  return requestJson<UserMemorySettings>('/api/users/me/personalization/settings', {
+    method: 'PATCH',
+    includeCsrf: true,
+    body: {
+      instructions_enabled: params.instructionsEnabled,
     },
   });
 }
@@ -340,6 +363,63 @@ export async function deletePersonalMemory(memoryId: string): Promise<void> {
     method: 'DELETE',
     includeCsrf: true,
   });
+}
+
+export async function fetchPersonalizationInstructions(): Promise<PersonalizationInstruction[]> {
+  const payload = await requestJson<{ instructions: PersonalizationInstruction[] }>(
+    '/api/users/me/personalization/instructions'
+  );
+  return payload.instructions;
+}
+
+export async function createPersonalizationInstruction(params: {
+  instructionType: PersonalizationInstructionType;
+  title: string;
+  contentText: string;
+  enabled?: boolean;
+}): Promise<PersonalizationInstruction> {
+  return requestJson<PersonalizationInstruction>('/api/users/me/personalization/instructions', {
+    method: 'POST',
+    includeCsrf: true,
+    body: {
+      instruction_type: params.instructionType,
+      title: params.title,
+      content_text: params.contentText,
+      enabled: params.enabled ?? true,
+    },
+  });
+}
+
+export async function updatePersonalizationInstruction(params: {
+  instructionId: string;
+  instructionType?: PersonalizationInstructionType;
+  title?: string;
+  contentText?: string;
+  enabled?: boolean;
+}): Promise<PersonalizationInstruction> {
+  return requestJson<PersonalizationInstruction>(
+    `/api/users/me/personalization/instructions/${encodeURIComponent(params.instructionId)}`,
+    {
+      method: 'PATCH',
+      includeCsrf: true,
+      body: {
+        instruction_type: params.instructionType,
+        title: params.title,
+        content_text: params.contentText,
+        enabled: params.enabled,
+      },
+    }
+  );
+}
+
+export async function deletePersonalizationInstruction(instructionId: string): Promise<void> {
+  await requestNoContent(
+    `/api/users/me/personalization/instructions/${encodeURIComponent(instructionId)}`,
+    {
+      method: 'DELETE',
+      includeCsrf: true,
+    }
+  );
 }
 
 export async function sendChatStream(params: {

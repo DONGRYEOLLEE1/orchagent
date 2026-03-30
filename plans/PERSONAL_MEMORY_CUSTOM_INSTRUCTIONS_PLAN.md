@@ -2,7 +2,7 @@
 작업명: Personal Memory Custom Instructions Plan
 간단요약: 기존 Personal Memory 화면 하단에 명시적 개인화 지침 목록을 추가하고, backend/frontend/runtime prompt 주입 경로를 memory와 분리된 explicit-instructions 레이어로 단계적으로 확장한다.
 작성일시: 2026-03-28 19:10 KST
-최종 수정일시: 2026-03-30 16:13 KST
+최종 수정일시: 2026-03-30 16:18 KST
 ---
 
 # Personal Memory Custom Instructions Plan
@@ -231,16 +231,16 @@
 
 태스크:
 
-- [ ] 프런트 타입을 `memory.ts` 확장 또는 새 `personalization.ts` 분리 방식으로 정리한다.
-- [ ] `apps/frontend/src/lib/api.ts`에 personalization settings/instructions fetch/create/update/delete 함수들을 추가한다.
-- [ ] `apps/frontend/src/components/settings/PersonalMemoryPanel.tsx`에 `Personalization Instructions` 섹션을 추가한다.
-- [ ] `Instructions Policy` 토글 또는 동등한 overall enable control을 추가한다.
-- [ ] instruction card에 `type`, `title`, `content`, `enabled`, `...` action을 렌더링한다.
-- [ ] v1 편집 UX는 modal 대신 inline composer/editor로 구현한다.
-- [ ] add/create 흐름과 edit/update 흐름에서 validation error, saving state, optimistic update 범위를 정리한다.
-- [ ] empty state, loading state, API error state를 explicit instructions에도 추가한다.
-- [ ] `apps/frontend/src/app/settings/personal-memory/page.test.tsx`를 확장하거나 새 컴포넌트 테스트를 추가한다.
-- [ ] 기존 memory card hover/menu 상호작용과 새로운 instruction 편집 상호작용이 충돌하지 않는지 확인한다.
+- [x] 프런트 타입을 `memory.ts` 확장 또는 새 `personalization.ts` 분리 방식으로 정리한다.
+- [x] `apps/frontend/src/lib/api.ts`에 personalization settings/instructions fetch/create/update/delete 함수들을 추가한다.
+- [x] `apps/frontend/src/components/settings/PersonalMemoryPanel.tsx`에 `Personalization Instructions` 섹션을 추가한다.
+- [x] `Instructions Policy` 토글 또는 동등한 overall enable control을 추가한다.
+- [x] instruction card에 `type`, `title`, `content`, `enabled`, `...` action을 렌더링한다.
+- [x] v1 편집 UX는 modal 대신 inline composer/editor로 구현한다.
+- [x] add/create 흐름과 edit/update 흐름에서 validation error, saving state, optimistic update 범위를 정리한다.
+- [x] empty state, loading state, API error state를 explicit instructions에도 추가한다.
+- [x] `apps/frontend/src/app/settings/personal-memory/page.test.tsx`를 확장하거나 새 컴포넌트 테스트를 추가한다.
+- [x] 기존 memory card hover/menu 상호작용과 새로운 instruction 편집 상호작용이 충돌하지 않는지 확인한다.
 
 검증 기준:
 
