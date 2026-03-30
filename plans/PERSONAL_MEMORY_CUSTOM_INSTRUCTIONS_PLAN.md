@@ -2,7 +2,7 @@
 작업명: Personal Memory Custom Instructions Plan
 간단요약: 기존 Personal Memory 화면 하단에 명시적 개인화 지침 목록을 추가하고, backend/frontend/runtime prompt 주입 경로를 memory와 분리된 explicit-instructions 레이어로 단계적으로 확장한다.
 작성일시: 2026-03-28 19:10 KST
-최종 수정일시: 2026-03-30 16:18 KST
+최종 수정일시: 2026-03-30 16:22 KST
 ---
 
 # Personal Memory Custom Instructions Plan
@@ -257,12 +257,12 @@
 
 태스크:
 
-- [ ] instruction validator가 `approval`, `tool policy`, `system rule override` 성격 입력을 거부하도록 한다.
-- [ ] `apps/backend/tests/test_memory_agent_service.py`와 별도의 instruction validator 테스트를 통해 inferred memory와 explicit instruction의 책임 경계를 검증한다.
-- [ ] `apps/backend/tests/test_startup.py`에 새 schema patch 호출 개수/순서를 반영한다.
-- [ ] settings payload 변경이 기존 auth/settings 화면을 깨지 않는지 관련 프런트 테스트를 확인한다.
-- [ ] frontend `npm run build`까지 포함한 최종 회귀 검증을 수행한다.
-- [ ] instruction provenance UI는 범위 밖으로 남기되, `personalization_meta`와 trace payload가 후속 작업에 재사용 가능하도록 필드를 남긴다.
+- [x] instruction validator가 `approval`, `tool policy`, `system rule override` 성격 입력을 거부하도록 한다.
+- [x] `apps/backend/tests/test_memory_agent_service.py`와 별도의 instruction validator 테스트를 통해 inferred memory와 explicit instruction의 책임 경계를 검증한다.
+- [x] `apps/backend/tests/test_startup.py`에 새 schema patch 호출 개수/순서를 반영한다.
+- [x] settings payload 변경이 기존 auth/settings 화면을 깨지 않는지 관련 프런트 테스트를 확인한다.
+- [x] frontend `npm run build`까지 포함한 최종 회귀 검증을 수행한다.
+- [x] instruction provenance UI는 범위 밖으로 남기되, `personalization_meta`와 trace payload가 후속 작업에 재사용 가능하도록 필드를 남긴다.
 
 검증 기준:
 

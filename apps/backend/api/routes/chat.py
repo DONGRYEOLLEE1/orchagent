@@ -842,6 +842,15 @@ async def _persist_memory_load_trace_with_fresh_session(
                 "hit_miss": personalization_meta.get("hit_miss", "miss"),
                 "context_chars": personalization_meta.get("context_chars", 0),
                 "retrieval_ms": personalization_meta.get("retrieval_ms", 0),
+                "instruction_ids": personalization_meta.get("instruction_ids", []),
+                "instruction_count": personalization_meta.get("instruction_count", 0),
+                "instructions_enabled": personalization_meta.get(
+                    "instructions_enabled", False
+                ),
+                "profile_count": personalization_meta.get("profile_count", 0),
+                "response_preference_count": personalization_meta.get(
+                    "response_preference_count", 0
+                ),
                 "thread_id": thread_id,
             },
             user_id=user_id,

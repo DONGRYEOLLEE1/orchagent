@@ -48,6 +48,18 @@ class MemoryAgentService:
     BLOCKED_PATTERNS = [
         re.compile(r"password|비밀번호|token|토큰|secret|시크릿", re.IGNORECASE),
         re.compile(r"주민등록|여권|계좌|카드번호", re.IGNORECASE),
+        re.compile(
+            r"for this turn|just this turn|just this once|temporary|temporarily|이번 턴|이번 요청|지금만|이번에만|임시로",
+            re.IGNORECASE,
+        ),
+        re.compile(
+            r"(approval|승인).{0,24}(without|bypass|skip|없이|우회|생략)",
+            re.IGNORECASE,
+        ),
+        re.compile(
+            r"(ignore|override|bypass|skip|무시|우회|생략).{0,32}(system|developer|policy|security|safety|규칙|정책|보안|안전)",
+            re.IGNORECASE,
+        ),
     ]
     MIN_CONFIDENCE = 70
 
