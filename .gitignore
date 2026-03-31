@@ -51,3 +51,6 @@ AGENT_WORKSPACE/
 
 # tmp
 tmp/*
+
+# logs
+apps/backend/logs/*
