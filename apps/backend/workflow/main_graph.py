@@ -9,6 +9,7 @@ from workflow.teams.research import get_research_graph
 from workflow.teams.writing import get_writing_graph
 from workflow.teams.vision import get_vision_graph
 from workflow.teams.data_science import get_data_science_graph
+from workflow.teams.coding import get_coding_graph
 from workflow.load_memories import make_load_memories_node
 from core.config import settings
 
@@ -28,6 +29,7 @@ def get_orchagent_graph(llm_model: str = DEFAULT_LLM_MODEL):
     writing_graph = get_writing_graph(llm)
     vision_graph = get_vision_graph(llm)
     data_science_graph = get_data_science_graph(llm)
+    coding_graph = get_coding_graph(llm)
 
     # 2. Nodes
     planner_node = make_planner_node(llm)
@@ -35,13 +37,20 @@ def get_orchagent_graph(llm_model: str = DEFAULT_LLM_MODEL):
     finalizer_node = make_finalizer_node(llm)
     head_supervisor_node = make_supervisor_node(
         llm,
-        ["research_team", "writing_team", "vision_team", "data_science_team"],
+        [
+            "research_team",
+            "writing_team",
+            "vision_team",
+            "data_science_team",
+            "coding_team",
+        ],
         layer="head",
         final_node_name="finalizer",
         max_team_dispatches=max(
             settings.RESEARCH_TEAM_MAX_DISPATCHES,
             settings.WRITING_TEAM_MAX_DISPATCHES,
             settings.DATA_SCIENCE_TEAM_MAX_DISPATCHES,
+            settings.CODING_TEAM_MAX_DISPATCHES,
         ),
     )
 
@@ -57,6 +66,7 @@ def get_orchagent_graph(llm_model: str = DEFAULT_LLM_MODEL):
     builder.add_node("writing_team", writing_graph)
     builder.add_node("vision_team", vision_graph)
     builder.add_node("data_science_team", data_science_graph)
+    builder.add_node("coding_team", coding_graph)
 
     # 4. Set Edges
     builder.add_edge(START, "load_memories")
@@ -68,5 +78,6 @@ def get_orchagent_graph(llm_model: str = DEFAULT_LLM_MODEL):
     builder.add_edge("writing_team", "head_supervisor")
     builder.add_edge("vision_team", "head_supervisor")
     builder.add_edge("data_science_team", "head_supervisor")
+    builder.add_edge("coding_team", "head_supervisor")
 
     return builder

@@ -17,6 +17,7 @@ def test_graph_compilation_success():
     assert "writing_team" in graph.nodes
     assert "vision_team" in graph.nodes
     assert "data_science_team" in graph.nodes
+    assert "coding_team" in graph.nodes
 
     # A compiled graph should have a valid structure
     assert graph is not None

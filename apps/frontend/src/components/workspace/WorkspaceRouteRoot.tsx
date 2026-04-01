@@ -26,13 +26,17 @@ import rehypeKatex from 'rehype-katex';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import {
+  bindRepository,
+  bindRepositoryZip,
   changePasswordUser,
+  deleteRepositoryBinding,
   deleteThread,
   fetchThreadDetail,
   fetchThreadTelemetry,
   fetchThreads,
   generateAiThreadTitle,
   generateSuggestedQueries,
+  materializeRepository,
   patchThread,
   resumeChatStream,
   sendChatStream,
@@ -63,6 +67,7 @@ import { LiveToolStatusStrip } from '@/components/workspace/LiveToolStatusStrip'
 import { ReasoningSummaryPanel } from '@/components/workspace/ReasoningSummaryPanel';
 import { SuggestedQueriesPanel } from '@/components/workspace/SuggestedQueriesPanel';
 import { AccountDrawer } from '@/components/workspace/AccountDrawer';
+import RepositoryBindingPanel from '@/components/workspace/RepositoryBindingPanel';
 import { WorkspaceTopNav } from '@/components/workspace/WorkspaceTopNav';
 
 function appendReasoningEntry(
@@ -710,6 +715,8 @@ function WorkspaceApp({
   const [selectedFileStatuses, setSelectedFileStatuses] = useState<DraftAttachmentStatusMap>({});
   const [attachmentUploadState, setAttachmentUploadState] = useState<'idle' | 'uploading' | 'error'>('idle');
   const [attachmentError, setAttachmentError] = useState('');
+  const [repoBindingLoading, setRepoBindingLoading] = useState(false);
+  const [repoBindingError, setRepoBindingError] = useState('');
   const [lightboxAttachment, setLightboxAttachment] = useState<ChatAttachment | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [accountPanelOpen, setAccountPanelOpen] = useState(false);
@@ -830,6 +837,8 @@ function WorkspaceApp({
       setSelectedFileStatuses({});
       setAttachmentUploadState('idle');
       setAttachmentError('');
+      setRepoBindingLoading(false);
+      setRepoBindingError('');
       setActiveThreadState(createInitialActiveThreadState());
       setStreamSessionState(createInitialStreamSessionState());
       setActionSpaceState(createInitialActionSpaceState());
@@ -867,6 +876,8 @@ function WorkspaceApp({
     setSelectedFileStatuses({});
     setAttachmentUploadState('idle');
     setAttachmentError('');
+    setRepoBindingLoading(false);
+    setRepoBindingError('');
     setMobileSidebarOpen(false);
     setAccountPanelOpen(false);
     setActiveThreadState({
@@ -990,6 +1001,103 @@ function WorkspaceApp({
     }
   };
 
+  const ensureRepositoryThreadId = () => {
+    if (activeThreadState.threadId) {
+      return activeThreadState.threadId;
+    }
+    return `thread_${Date.now()}`;
+  };
+
+  const handleBindRepositoryUrl = async (
+    sourceType: 'github_url' | 'git_url',
+    sourceRef: string
+  ) => {
+    const threadId = ensureRepositoryThreadId();
+    setRepoBindingLoading(true);
+    setRepoBindingError('');
+    try {
+      const binding = await bindRepository({
+        threadId,
+        sourceType,
+        sourceRef,
+      });
+      activeThreadIdRef.current = threadId;
+      setActiveThreadState((prev) => ({
+        ...prev,
+        threadId,
+        repoBinding: binding,
+      }));
+      if (routeThreadId !== threadId) {
+        router.replace(buildThreadPath(threadId));
+      }
+      await refreshThreadsSilently();
+    } catch (error) {
+      setRepoBindingError(error instanceof Error ? error.message : 'Unknown error');
+    } finally {
+      setRepoBindingLoading(false);
+    }
+  };
+
+  const handleBindRepositoryZip = async (file: File) => {
+    const threadId = ensureRepositoryThreadId();
+    setRepoBindingLoading(true);
+    setRepoBindingError('');
+    try {
+      const binding = await bindRepositoryZip({
+        threadId,
+        file,
+      });
+      activeThreadIdRef.current = threadId;
+      setActiveThreadState((prev) => ({
+        ...prev,
+        threadId,
+        repoBinding: binding,
+      }));
+      if (routeThreadId !== threadId) {
+        router.replace(buildThreadPath(threadId));
+      }
+      await refreshThreadsSilently();
+    } catch (error) {
+      setRepoBindingError(error instanceof Error ? error.message : 'Unknown error');
+    } finally {
+      setRepoBindingLoading(false);
+    }
+  };
+
+  const handleDeleteRepositoryBinding = async () => {
+    if (!activeThreadState.repoBinding) {
+      return;
+    }
+    setRepoBindingLoading(true);
+    setRepoBindingError('');
+    try {
+      await deleteRepositoryBinding(activeThreadState.repoBinding.id);
+      setActiveThreadState((prev) => ({
+        ...prev,
+        repoBinding: null,
+      }));
+    } catch (error) {
+      setRepoBindingError(error instanceof Error ? error.message : 'Unknown error');
+    } finally {
+      setRepoBindingLoading(false);
+    }
+  };
+
+  const handleMaterializeRepository = async () => {
+    if (!activeThreadState.threadId) {
+      return;
+    }
+    setRepoBindingLoading(true);
+    setRepoBindingError('');
+    try {
+      await materializeRepository(activeThreadState.threadId);
+    } catch (error) {
+      setRepoBindingError(error instanceof Error ? error.message : 'Unknown error');
+    } finally {
+      setRepoBindingLoading(false);
+    }
+  };
+
   const handleStartNewChat = () => {
     if (isInteractionLocked) {
       return;
@@ -1000,6 +1108,8 @@ function WorkspaceApp({
     setSelectedFileStatuses({});
     setAttachmentUploadState('idle');
     setAttachmentError('');
+    setRepoBindingLoading(false);
+    setRepoBindingError('');
     setActiveThreadState(createInitialActiveThreadState());
     setStreamSessionState(createInitialStreamSessionState());
     setActionSpaceState(createInitialActionSpaceState());
@@ -1543,6 +1653,8 @@ function WorkspaceApp({
     setSelectedFileStatuses({});
     setAttachmentUploadState('idle');
     setAttachmentError('');
+    setRepoBindingLoading(false);
+    setRepoBindingError('');
     setMobileSidebarOpen(false);
     setAccountPanelOpen(false);
 
@@ -2246,6 +2358,17 @@ function WorkspaceApp({
                 {streamSessionState.loading ? <Loader2 className="animate-spin" size={16} /> : 'Send'}
               </button>
             </div>
+
+            <RepositoryBindingPanel
+              binding={activeThreadState.repoBinding}
+              disabled={isInteractionLocked}
+              loading={repoBindingLoading}
+              error={repoBindingError}
+              onBindUrl={handleBindRepositoryUrl}
+              onBindZip={handleBindRepositoryZip}
+              onDeleteBinding={handleDeleteRepositoryBinding}
+              onMaterialize={handleMaterializeRepository}
+            />
           </form>
         </div>
       </section>

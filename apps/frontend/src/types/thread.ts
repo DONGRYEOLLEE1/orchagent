@@ -1,5 +1,18 @@
 import type { ChatMessage, StreamEvent, ToolExecution } from '@/types/agent';
 
+export interface RepositoryBinding {
+  id: string;
+  thread_id: string;
+  source_type: 'github_url' | 'git_url' | 'repo_zip' | 'registered_repo';
+  source_label: string;
+  display_name: string;
+  default_branch?: string | null;
+  pinned_commit_sha?: string | null;
+  status: string;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
 export interface ThreadAttachment {
   kind: 'image' | 'pdf' | 'spreadsheet' | 'csv' | 'json' | 'docx' | 'artifact';
   url: string;
@@ -33,6 +46,7 @@ export interface ThreadMessage {
 export interface ThreadDetail {
   thread: ThreadSummary;
   messages: ThreadMessage[];
+  repository_binding?: RepositoryBinding | null;
 }
 
 export interface ThreadTelemetry {
@@ -55,6 +69,7 @@ export interface ActiveThreadState {
   title: string;
   checkpointId: string;
   messages: ChatMessage[];
+  repoBinding: RepositoryBinding | null;
   detailLoadState: ThreadLoadState;
   latestStatus: string | null;
   lastActivityAt: string | null;

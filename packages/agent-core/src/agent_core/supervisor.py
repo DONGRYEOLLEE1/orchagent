@@ -42,9 +42,32 @@ _DATA_ANALYSIS_PATTERNS = [
     ),
 ]
 
+_CODING_PATTERNS = [
+    re.compile(
+        r"\b(fix|debug|refactor|implement|code|coding|bug|test|tests|build|lint|compile|repo|repository|function|component|module|file|files)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"(고쳐|수정|디버그|리팩터|구현|코드|버그|테스트|빌드|린트|레포|저장소|파일|함수|컴포넌트|모듈)",
+        re.IGNORECASE,
+    ),
+]
+
+_RUNTIME_VERIFY_PATTERNS = [
+    re.compile(
+        r"\b(ui|browser|page|runtime|playwright|e2e|screen|render|rendering|local page)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(r"(화면|브라우저|렌더링|실행 확인|페이지|플레이라이트|e2e|ui)", re.IGNORECASE),
+]
+
 
 def requires_human_approval_for_text(text: str) -> bool:
     return any(pattern.search(text) for pattern in _APPROVAL_PATTERNS)
+
+
+def requires_coding_team_for_text(text: str) -> bool:
+    return any(pattern.search(text or "") for pattern in _CODING_PATTERNS)
 
 
 def _extract_message_text(content: Any) -> str:
@@ -163,6 +186,14 @@ def _latest_message_signals_review_passed(messages: list[Any]) -> bool:
     return False
 
 
+def _latest_message_signals_review_failed(messages: list[Any]) -> bool:
+    for message in reversed(messages):
+        content = _extract_message_text(getattr(message, "content", message)).strip()
+        if content:
+            return content.startswith("[Review Failed]")
+    return False
+
+
 def _latest_user_requested_visualization(messages: list[Any]) -> bool:
     latest_user_text = _latest_user_request_text(messages)
     if not latest_user_text:
@@ -204,6 +235,27 @@ def _should_force_data_science_team(
         return True
 
     return any(pattern.search(latest_user_text) for pattern in _DATA_ANALYSIS_PATTERNS)
+
+
+def _shared_context_has_repo_binding(shared_context: dict[str, Any]) -> bool:
+    binding = shared_context.get("repo_binding")
+    return isinstance(binding, dict) and bool(binding.get("id"))
+
+
+def _should_force_coding_team(
+    messages: list[Any], shared_context: dict[str, Any]
+) -> bool:
+    if not _shared_context_has_repo_binding(shared_context):
+        return False
+    latest_user_text = _latest_user_request_text(messages)
+    return requires_coding_team_for_text(latest_user_text)
+
+
+def _latest_user_requested_runtime_verification(messages: list[Any]) -> bool:
+    latest_user_text = _latest_user_request_text(messages)
+    if not latest_user_text:
+        return False
+    return any(pattern.search(latest_user_text) for pattern in _RUNTIME_VERIFY_PATTERNS)
 
 
 def _dispatched_team_workers(route_history: list[Any], team_name: str) -> list[str]:
@@ -366,7 +418,7 @@ def make_supervisor_node(
                 "Review the plan above and the conversation history. Decide which worker is best suited for the NEXT step of the plan. "
                 "If the plan is complete or you can finish it yourself, respond with FINISH."
             )
-            if task_plan and task_plan != "NO_PLAN"
+            if layer == "head" and task_plan and task_plan != "NO_PLAN"
             else ""
         )
 
@@ -407,6 +459,8 @@ def make_supervisor_node(
             or state_requires_approval
             or heuristic_requires_approval
         )
+        if layer == "head" and _should_force_coding_team(state["messages"], shared_context):
+            requires_approval = False
 
         discarded_content = ""
         if (state_requires_approval or heuristic_requires_approval) and not llm_requires_approval:
@@ -526,7 +580,107 @@ def make_supervisor_node(
                 next_node = "FINISH"
                 content = ""
 
+        if (
+            layer == "team"
+            and normalized_team == "research"
+            and {"search", "web_scraper"}.issubset(set(members))
+        ):
+            dispatched_workers = _dispatched_team_workers(route_history, normalized_team)
+            if "search" not in dispatched_workers and next_node != "search":
+                next_node = "search"
+                content = ""
+            elif (
+                "search" in dispatched_workers
+                and "web_scraper" not in dispatched_workers
+                and _latest_message_signals_review_failed(state["messages"])
+                and next_node != "web_scraper"
+            ):
+                next_node = "web_scraper"
+                content = ""
+            elif (
+                "web_scraper" in dispatched_workers
+                and _latest_message_signals_review_passed(state["messages"])
+            ):
+                next_node = "FINISH"
+                content = ""
+            elif (
+                "web_scraper" in dispatched_workers
+                and _latest_message_signals_review_failed(state["messages"])
+            ):
+                next_node = "FINISH"
+                content = ""
+
+        if (
+            layer == "team"
+            and normalized_team == "coding"
+            and {"codebase_explorer", "implementation_engineer"}.issubset(set(members))
+        ):
+            dispatched_workers = _dispatched_team_workers(route_history, normalized_team)
+            runtime_requested = _latest_user_requested_runtime_verification(
+                state["messages"]
+            )
+            if "codebase_explorer" not in dispatched_workers and next_node != "codebase_explorer":
+                next_node = "codebase_explorer"
+                content = ""
+            elif (
+                "codebase_explorer" in dispatched_workers
+                and "implementation_engineer" not in dispatched_workers
+                and next_node != "implementation_engineer"
+            ):
+                next_node = "implementation_engineer"
+                content = ""
+            elif (
+                _latest_message_signals_review_failed(state["messages"])
+                and "implementation_engineer" in members
+                and next_node != "implementation_engineer"
+            ):
+                next_node = "implementation_engineer"
+                content = ""
+            elif (
+                "implementation_engineer" in dispatched_workers
+                and runtime_requested
+                and "runtime_verifier" in members
+                and "runtime_verifier" not in dispatched_workers
+                and _latest_message_signals_review_passed(state["messages"])
+            ):
+                next_node = "runtime_verifier"
+                content = ""
+            elif (
+                "runtime_verifier" in dispatched_workers
+                and _latest_message_signals_review_passed(state["messages"])
+            ):
+                next_node = "FINISH"
+                content = ""
+            elif (
+                "implementation_engineer" in dispatched_workers
+                and not runtime_requested
+                and _latest_message_signals_review_passed(state["messages"])
+            ):
+                next_node = "FINISH"
+                content = ""
+
         latest_user_has_image = _latest_user_request_has_image(state["messages"])
+        coding_already_routed = bool(
+            shared_context.get("coding_routed_for_current_turn", False)
+        )
+        if (
+            layer == "head"
+            and "coding_team" in members
+            and not coding_already_routed
+            and _should_force_coding_team(state["messages"], shared_context)
+        ):
+            if not reasoning:
+                reasoning = "A repository is bound to this thread and the user is requesting repository-local coding work, so the request is routed to coding_team."
+            if next_node != "coding_team":
+                print(
+                    f"[Supervisor] Forcing head route {next_node} -> coding_team for repository-bound coding turn.",
+                    flush=True,
+                )
+            if content:
+                discarded_content = content
+            next_node = "coding_team"
+            content = ""
+
         data_science_already_routed = bool(
             shared_context.get("data_science_routed_for_current_turn", False)
         )
@@ -576,6 +730,17 @@ def make_supervisor_node(
             if content:
                 discarded_content = content
             next_node = "vision_team"
+            content = ""
+
+        allowed_next_nodes = {"FINISH", *members}
+        if next_node not in allowed_next_nodes:
+            print(
+                f"[Supervisor] Invalid routing target {next_node!r} for {layer} layer; coercing to FINISH.",
+                flush=True,
+            )
+            if content:
+                discarded_content = content
+            next_node = "FINISH"
             content = ""
 
         should_use_finalizer = (
@@ -669,6 +834,12 @@ def make_supervisor_node(
                 update_data["shared_context"] = {
                     **existing_context,
                     "data_science_routed_for_current_turn": True,
+                }
+            if next_team == "coding":
+                existing_context = update_data.get("shared_context", {})
+                update_data["shared_context"] = {
+                    **existing_context,
+                    "coding_routed_for_current_turn": True,
                 }
         else:
             next_worker = None if next_node == "FINISH" else next_node

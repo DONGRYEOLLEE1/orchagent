@@ -34,6 +34,7 @@ class ToolRuntimeContext:
     attachments: dict[str, ToolAttachment]
     workspace_dir: Path
     artifact_dir: Path
+    log_dir: Path | None = None
     registered_artifacts: list[ToolArtifact] = field(default_factory=list)
 
 
@@ -46,6 +47,8 @@ _runtime_context: ContextVar[ToolRuntimeContext | None] = ContextVar(
 def set_tool_runtime_context(context: ToolRuntimeContext) -> Token:
     context.workspace_dir.mkdir(parents=True, exist_ok=True)
     context.artifact_dir.mkdir(parents=True, exist_ok=True)
+    if context.log_dir is not None:
+        context.log_dir.mkdir(parents=True, exist_ok=True)
     return _runtime_context.set(context)
 
 
@@ -117,6 +120,8 @@ def register_runtime_artifact(
         candidate = candidate.resolve()
 
     allowed_roots = [context.workspace_dir.resolve(), context.artifact_dir.resolve()]
+    if context.log_dir is not None:
+        allowed_roots.append(context.log_dir.resolve())
     if not any(str(candidate).startswith(str(root)) for root in allowed_roots):
         raise ValueError("Artifacts must be stored within the analysis workspace.")
     if not candidate.exists() or not candidate.is_file():

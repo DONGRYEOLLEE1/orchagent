@@ -10,7 +10,12 @@ import type {
   PersonalizationInstructionType,
   UserMemorySettings,
 } from '@/types/memory';
-import type { ThreadDetail, ThreadSummary, ThreadTelemetry } from '@/types/thread';
+import type {
+  RepositoryBinding,
+  ThreadDetail,
+  ThreadSummary,
+  ThreadTelemetry,
+} from '@/types/thread';
 
 const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8002').replace(/\/$/, '');
 const CSRF_COOKIE_NAME = 'orch_csrf';
@@ -137,6 +142,80 @@ export async function fetchThreads(limit = 50): Promise<ThreadSummary[]> {
 
 export async function fetchThreadDetail(threadId: string): Promise<ThreadDetail> {
   return requestJson<ThreadDetail>(`/api/threads/${encodeURIComponent(threadId)}`);
+}
+
+export async function fetchRepositoryBinding(threadId: string): Promise<RepositoryBinding | null> {
+  const payload = await requestJson<{ binding: RepositoryBinding | null }>(
+    `/api/repositories/bindings/${encodeURIComponent(threadId)}`
+  );
+  return payload.binding;
+}
+
+export async function bindRepository(params: {
+  threadId: string;
+  sourceType: 'github_url' | 'git_url' | 'registered_repo';
+  sourceRef: string;
+}): Promise<RepositoryBinding> {
+  const payload = await requestJson<{ binding: RepositoryBinding }>(`/api/repositories/bind`, {
+    method: 'POST',
+    includeCsrf: true,
+    body: {
+      thread_id: params.threadId,
+      source_type: params.sourceType,
+      source_ref: params.sourceRef,
+    },
+  });
+  return payload.binding;
+}
+
+export async function bindRepositoryZip(params: {
+  threadId: string;
+  file: File;
+}): Promise<RepositoryBinding> {
+  const formData = new FormData();
+  formData.set('thread_id', params.threadId);
+  formData.set('file', params.file);
+
+  const headers: Record<string, string> = {};
+  const csrfToken = readCsrfToken();
+  if (csrfToken) {
+    headers[CSRF_HEADER_NAME] = csrfToken;
+  }
+
+  const response = await fetch(`${API_BASE_URL}/api/repositories/bind-zip`, {
+    method: 'POST',
+    credentials: 'include',
+    headers,
+    body: formData,
+  });
+  if (response.status === 401) {
+    notifyUnauthorized();
+    throw new UnauthorizedError(await readErrorMessage(response));
+  }
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response));
+  }
+  const payload = (await response.json()) as { binding: RepositoryBinding };
+  return payload.binding;
+}
+
+export async function deleteRepositoryBinding(bindingId: string): Promise<void> {
+  await requestNoContent(`/api/repositories/bindings/${encodeURIComponent(bindingId)}`, {
+    method: 'DELETE',
+    includeCsrf: true,
+  });
+}
+
+export async function materializeRepository(threadId: string): Promise<{
+  binding: RepositoryBinding;
+  repo_commit_sha: string | null;
+  status: string;
+}> {
+  return requestJson(`/api/repositories/materialize`, {
+    method: 'POST',
+    includeCsrf: true,
+    body: { thread_id: threadId },
+  });
 }
 
 export async function fetchThreadTelemetry(threadId: string): Promise<ThreadTelemetry> {
