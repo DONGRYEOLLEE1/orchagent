@@ -2,6 +2,7 @@ import json
 from fastapi.testclient import TestClient
 from main import app
 from services.trace_service import TraceService
+from api.routes.chat import _serialize_value
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langchain_core.messages import AIMessage, AIMessageChunk
 from langgraph.types import Command
@@ -1268,3 +1269,13 @@ def test_chat_stream_emits_interrupted_status_for_paused_checkpoint(monkeypatch)
         and payload.get("status") == "completed"
         for payload in payloads
     )
+
+
+def test_serialize_value_strips_nul_bytes_and_truncates_large_strings():
+    raw = "abc\x00def" + ("x" * 25000)
+
+    serialized = _serialize_value(raw)
+
+    assert "\x00" not in serialized
+    assert serialized.startswith("abcdef")
+    assert "(truncated " in serialized

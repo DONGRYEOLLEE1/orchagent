@@ -103,7 +103,7 @@ function SectionField({
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder}
-          className="min-h-[192px] w-full resize-none rounded-[21px] border-0 bg-[rgba(14,17,26,0.92)] px-6 py-6 text-[14px] leading-7 text-[rgba(231,231,240,0.9)] outline-none placeholder:text-[rgba(170,170,179,0.3)]"
+          className="min-h-[96px] w-full resize-none rounded-[21px] border-0 bg-[rgba(14,17,26,0.92)] px-6 py-6 text-[14px] leading-7 text-[rgba(231,231,240,0.9)] outline-none placeholder:text-[rgba(170,170,179,0.3)]"
         />
       </div>
     </section>

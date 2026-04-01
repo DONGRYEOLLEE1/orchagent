@@ -1,6 +1,7 @@
 import json
 
 import pandas as pd
+import pytest
 from docx import Document
 
 from agent_tools.data import (
@@ -12,6 +13,7 @@ from agent_tools.data import (
     register_analysis_artifact,
 )
 from agent_tools.file_io import write_document, read_document
+from agent_tools.web import scrape_webpages
 from agent_tools.runtime import (
     ToolAttachment,
     ToolRuntimeContext,
@@ -46,6 +48,38 @@ def test_read_document_not_found(monkeypatch, tmp_path):
     monkeypatch.setattr("agent_tools.file_io.WORKING_DIRECTORY", tmp_path)
     read_result = read_document.invoke({"file_name": "non_existent.txt"})
     assert "Error: File" in read_result
+
+
+@pytest.mark.asyncio
+async def test_scrape_webpages_uses_requests_and_bs4_without_event_loop_errors(monkeypatch):
+    class DummyResponse:
+        text = "<html><head><title>Example Title</title></head><body><h1>Hello</h1><p>World</p></body></html>"
+        headers = {"content-type": "text/html; charset=utf-8"}
+
+        def raise_for_status(self):
+            return None
+
+    class DummySession:
+        def __init__(self):
+            self.headers = {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def get(self, url, timeout):
+            assert timeout == 12
+            return DummyResponse()
+
+    monkeypatch.setattr("agent_tools.web.requests.Session", DummySession)
+
+    content = await scrape_webpages.ainvoke({"urls": ["https://example.com"]})
+
+    assert '<Document name="Example Title" url="https://example.com">' in content
+    assert "Hello" in content
+    assert "World" in content
 
 
 def test_vision_tools_with_dummy_image():

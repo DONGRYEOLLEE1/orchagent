@@ -137,63 +137,78 @@ export function ThreadListItem({
             </button>
 
             {menuOpen ? (
-              <div
-                role="menu"
-                className="absolute right-0 top-10 z-10 flex min-w-40 flex-col rounded-[12px] border border-[rgba(255,255,255,0.06)] bg-[rgba(12,14,20,0.96)] p-1.5 shadow-2xl shadow-black/40 backdrop-blur-xl"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {onRename ? (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setDraftTitle(thread.title);
-                      setEditing(true);
-                      setMenuOpen(false);
-                    }}
-                    disabled={disabled}
-                    aria-label={`Rename ${thread.title}`}
-                    className="inline-flex items-center gap-2 rounded-[10px] px-2.5 py-2 text-left text-xs text-[#e7e7f0] transition hover:bg-[rgba(35,38,46,0.8)] disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <Edit3 size={12} />
-                    <span>스레드명 수정</span>
-                  </button>
-                ) : null}
+              <>
+                <button
+                  type="button"
+                  aria-label={`Close thread actions menu for ${thread.title}`}
+                  className="fixed inset-0 z-[5] cursor-default bg-transparent"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMenuOpen(false);
+                  }}
+                />
+                <div
+                  role="menu"
+                  className="absolute right-[-10px] top-[calc(100%+10px)] z-10 flex w-[198px] flex-col rounded-[18px] border border-[rgba(255,255,255,0.08)] bg-[rgba(44,45,49,0.98)] p-2 shadow-[0_22px_60px_rgba(0,0,0,0.48)] backdrop-blur-xl"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex flex-col gap-0.5">
+                    {onRename ? (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDraftTitle(thread.title);
+                          setEditing(true);
+                          setMenuOpen(false);
+                        }}
+                        disabled={disabled}
+                        aria-label={`Rename ${thread.title}`}
+                        className="inline-flex items-center gap-2 rounded-[12px] px-3 py-2.5 text-left font-[var(--font-body)] text-[13px] font-semibold leading-[1.35rem] text-[#f1f3f7] transition hover:bg-[rgba(255,255,255,0.06)] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Edit3 size={14} strokeWidth={1.9} />
+                        <span>스레드명 수정</span>
+                      </button>
+                    ) : null}
 
-                {onTogglePinned ? (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setMenuOpen(false);
-                      void onTogglePinned?.(thread.thread_id, !thread.pinned);
-                    }}
-                    disabled={disabled}
-                    aria-label={thread.pinned ? `Unpin ${thread.title}` : `Pin ${thread.title}`}
-                    className="inline-flex items-center gap-2 rounded-[10px] px-2.5 py-2 text-left text-xs text-[#e7e7f0] transition hover:bg-[rgba(35,38,46,0.8)] disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {thread.pinned ? <PinOff size={12} /> : <Pin size={12} />}
-                    <span>{thread.pinned ? '핀 해제' : '핀'}</span>
-                  </button>
-                ) : null}
+                    {onTogglePinned ? (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setMenuOpen(false);
+                          void onTogglePinned?.(thread.thread_id, !thread.pinned);
+                        }}
+                        disabled={disabled}
+                        aria-label={thread.pinned ? `Unpin ${thread.title}` : `Pin ${thread.title}`}
+                        className="inline-flex items-center gap-2 rounded-[12px] px-3 py-2.5 text-left font-[var(--font-body)] text-[13px] font-semibold leading-[1.35rem] text-[#f1f3f7] transition hover:bg-[rgba(255,255,255,0.06)] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {thread.pinned ? <PinOff size={14} strokeWidth={1.9} /> : <Pin size={14} strokeWidth={1.9} />}
+                        <span>{thread.pinned ? '핀 해제' : '핀'}</span>
+                      </button>
+                    ) : null}
+                  </div>
 
-                {onDelete ? (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setMenuOpen(false);
-                      void onDelete?.(thread.thread_id);
-                    }}
-                    disabled={disabled}
-                    aria-label={`Delete ${thread.title}`}
-                    className="inline-flex items-center gap-2 rounded-[10px] px-2.5 py-2 text-left text-xs text-red-200 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <Trash2 size={12} />
-                    <span>삭제</span>
-                  </button>
-                ) : null}
-              </div>
+                  {onDelete ? (
+                    <div className="mt-2 border-t border-[rgba(255,255,255,0.1)] pt-2">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setMenuOpen(false);
+                          void onDelete?.(thread.thread_id);
+                        }}
+                        disabled={disabled}
+                        aria-label={`Delete ${thread.title}`}
+                        className="inline-flex w-full items-center gap-2 rounded-[12px] px-3 py-2.5 text-left font-[var(--font-body)] text-[13px] font-semibold leading-[1.35rem] text-[#ff6b6b] transition hover:bg-[rgba(255,107,107,0.1)] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Trash2 size={14} strokeWidth={1.9} />
+                        <span>삭제</span>
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              </>
             ) : null}
           </div>
         ) : null}

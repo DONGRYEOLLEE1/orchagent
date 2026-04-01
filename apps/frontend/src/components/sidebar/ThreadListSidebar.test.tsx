@@ -51,6 +51,33 @@ test('renders saved thread items and forwards selection', async () => {
   expect(onDeleteThread).toHaveBeenCalledWith('thread-1');
 });
 
+test('closes the thread actions menu when the backdrop is clicked', async () => {
+  const user = userEvent.setup();
+
+  render(
+    <ThreadListSidebar
+      threads={threads}
+      loadState="success"
+      error=""
+      selectedThreadId=""
+      disabled={false}
+      onNewChat={vi.fn()}
+      onSelectThread={vi.fn()}
+      onDeleteThread={vi.fn()}
+    />
+  );
+
+  const threadButton = screen.getByRole('button', { name: /open thread first thread/i });
+  await user.hover(threadButton);
+  await user.click(screen.getByRole('button', { name: /thread actions first thread/i }));
+
+  expect(screen.getByRole('menu')).toBeInTheDocument();
+
+  await user.click(screen.getByRole('button', { name: /close thread actions menu for first thread/i }));
+
+  expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+});
+
 test('shows empty, loading, and disabled states', () => {
   const { rerender } = render(
     <ThreadListSidebar

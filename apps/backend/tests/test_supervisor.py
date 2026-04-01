@@ -789,6 +789,69 @@ async def test_head_supervisor_prompt_discourages_writing_team_for_simple_resear
 
 
 @pytest.mark.asyncio
+async def test_team_supervisor_does_not_receive_global_task_plan_prompt():
+    fake_llm = CapturingRouterLLM("search_agent")
+    supervisor_func = make_supervisor_node(
+        fake_llm,  # type: ignore[arg-type]
+        ["search_agent", "web_scraper"],
+        layer="team",
+        team_name="ResearchTeam",
+    )
+
+    state = cast(
+        BaseAgentState,
+        {
+            "messages": [HumanMessage(content="Search and summarize RoPE")],
+            "next": "",
+            "task_plan": "1. [research_team] Search.\n2. [writing_team] Write.",
+        },
+    )
+
+    await supervisor_func(state)
+
+    assert fake_llm.captured_messages is not None
+    system_prompt = fake_llm.captured_messages[0]["content"]
+    assert "CURRENT TASK PLAN" not in system_prompt
+
+
+@pytest.mark.asyncio
+async def test_team_supervisor_coerces_invalid_cross_graph_route_to_finish():
+    class InvalidTeamLLM:
+        def with_structured_output(self, schema):
+            return self
+
+        async def ainvoke(self, messages):
+            return {
+                "next": "head_supervisor",
+                "reasoning": "Return to the head supervisor directly.",
+                "content": "",
+            }
+
+    supervisor_func = make_supervisor_node(
+        InvalidTeamLLM(),  # type: ignore[arg-type]
+        ["search_agent", "web_scraper"],
+        layer="team",
+        team_name="ResearchTeam",
+    )
+
+    state = cast(
+        BaseAgentState,
+        {
+            "messages": [HumanMessage(content="Keep researching")],
+            "next": "",
+            "task_plan": "1. [research_team] Search.\n2. [writing_team] Write.",
+        },
+    )
+
+    command = await supervisor_func(state)
+
+    assert command.goto == "__end__"
+    assert command.update["route_history"][0]["next"] == "FINISH"
+    assert command.update["active_team"] is None
+    assert command.update["active_worker"] is None
+
+
+@pytest.mark.asyncio
 async def test_research_team_supervisor_stops_after_dispatch_limit():
     fake_llm = FakeRouterLLM("search_agent")
     supervisor_func = make_supervisor_node(
@@ -823,6 +886,110 @@ async def test_research_team_supervisor_stops_after_dispatch_limit():
     assert command.update["route_history"][0]["next"] == "FINISH"
     assert command.update["active_team"] is None
     assert command.update["active_worker"] is None
+
+
+@pytest.mark.asyncio
+async def test_research_team_supervisor_starts_with_search():
+    fake_llm = FakeRouterLLM("web_scraper")
+    supervisor_func = make_supervisor_node(
+        fake_llm,  # type: ignore[arg-type]
+        ["search", "web_scraper"],
+        layer="team",
+        team_name="ResearchTeam",
+    )
+
+    state = cast(
+        BaseAgentState,
+        {
+            "messages": [HumanMessage(content="Research voice conversion")],
+            "next": "",
+            "route_history": [],
+        },
+    )
+
+    command = await supervisor_func(state)
+
+    assert command.goto == "search"
+    assert command.update["active_worker"] == "search"
+
+
+@pytest.mark.asyncio
+async def test_research_team_supervisor_escalates_to_scraper_after_failed_search_review():
+    fake_llm = FakeRouterLLM("search")
+    supervisor_func = make_supervisor_node(
+        fake_llm,  # type: ignore[arg-type]
+        ["search", "web_scraper"],
+        layer="team",
+        team_name="ResearchTeam",
+    )
+
+    state = cast(
+        BaseAgentState,
+        {
+            "messages": [
+                HumanMessage(content="Research voice conversion"),
+                AIMessage(content="[Review Failed]\nNeed stronger evidence and concrete URLs.", name="research_team_reviewer"),
+            ],
+            "next": "",
+            "route_history": [
+                build_route_entry(
+                    layer="team",
+                    node="supervisor",
+                    next_node="search",
+                    team="research",
+                    worker="search",
+                )
+            ],
+        },
+    )
+
+    command = await supervisor_func(state)
+
+    assert command.goto == "web_scraper"
+    assert command.update["active_worker"] == "web_scraper"
+
+
+@pytest.mark.asyncio
+async def test_research_team_supervisor_finishes_after_failed_scrape_review_to_avoid_loops():
+    fake_llm = FakeRouterLLM("search")
+    supervisor_func = make_supervisor_node(
+        fake_llm,  # type: ignore[arg-type]
+        ["search", "web_scraper"],
+        layer="team",
+        team_name="ResearchTeam",
+    )
+
+    state = cast(
+        BaseAgentState,
+        {
+            "messages": [
+                HumanMessage(content="Research voice conversion"),
+                AIMessage(content="[Review Failed]\nNeed more evidence.", name="research_team_reviewer"),
+            ],
+            "next": "",
+            "route_history": [
+                build_route_entry(
+                    layer="team",
+                    node="supervisor",
+                    next_node="search",
+                    team="research",
+                    worker="search",
+                ),
+                build_route_entry(
+                    layer="team",
+                    node="supervisor",
+                    next_node="web_scraper",
+                    team="research",
+                    worker="web_scraper",
+                ),
+            ],
+        },
+    )
+
+    command = await supervisor_func(state)
+
+    assert command.goto == "__end__"
+    assert command.update["route_history"][0]["next"] == "FINISH"
 
 
 @pytest.mark.asyncio
