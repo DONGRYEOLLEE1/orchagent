@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     RESEARCH_TEAM_MAX_DISPATCHES: int = 5
     WRITING_TEAM_MAX_DISPATCHES: int = 5
     DATA_SCIENCE_TEAM_MAX_DISPATCHES: int = 5
+    CODING_TEAM_MAX_DISPATCHES: int = 6
     MAIN_AGENT_MODEL: str = "gpt-5.4-nano"
     THREAD_TITLE_MODEL: str = "gpt-5.4-mini"
     THREAD_SUGGESTIONS_MODEL: str = "gpt-5.4-mini"
@@ -26,6 +27,9 @@ class Settings(BaseSettings):
     ATTACHMENT_MAX_SPREADSHEET_BYTES: int = 20 * 1024 * 1024
     ATTACHMENT_MAX_JSON_BYTES: int = 20 * 1024 * 1024
     ATTACHMENT_MAX_CSV_BYTES: int = 10 * 1024 * 1024
+    REPOSITORY_BINDING_MAX_ZIP_BYTES: int = 50 * 1024 * 1024
+    REPOSITORY_CACHE_DIR: str = "/tmp/orchagent_repo_cache"
+    REPOSITORY_WORKSPACE_DIR: str = "/tmp/orchagent_workspaces"
 
     POSTGRES_USER: str = "postgres"
     POSTGRES_PASSWORD: str = "postgres"

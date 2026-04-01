@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.analytics import ChatTurn, LLMUsageEvent, ToolExecutionEvent
 from models.logging import ChatMessageLog, ChatSession
+from models.repository import ThreadRepositoryBinding, WorkspaceJob
 from models.trace import TraceEvent
 from models.thread_profile import ThreadProfile
 from models.user_memory import MemoryReferenceEvent, UserMemoryEntry
@@ -595,6 +596,15 @@ class ThreadService:
             delete(ThreadProfile).where(
                 ThreadProfile.thread_id == thread_id,
                 ThreadProfile.user_id == user_id,
+            )
+        )
+        await db.execute(
+            delete(WorkspaceJob).where(WorkspaceJob.thread_id == thread_id)
+        )
+        await db.execute(
+            delete(ThreadRepositoryBinding).where(
+                ThreadRepositoryBinding.thread_id == thread_id,
+                ThreadRepositoryBinding.user_id == user_id,
             )
         )
         await db.execute(

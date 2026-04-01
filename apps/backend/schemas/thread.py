@@ -3,6 +3,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from schemas.repository import RepositoryBindingResponse
+
 
 class ThreadSummaryResponse(BaseModel):
     thread_id: str
@@ -41,6 +43,7 @@ class ThreadListResponse(BaseModel):
 class ThreadDetailResponse(BaseModel):
     thread: ThreadSummaryResponse
     messages: list[ThreadMessageResponse]
+    repository_binding: RepositoryBindingResponse | None = None
 
 
 class ThreadTelemetryResponse(BaseModel):

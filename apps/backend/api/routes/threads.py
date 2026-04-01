@@ -18,6 +18,7 @@ from schemas.thread import (
     ThreadTelemetryResponse,
 )
 from services.logging_service import LoggingService
+from services.repository_binding_service import RepositoryBindingService
 from services.thread_profile_service import ThreadProfileService
 from services.thread_suggested_query_service import ThreadSuggestedQueryService
 from services.thread_service import ThreadService
@@ -94,6 +95,17 @@ async def get_thread(
     return ThreadDetailResponse(
         thread=ThreadSummaryResponse.model_validate(detail.thread, from_attributes=True),
         messages=_absolutize_attachment_urls(request, messages),
+        repository_binding=(
+            RepositoryBindingService.to_response(binding)
+            if (
+                binding := await RepositoryBindingService.get_active_binding(
+                    db,
+                    thread_id=thread_id,
+                    user_id=current_user.id,
+                )
+            )
+            else None
+        ),
     )
 
 

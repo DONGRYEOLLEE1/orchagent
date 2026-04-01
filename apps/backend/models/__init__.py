@@ -9,6 +9,7 @@ from models.analytics import (
 from models.auth import AuthSession, AuthUser
 from models.trace import TraceEvent
 from models.logging import ChatSession, ChatMessageLog
+from models.repository import ThreadRepositoryBinding, WorkspaceJob
 from models.thread_profile import ThreadProfile
 from models.upload import UploadedFile
 from models.user_memory import (
@@ -25,6 +26,8 @@ __all__ = [
     "TraceEvent",
     "ChatSession",
     "ChatMessageLog",
+    "ThreadRepositoryBinding",
+    "WorkspaceJob",
     "ChatTurn",
     "AuthUser",
     "AuthSession",

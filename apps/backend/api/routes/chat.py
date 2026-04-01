@@ -19,7 +19,10 @@ from langchain_core.messages import HumanMessage
 from langgraph.types import Command
 from langgraph.errors import GraphInterrupt
 
-from agent_core.supervisor import requires_human_approval_for_text
+from agent_core.supervisor import (
+    requires_coding_team_for_text,
+    requires_human_approval_for_text,
+)
 from schemas.chat import ChatRequest, ResumeRequest
 from workflow.main_graph import DEFAULT_LLM_MODEL, get_orchagent_graph
 from core.database import AsyncSessionLocal, get_db
@@ -41,12 +44,15 @@ from services.logging_service import LoggingService
 from services.memory_agent_service import MemoryAgentService
 from services.memory_service import MemoryService
 from services.file_logger import JsonLogger
+from services.repository_binding_service import RepositoryBindingService
+from services.repository_workspace_service import RepositoryWorkspaceService
 from services.storage_service import StorageService
 from services.upload_service import UploadService
 from agent_tools.runtime import (
     ToolAttachment,
     ToolRuntimeContext,
     collect_runtime_artifacts,
+    get_tool_runtime_context,
     reset_tool_runtime_context,
     set_tool_runtime_context,
 )
@@ -198,6 +204,13 @@ def _normalize_model_text_chunk(
 
 
 def _serialize_value(value: Any) -> Any:
+    if isinstance(value, str):
+        cleaned = value.replace("\x00", "")
+        max_length = 20000
+        if len(cleaned) > max_length:
+            cleaned = f"{cleaned[:max_length]}...(truncated {len(cleaned) - max_length} chars)"
+        return cleaned
+
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
 
@@ -786,6 +799,19 @@ async def _finish_tool_execution_with_fresh_session(
         await ChatAnalyticsService.finish_tool_execution(db, params)
 
 
+async def _finalize_workspace_job_with_fresh_session(
+    *,
+    job_id: str,
+    status: str,
+) -> None:
+    async with AsyncSessionLocal() as db:
+        await RepositoryWorkspaceService.finalize_workspace_job(
+            db,
+            job_id=job_id,
+            status=status,
+        )
+
+
 async def _ensure_thread_owned_by_user(
     thread_id: str, user_id: str, *, allow_missing: bool
 ) -> None:
@@ -1045,6 +1071,19 @@ def _build_public_attachment_payloads(
     return payloads
 
 
+def _build_repo_binding_payload(binding: Any | None) -> dict[str, Any] | None:
+    if binding is None:
+        return None
+    return {
+        "id": str(getattr(binding, "id", "")),
+        "thread_id": str(getattr(binding, "thread_id", "")),
+        "source_type": str(getattr(binding, "source_type", "")),
+        "display_name": str(getattr(binding, "display_name", "")),
+        "source_label": RepositoryBindingService.to_response(binding).source_label,
+        "status": str(getattr(binding, "status", "")),
+    }
+
+
 def _rewrite_attachment_markdown_links(
     content: str,
     public_attachments: list[dict[str, Any]],
@@ -1124,6 +1163,17 @@ async def chat_stream(
         allow_missing=True,
     )
 
+    repo_binding = await RepositoryBindingService.get_active_binding(
+        db,
+        thread_id=request.thread_id,
+        user_id=user_id,
+    )
+    repo_binding_payload = _build_repo_binding_payload(repo_binding)
+    repo_binding_id = str(getattr(repo_binding, "id", "")) if repo_binding is not None else None
+    coding_requested = bool(repo_binding) and requires_coding_team_for_text(
+        request.message
+    )
+
     uploaded_files = await UploadService.resolve_uploads(
         db,
         upload_ids=request.attachment_ids,
@@ -1181,6 +1231,8 @@ async def chat_stream(
         metadata={
             "has_images": bool(request.images or uploaded_image_payloads),
             "message_length": len(request.message),
+            "repo_binding_id": repo_binding_id,
+            "coding_requested": coding_requested,
         },
     )
     trace_context = _TraceWriteContext(
@@ -1226,6 +1278,7 @@ async def chat_stream(
                     "thread_id": request.thread_id,
                     "vision_routed_for_current_turn": False,
                     "attachments": analysis_attachments,
+                    "repo_binding": repo_binding_payload,
                 },
             }
         else:
@@ -1238,6 +1291,7 @@ async def chat_stream(
                     "thread_id": request.thread_id,
                     "vision_routed_for_current_turn": False,
                     "attachments": analysis_attachments,
+                    "repo_binding": repo_binding_payload,
                 },
             }
 
@@ -1265,6 +1319,12 @@ async def chat_stream(
         disconnected = False
         error_message: str | None = None
         final_state_values: dict[str, Any] = {}
+        workspace_job_id: str | None = None
+        workspace_summary: dict[str, Any] | None = None
+        workspace_job_id: str | None = None
+        workspace_summary: dict[str, Any] | None = None
+        workspace_job_id: str | None = None
+        workspace_summary: dict[str, Any] | None = None
 
         async def emit(payload: dict[str, Any], *, persist: bool = True):
             nonlocal final_status, final_status_node
@@ -1312,10 +1372,22 @@ async def chat_stream(
                 settings.sync_database_uri
             ) as checkpointer:
                 if trace_context.turn_id is not None:
-                    workspace_dir, artifact_dir = StorageService.create_analysis_workspace(
-                        thread_id=request.thread_id,
-                        turn_id=str(trace_context.turn_id),
-                    )
+                    log_dir = None
+                    if repo_binding is not None and coding_requested:
+                        workspace_bundle = await RepositoryWorkspaceService.create_workspace_for_turn(
+                            db,
+                            binding=repo_binding,
+                            turn_id=trace_context.turn_id,
+                        )
+                        workspace_dir = workspace_bundle.repo_dir
+                        artifact_dir = workspace_bundle.artifact_dir
+                        log_dir = workspace_bundle.log_dir
+                        workspace_job_id = workspace_bundle.job.id
+                    else:
+                        workspace_dir, artifact_dir = StorageService.create_analysis_workspace(
+                            thread_id=request.thread_id,
+                            turn_id=str(trace_context.turn_id),
+                        )
                     runtime_token = set_tool_runtime_context(
                         ToolRuntimeContext(
                             thread_id=request.thread_id,
@@ -1323,6 +1395,7 @@ async def chat_stream(
                             attachments=_build_tool_runtime_attachments(analysis_attachments),
                             workspace_dir=workspace_dir,
                             artifact_dir=artifact_dir,
+                            log_dir=log_dir,
                         )
                     )
                 builder = get_orchagent_graph()
@@ -1671,6 +1744,14 @@ async def chat_stream(
             )
         finally:
             if runtime_token is not None:
+                if repo_binding is not None and coding_requested and trace_context.turn_id is not None:
+                    try:
+                        workspace_root = get_tool_runtime_context().workspace_dir
+                        workspace_summary = RepositoryWorkspaceService.summarize_workspace(
+                            workspace_root
+                        )
+                    except Exception:
+                        workspace_summary = None
                 reset_tool_runtime_context(runtime_token)
             _append_summary_trace_events(
                 trace_context,
@@ -1678,6 +1759,18 @@ async def chat_stream(
                 reasoning_chunks,
                 collector.final_answer_chunks,
             )
+            if workspace_job_id is not None:
+                await _run_cleanup_task(
+                    "workspace job finalize",
+                    _finalize_workspace_job_with_fresh_session(
+                        job_id=workspace_job_id,
+                        status=(
+                            final_status
+                            if final_status in {"completed", "interrupted", "errored"}
+                            else ("errored" if disconnected else "completed")
+                        ),
+                    ),
+                )
             if trace_context.turn_id is not None:
                 now = now_kst()
                 await _run_cleanup_task(
@@ -1723,6 +1816,9 @@ async def chat_stream(
                                 "disconnected": disconnected,
                                 "error_message": error_message,
                                 "first_token_recorded": first_token_recorded,
+                                "repo_binding_id": repo_binding_id,
+                                "workspace_job_id": workspace_job_id,
+                                "workspace_summary": workspace_summary,
                             },
                         )
                     ),
@@ -1776,6 +1872,7 @@ async def chat_stream(
 async def chat_resume_stream(
     http_request: Request,
     request: ResumeRequest,
+    db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
     _: None = Depends(require_csrf),
 ):
@@ -1793,6 +1890,13 @@ async def chat_resume_stream(
         user_id,
         allow_missing=False,
     )
+    repo_binding = await RepositoryBindingService.get_active_binding(
+        db,
+        thread_id=request.thread_id,
+        user_id=user_id,
+    )
+    repo_binding_payload = _build_repo_binding_payload(repo_binding)
+    repo_binding_id = str(getattr(repo_binding, "id", "")) if repo_binding is not None else None
 
     # Edge Case 3 & 4: Validate Thread ID and Interrupt State
     async with AsyncPostgresSaver.from_conn_string(
@@ -1845,6 +1949,7 @@ async def chat_resume_stream(
         metadata={
             "action": request.action,
             "has_feedback": bool(request.feedback),
+            "repo_binding_id": repo_binding_id,
         },
     )
     trace_context = _TraceWriteContext(
@@ -1872,6 +1977,7 @@ async def chat_resume_stream(
                 "shared_context": {
                     "current_user_id": user_id,
                     "thread_id": request.thread_id,
+                    "repo_binding": repo_binding_payload,
                 }
             },
             resume={"action": request.action, "feedback": request.feedback},
@@ -1900,6 +2006,8 @@ async def chat_resume_stream(
         disconnected = False
         error_message: str | None = None
         final_state_values: dict[str, Any] = {}
+        workspace_job_id: str | None = None
+        workspace_summary: dict[str, Any] | None = None
 
         async def emit(payload: dict[str, Any], *, persist: bool = True):
             nonlocal final_status, final_status_node
@@ -1945,6 +2053,23 @@ async def chat_resume_stream(
             async with AsyncPostgresSaver.from_conn_string(
                 settings.sync_database_uri
             ) as checkpointer:
+                if trace_context.turn_id is not None and repo_binding is not None:
+                    workspace_bundle = await RepositoryWorkspaceService.create_workspace_for_turn(
+                        db,
+                        binding=repo_binding,
+                        turn_id=trace_context.turn_id,
+                    )
+                    runtime_token = set_tool_runtime_context(
+                        ToolRuntimeContext(
+                            thread_id=request.thread_id,
+                            user_id=user_id,
+                            attachments={},
+                            workspace_dir=workspace_bundle.repo_dir,
+                            artifact_dir=workspace_bundle.artifact_dir,
+                            log_dir=workspace_bundle.log_dir,
+                        )
+                    )
+                    workspace_job_id = workspace_bundle.job.id
                 builder = get_orchagent_graph()
                 graph = builder.compile(checkpointer=checkpointer)
 
@@ -2287,6 +2412,14 @@ async def chat_resume_stream(
         finally:
             if runtime_token is not None:
                 collected_artifacts = collect_runtime_artifacts()
+                if repo_binding is not None and trace_context.turn_id is not None:
+                    try:
+                        workspace_root = get_tool_runtime_context().workspace_dir
+                        workspace_summary = RepositoryWorkspaceService.summarize_workspace(
+                            workspace_root
+                        )
+                    except Exception:
+                        workspace_summary = None
                 reset_tool_runtime_context(runtime_token)
             _append_summary_trace_events(
                 trace_context,
@@ -2294,6 +2427,18 @@ async def chat_resume_stream(
                 reasoning_chunks,
                 collector.final_answer_chunks,
             )
+            if workspace_job_id is not None:
+                await _run_cleanup_task(
+                    "workspace job finalize",
+                    _finalize_workspace_job_with_fresh_session(
+                        job_id=workspace_job_id,
+                        status=(
+                            final_status
+                            if final_status in {"completed", "interrupted", "errored"}
+                            else ("errored" if disconnected else "completed")
+                        ),
+                    ),
+                )
             if trace_context.turn_id is not None:
                 now = now_kst()
                 await _run_cleanup_task(
@@ -2340,6 +2485,9 @@ async def chat_resume_stream(
                                 "error_message": error_message,
                                 "first_token_recorded": first_token_recorded,
                                 "resume_action": request.action,
+                                "repo_binding_id": repo_binding_id,
+                                "workspace_job_id": workspace_job_id,
+                                "workspace_summary": workspace_summary,
                             },
                         )
                     ),
