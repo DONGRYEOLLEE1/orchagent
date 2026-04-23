@@ -61,6 +61,20 @@ _RUNTIME_VERIFY_PATTERNS = [
     re.compile(r"(화면|브라우저|렌더링|실행 확인|페이지|플레이라이트|e2e|ui)", re.IGNORECASE),
 ]
 
+# Requests that actually intend to MUTATE the repository. Absent these signals we keep the
+# coding_team flow on the explorer-only (read-only) path and skip implementation_engineer entirely.
+_CODING_EDIT_INTENT_PATTERNS = [
+    re.compile(
+        r"\b(fix|debug|refactor|implement|modify|edit|apply|patch|write|add|create|delete|"
+        r"remove|rename|rewrite|bump|upgrade|install|replace|update|change|save)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"(고쳐|수정|편집|구현|추가|삭제|제거|변경|리팩터|리팩토링|작성|생성|만들|저장|"
+        r"교체|업데이트|업그레이드|패치|리네임|이름\s*바꿔)"
+    ),
+]
+
 
 def requires_human_approval_for_text(text: str) -> bool:
     return any(pattern.search(text) for pattern in _APPROVAL_PATTERNS)
@@ -68,6 +82,11 @@ def requires_human_approval_for_text(text: str) -> bool:
 
 def requires_coding_team_for_text(text: str) -> bool:
     return any(pattern.search(text or "") for pattern in _CODING_PATTERNS)
+
+
+def requires_coding_edit_for_text(text: str) -> bool:
+    """Return True when the latest user message expresses intent to modify the repo."""
+    return any(pattern.search(text or "") for pattern in _CODING_EDIT_INTENT_PATTERNS)
 
 
 def _extract_message_text(content: Any) -> str:
@@ -256,6 +275,14 @@ def _latest_user_requested_runtime_verification(messages: list[Any]) -> bool:
     if not latest_user_text:
         return False
     return any(pattern.search(latest_user_text) for pattern in _RUNTIME_VERIFY_PATTERNS)
+
+
+def _latest_user_requests_coding_edit(messages: list[Any]) -> bool:
+    """Return True iff the latest user message expresses intent to mutate the repo."""
+    latest_user_text = _latest_user_request_text(messages)
+    if not latest_user_text:
+        return False
+    return requires_coding_edit_for_text(latest_user_text)
 
 
 def _dispatched_team_workers(route_history: list[Any], team_name: str) -> list[str]:
@@ -619,42 +646,61 @@ def make_supervisor_node(
             runtime_requested = _latest_user_requested_runtime_verification(
                 state["messages"]
             )
+            edit_requested = _latest_user_requests_coding_edit(state["messages"])
+            review_passed = _latest_message_signals_review_passed(state["messages"])
+            review_failed = _latest_message_signals_review_failed(state["messages"])
+
             if "codebase_explorer" not in dispatched_workers and next_node != "codebase_explorer":
                 next_node = "codebase_explorer"
                 content = ""
             elif (
-                "codebase_explorer" in dispatched_workers
+                # Read-only turn: after the explorer produces an answer we wrap up immediately
+                # instead of invoking implementation_engineer. This cuts "explain this repo"
+                # style queries from 6+ dispatches down to a single explorer run.
+                not edit_requested
+                and "codebase_explorer" in dispatched_workers
+                and (review_passed or review_failed)
+            ):
+                next_node = "FINISH"
+                content = ""
+            elif (
+                edit_requested
+                and "codebase_explorer" in dispatched_workers
                 and "implementation_engineer" not in dispatched_workers
                 and next_node != "implementation_engineer"
             ):
                 next_node = "implementation_engineer"
                 content = ""
             elif (
-                _latest_message_signals_review_failed(state["messages"])
+                edit_requested
+                and review_failed
                 and "implementation_engineer" in members
                 and next_node != "implementation_engineer"
             ):
                 next_node = "implementation_engineer"
                 content = ""
             elif (
-                "implementation_engineer" in dispatched_workers
+                edit_requested
+                and "implementation_engineer" in dispatched_workers
                 and runtime_requested
                 and "runtime_verifier" in members
                 and "runtime_verifier" not in dispatched_workers
-                and _latest_message_signals_review_passed(state["messages"])
+                and review_passed
             ):
                 next_node = "runtime_verifier"
                 content = ""
             elif (
-                "runtime_verifier" in dispatched_workers
-                and _latest_message_signals_review_passed(state["messages"])
+                edit_requested
+                and "runtime_verifier" in dispatched_workers
+                and review_passed
             ):
                 next_node = "FINISH"
                 content = ""
             elif (
-                "implementation_engineer" in dispatched_workers
+                edit_requested
+                and "implementation_engineer" in dispatched_workers
                 and not runtime_requested
-                and _latest_message_signals_review_passed(state["messages"])
+                and review_passed
             ):
                 next_node = "FINISH"
                 content = ""
