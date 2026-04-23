@@ -54,3 +54,6 @@ tmp/*
 
 # logs
 apps/backend/logs/*
+
+_workspace/*
+.playwright-mcp/*
