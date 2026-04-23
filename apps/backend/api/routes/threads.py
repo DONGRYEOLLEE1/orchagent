@@ -93,23 +93,28 @@ async def get_thread(
         ThreadMessageResponse.model_validate(message, from_attributes=True)
         for message in detail.messages
     ]
+
+    # Resolve async lookups explicitly up-front. A walrus-inside-conditional form used
+    # to leave `binding` as an unawaited coroutine under pytest AsyncMock fixtures,
+    # which blew up `to_response` with `AttributeError: 'coroutine' object has no
+    # attribute 'id'`. Unpacking the awaits keeps evaluation order unambiguous.
+    binding = await RepositoryBindingService.get_active_binding(
+        db,
+        thread_id=thread_id,
+        user_id=current_user.id,
+    )
+    repository_binding = (
+        RepositoryBindingService.to_response(binding) if binding else None
+    )
+    coding_summary = await RepositoryWorkspaceService.get_latest_coding_summary(
+        db, thread_id=thread_id
+    )
+
     return ThreadDetailResponse(
         thread=ThreadSummaryResponse.model_validate(detail.thread, from_attributes=True),
         messages=_absolutize_attachment_urls(request, messages),
-        repository_binding=(
-            RepositoryBindingService.to_response(binding)
-            if (
-                binding := await RepositoryBindingService.get_active_binding(
-                    db,
-                    thread_id=thread_id,
-                    user_id=current_user.id,
-                )
-            )
-            else None
-        ),
-        coding_summary=await RepositoryWorkspaceService.get_latest_coding_summary(
-            db, thread_id=thread_id
-        ),
+        repository_binding=repository_binding,
+        coding_summary=coding_summary,
     )
 
 

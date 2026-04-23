@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from uuid import uuid4
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
@@ -15,6 +15,15 @@ client = TestClient(app)
 async def _override_get_db():
     db = AsyncMock()
     db.commit = AsyncMock()
+    # Without an explicit execute return_value, AsyncMock's auto-generated child
+    # mocks surface `.scalar_one_or_none()` as another coroutine, which leaks into
+    # `RepositoryBindingService.get_active_binding` and trips `to_response` with
+    # "coroutine has no attribute 'id'". Seed an empty SELECT result so routes that
+    # probe for bindings / coding summaries cleanly resolve to None.
+    empty_result = MagicMock()
+    empty_result.scalar_one_or_none = MagicMock(return_value=None)
+    empty_result.scalars = MagicMock(return_value=MagicMock(first=MagicMock(return_value=None)))
+    db.execute = AsyncMock(return_value=empty_result)
     yield db
 
 
