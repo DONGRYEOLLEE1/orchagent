@@ -36,6 +36,12 @@ test('binds a URL and surfaces the active repository binding', async () => {
     'https://github.com/example/sample-repo'
   );
 
+  // Zip upload path is only available in the unbound state (new binding form hidden once active).
+  const zipFile = new File(['zip'], 'sample.zip', { type: 'application/zip' });
+  const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+  await user.upload(fileInput, zipFile);
+  expect(onBindZip).toHaveBeenCalled();
+
   rerender(
     <RepositoryBindingPanel
       binding={{
@@ -57,11 +63,6 @@ test('binds a URL and surfaces the active repository binding', async () => {
   );
 
   expect(screen.getByText('sample-repo')).toBeInTheDocument();
-
-  const zipFile = new File(['zip'], 'sample.zip', { type: 'application/zip' });
-  const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
-  await user.upload(fileInput, zipFile);
-  expect(onBindZip).toHaveBeenCalled();
 
   await user.click(screen.getByRole('button', { name: /refresh repo/i }));
   expect(onMaterialize).toHaveBeenCalled();

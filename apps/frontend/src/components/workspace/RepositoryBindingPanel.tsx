@@ -34,6 +34,58 @@ export default function RepositoryBindingPanel({
     setSourceInput('');
   };
 
+  if (binding) {
+    // Compact, single-row bound summary — designed for the aside (≈330px wide).
+    return (
+      <div className="flex items-center gap-3 rounded-[14px] border border-[rgba(143,245,255,0.12)] bg-[rgba(35,38,46,0.42)] px-3 py-2.5 shadow-lg shadow-black/10">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] bg-[rgba(143,245,255,0.12)] text-[#8ff5ff]">
+          <GitBranch size={14} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[13px] font-medium text-[#e7e7f0]">
+            {binding.display_name}
+          </div>
+          <div className="truncate text-[11px] text-[rgba(170,170,179,0.68)]">
+            {binding.source_label}
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-0.5">
+          {loading ? (
+            <Loader2 size={13} className="animate-spin text-[#8ff5ff]" />
+          ) : (
+            <>
+              <button
+                type="button"
+                title="Refresh repository"
+                aria-label="Refresh repository"
+                onClick={() => void onMaterialize()}
+                disabled={disabled || loading}
+                className="rounded-[8px] p-1.5 text-[rgba(170,170,179,0.72)] transition hover:bg-[rgba(143,245,255,0.12)] hover:text-[#8ff5ff] disabled:opacity-40"
+              >
+                <RefreshCw size={13} />
+              </button>
+              <button
+                type="button"
+                title="Unbind repository"
+                aria-label="Unbind repository"
+                onClick={() => void onDeleteBinding()}
+                disabled={disabled || loading}
+                className="rounded-[8px] p-1.5 text-[rgba(170,170,179,0.72)] transition hover:bg-[rgba(255,155,155,0.12)] hover:text-[#ff9b9b] disabled:opacity-40"
+              >
+                <Unplug size={13} />
+              </button>
+            </>
+          )}
+        </div>
+        {error ? (
+          <div className="absolute left-0 right-0 top-full mt-1 rounded-[10px] border border-red-500/20 bg-red-500/10 px-3 py-2 text-[12px] text-red-200">
+            {error}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-[18px] border border-[rgba(255,255,255,0.08)] bg-[rgba(17,19,26,0.72)] px-4 py-4 shadow-lg shadow-black/20">
       <div className="flex items-start justify-between gap-4">
@@ -49,84 +101,59 @@ export default function RepositoryBindingPanel({
         {loading ? <Loader2 size={16} className="animate-spin text-[#8ff5ff]" /> : null}
       </div>
 
-      {binding ? (
-        <div className="mt-4 rounded-[16px] border border-[rgba(143,245,255,0.12)] bg-[rgba(35,38,46,0.28)] px-4 py-4">
-          <div className="text-[13px] font-semibold text-[#e7e7f0]">{binding.display_name}</div>
-          <div className="mt-1 break-all text-[12px] text-[rgba(170,170,179,0.78)]">
-            {binding.source_label}
-          </div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => void onMaterialize()}
-              disabled={disabled || loading}
-              className="inline-flex items-center gap-2 rounded-[12px] border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.02)] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[rgba(231,231,240,0.88)] transition hover:border-[rgba(143,245,255,0.28)] disabled:opacity-50"
-            >
-              <RefreshCw size={14} />
-              Refresh Repo
-            </button>
-            <button
-              type="button"
-              onClick={() => void onDeleteBinding()}
-              disabled={disabled || loading}
-              className="inline-flex items-center gap-2 rounded-[12px] border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.02)] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[rgba(255,209,209,0.92)] transition hover:border-[rgba(255,93,93,0.3)] disabled:opacity-50"
-            >
-              <Unplug size={14} />
-              Unbind Repo
-            </button>
-          </div>
-        </div>
-      ) : null}
+      {null}
 
-      <div className="mt-4 flex flex-col gap-3">
-        <input
-          value={sourceInput}
-          onChange={(e) => setSourceInput(e.target.value)}
-          placeholder="Paste GitHub URL or git URL"
-          disabled={disabled || loading}
-          className="w-full rounded-[14px] border border-[rgba(255,255,255,0.08)] bg-black px-4 py-3 text-[13px] text-[#e7e7f0] outline-none transition placeholder:text-[rgba(170,170,179,0.42)] focus:border-[rgba(143,245,255,0.3)] disabled:opacity-50"
-        />
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => void submitUrl('github_url')}
-            disabled={disabled || loading || !sourceInput.trim()}
-            className="rounded-[12px] bg-[#8ff5ff] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.16em] text-[#005d63] transition hover:brightness-105 disabled:bg-slate-800 disabled:text-slate-600"
-          >
-            Bind GitHub URL
-          </button>
-          <button
-            type="button"
-            onClick={() => void submitUrl('git_url')}
-            disabled={disabled || loading || !sourceInput.trim()}
-            className="rounded-[12px] border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.03)] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.16em] text-[#e7e7f0] transition hover:border-[rgba(143,245,255,0.28)] disabled:opacity-50"
-          >
-            Bind Git URL
-          </button>
-          <button
-            type="button"
-            onClick={() => zipInputRef.current?.click()}
-            disabled={disabled || loading}
-            className="inline-flex items-center gap-2 rounded-[12px] border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.03)] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.16em] text-[#e7e7f0] transition hover:border-[rgba(143,245,255,0.28)] disabled:opacity-50"
-          >
-            <Paperclip size={14} />
-            Bind Repo Zip
-          </button>
+      {binding ? null : (
+        <div className="mt-4 flex flex-col gap-3">
           <input
-            ref={zipInputRef}
-            type="file"
-            accept=".zip,application/zip"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) {
-                void onBindZip(file);
-              }
-              e.currentTarget.value = '';
-            }}
+            value={sourceInput}
+            onChange={(e) => setSourceInput(e.target.value)}
+            placeholder="Paste GitHub URL or git URL"
+            disabled={disabled || loading}
+            className="w-full rounded-[14px] border border-[rgba(255,255,255,0.08)] bg-black px-4 py-3 text-[13px] text-[#e7e7f0] outline-none transition placeholder:text-[rgba(170,170,179,0.42)] focus:border-[rgba(143,245,255,0.3)] disabled:opacity-50"
           />
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void submitUrl('github_url')}
+              disabled={disabled || loading || !sourceInput.trim()}
+              className="rounded-[12px] bg-[#8ff5ff] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.16em] text-[#005d63] transition hover:brightness-105 disabled:bg-slate-800 disabled:text-slate-600"
+            >
+              Bind GitHub URL
+            </button>
+            <button
+              type="button"
+              onClick={() => void submitUrl('git_url')}
+              disabled={disabled || loading || !sourceInput.trim()}
+              className="rounded-[12px] border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.03)] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.16em] text-[#e7e7f0] transition hover:border-[rgba(143,245,255,0.28)] disabled:opacity-50"
+            >
+              Bind Git URL
+            </button>
+            <button
+              type="button"
+              onClick={() => zipInputRef.current?.click()}
+              disabled={disabled || loading}
+              className="inline-flex items-center gap-2 rounded-[12px] border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.03)] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.16em] text-[#e7e7f0] transition hover:border-[rgba(143,245,255,0.28)] disabled:opacity-50"
+            >
+              <Paperclip size={14} />
+              Bind Repo Zip
+            </button>
+            <input
+              ref={zipInputRef}
+              type="file"
+              accept=".zip,application/zip"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  void onBindZip(file);
+                }
+                e.currentTarget.value = '';
+              }}
+            />
+          </div>
         </div>
-      </div>
+      )}
 
       {error ? (
         <div className="mt-3 rounded-[12px] border border-red-500/20 bg-red-500/10 px-3 py-2 text-[12px] text-red-200">
