@@ -68,6 +68,13 @@ import { ReasoningSummaryPanel } from '@/components/workspace/ReasoningSummaryPa
 import { SuggestedQueriesPanel } from '@/components/workspace/SuggestedQueriesPanel';
 import { AccountDrawer } from '@/components/workspace/AccountDrawer';
 import RepositoryBindingPanel from '@/components/workspace/RepositoryBindingPanel';
+import {
+  ExecutionPolicyCard,
+  VerificationStatusCard,
+  hasCodingSignal,
+} from '@/components/workspace/CodingSummaryPanels';
+import { CodingAsideTabs } from '@/components/workspace/CodingAsideTabs';
+import { RepoTreePanel } from '@/components/workspace/RepoTreePanel';
 import { WorkspaceTopNav } from '@/components/workspace/WorkspaceTopNav';
 
 function appendReasoningEntry(
@@ -741,6 +748,29 @@ function WorkspaceApp({
   useEffect(() => {
     activeThreadIdRef.current = activeThreadState.threadId;
   }, [activeThreadState.threadId]);
+
+  const lastAutoTabThreadRef = useRef<string | null>(null);
+  useEffect(() => {
+    const tid = activeThreadState.threadId;
+    if (!tid) {
+      lastAutoTabThreadRef.current = null;
+      return;
+    }
+    if (activeThreadState.detailLoadState !== 'success') return;
+    if (lastAutoTabThreadRef.current === tid) return;
+    const hasCodingContext =
+      !!activeThreadState.repoBinding || hasCodingSignal(activeThreadState.codingSummary);
+    setActionSpaceState((prev) => ({
+      ...prev,
+      activeRightTab: hasCodingContext ? 'coding' : 'reasoning',
+    }));
+    lastAutoTabThreadRef.current = tid;
+  }, [
+    activeThreadState.threadId,
+    activeThreadState.detailLoadState,
+    activeThreadState.repoBinding,
+    activeThreadState.codingSummary,
+  ]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -1451,6 +1481,7 @@ function WorkspaceApp({
         id: `tool_${toolIdCounterRef.current++}`,
         runId: payload.run_id,
         name: payload.display_name || payload.tool_name || payload.node || 'Tool',
+        toolName: payload.tool_name || payload.node || undefined,
         status: 'running',
         input: payload.input,
         startTime: Date.now(),
@@ -2267,8 +2298,12 @@ function WorkspaceApp({
             {streamSessionState.loading ? (
               <div className="flex w-full justify-start">
                 <div className="flex w-full max-w-[680px] items-start gap-4">
-                  <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] bg-[#7000ff] text-white shadow-[0px_0px_0px_2px_rgba(172,137,255,0.2)]">
-                    <Bot size={14} />
+                  <div className="relative mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] bg-[#7000ff] text-white shadow-[0px_0px_0px_2px_rgba(172,137,255,0.2)]">
+                    <span
+                      aria-hidden
+                      className="absolute inset-0 rounded-[12px] ring-2 ring-[rgba(143,245,255,0.55)] animate-ping"
+                    />
+                    <Bot size={14} className="relative" />
                   </div>
                   <div className="flex min-w-0 flex-1 flex-col gap-3">
                     {shouldShowStandaloneToolStrip ? (
@@ -2278,8 +2313,35 @@ function WorkspaceApp({
                         loading={streamSessionState.loading}
                       />
                     ) : null}
-                    <div className="px-1 py-1 text-[14px] italic text-[rgba(170,170,179,0.9)]">
-                      {streamSessionState.currentNode || 'Coordinating team...'}
+                    <div
+                      role="status"
+                      aria-live="polite"
+                      className="flex items-center gap-2 px-1 py-1 text-[14px] italic text-[rgba(143,245,255,0.92)]"
+                    >
+                      <span
+                        aria-hidden
+                        className="relative flex h-2 w-2 shrink-0"
+                      >
+                        <span className="absolute inline-flex h-full w-full rounded-full bg-[#8ff5ff] opacity-70 animate-ping" />
+                        <span className="relative inline-flex h-2 w-2 rounded-full bg-[#8ff5ff]" />
+                      </span>
+                      <span className="truncate animate-pulse">
+                        {streamSessionState.currentNode || 'Coordinating team'}
+                      </span>
+                      <span aria-hidden className="inline-flex items-center gap-0.5">
+                        <span
+                          className="h-1 w-1 rounded-full bg-[#8ff5ff] animate-bounce"
+                          style={{ animationDelay: '0ms' }}
+                        />
+                        <span
+                          className="h-1 w-1 rounded-full bg-[#8ff5ff] animate-bounce"
+                          style={{ animationDelay: '160ms' }}
+                        />
+                        <span
+                          className="h-1 w-1 rounded-full bg-[#8ff5ff] animate-bounce"
+                          style={{ animationDelay: '320ms' }}
+                        />
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -2293,7 +2355,15 @@ function WorkspaceApp({
                     <Bot size={14} />
                   </div>
                   <div className="w-full">
-                    <HITLPanel onAction={handleResume} loading={streamSessionState.loading} />
+                    <HITLPanel
+                      onAction={handleResume}
+                      loading={streamSessionState.loading}
+                      reason={
+                        streamSessionState.streamError ||
+                        streamSessionState.currentNode ||
+                        null
+                      }
+                    />
                   </div>
                 </div>
               </div>
@@ -2359,16 +2429,40 @@ function WorkspaceApp({
               </button>
             </div>
 
-            <RepositoryBindingPanel
-              binding={activeThreadState.repoBinding}
-              disabled={isInteractionLocked}
-              loading={repoBindingLoading}
-              error={repoBindingError}
-              onBindUrl={handleBindRepositoryUrl}
-              onBindZip={handleBindRepositoryZip}
-              onDeleteBinding={handleDeleteRepositoryBinding}
-              onMaterialize={handleMaterializeRepository}
-            />
+            {activeThreadState.repoBinding || repoBindingError ? (
+              // On xl+ the bound repo context lives in the right aside (Coding tab).
+              // Keep it centrally visible on narrower viewports where the aside is hidden.
+              <div className="xl:hidden">
+                <RepositoryBindingPanel
+                  binding={activeThreadState.repoBinding}
+                  disabled={isInteractionLocked}
+                  loading={repoBindingLoading}
+                  error={repoBindingError}
+                  onBindUrl={handleBindRepositoryUrl}
+                  onBindZip={handleBindRepositoryZip}
+                  onDeleteBinding={handleDeleteRepositoryBinding}
+                  onMaterialize={handleMaterializeRepository}
+                />
+              </div>
+            ) : (
+              <details className="group rounded-[12px] border border-[rgba(255,255,255,0.08)] bg-[rgba(29,31,40,0.55)] px-4 py-2 text-[12px] text-[rgba(170,170,179,0.9)]">
+                <summary className="cursor-pointer select-none list-none text-[10px] font-semibold uppercase tracking-[0.22em] text-[rgba(143,245,255,0.78)] outline-none">
+                  + Attach repository (coding mode)
+                </summary>
+                <div className="mt-3">
+                  <RepositoryBindingPanel
+                    binding={activeThreadState.repoBinding}
+                    disabled={isInteractionLocked}
+                    loading={repoBindingLoading}
+                    error={repoBindingError}
+                    onBindUrl={handleBindRepositoryUrl}
+                    onBindZip={handleBindRepositoryZip}
+                    onDeleteBinding={handleDeleteRepositoryBinding}
+                    onMaterialize={handleMaterializeRepository}
+                  />
+                </div>
+              </details>
+            )}
           </form>
         </div>
       </section>
@@ -2383,28 +2477,79 @@ function WorkspaceApp({
         className="hidden w-[404px] shrink-0 border-l border-[rgba(255,255,255,0.05)] bg-[rgba(12,14,20,0.78)] px-6 py-6 backdrop-blur-xl xl:flex xl:flex-col xl:overflow-y-auto"
       >
         <div className="space-y-6">
-          <AgentTimeline
-            history={streamSessionState.history}
-            currentNode={streamSessionState.currentNode}
-            loading={streamSessionState.loading}
-            historicalView={isHistoricalView}
+          <CodingAsideTabs
+            active={actionSpaceState.activeRightTab}
+            codingCount={
+              (activeThreadState.codingSummary?.changed_files?.length || 0)
+              + (activeThreadState.codingSummary?.verification_results?.length || 0)
+            }
+            onChange={(next) =>
+              setActionSpaceState(prev => ({ ...prev, activeRightTab: next }))
+            }
           />
 
-          <ReasoningSummaryPanel
-            content={actionSpaceState.reasoning}
-            entries={actionSpaceState.reasoningEntries}
-            isThinking={streamSessionState.loading}
-            historicalView={isHistoricalView}
-            fallbackSummary={liveReasoningFallback}
-          />
+          {actionSpaceState.activeRightTab === 'reasoning' ? (
+            <div
+              id="aside-panel-reasoning"
+              role="tabpanel"
+              aria-labelledby="aside-tab-reasoning"
+              className="space-y-6"
+            >
+              <AgentTimeline
+                history={streamSessionState.history}
+                currentNode={streamSessionState.currentNode}
+                loading={streamSessionState.loading}
+                historicalView={isHistoricalView}
+              />
 
-          <SuggestedQueriesPanel
-            queries={actionSpaceState.suggestedQueries}
-            loadState={actionSpaceState.suggestedQueriesState}
-            onSelectQuery={handleSuggestedQuerySelect}
-            historicalView={isHistoricalView}
-          />
+              <ReasoningSummaryPanel
+                content={actionSpaceState.reasoning}
+                entries={actionSpaceState.reasoningEntries}
+                isThinking={streamSessionState.loading}
+                historicalView={isHistoricalView}
+                fallbackSummary={liveReasoningFallback}
+              />
 
+              <SuggestedQueriesPanel
+                queries={actionSpaceState.suggestedQueries}
+                loadState={actionSpaceState.suggestedQueriesState}
+                onSelectQuery={handleSuggestedQuerySelect}
+                historicalView={isHistoricalView}
+              />
+            </div>
+          ) : (
+            <div
+              id="aside-panel-coding"
+              role="tabpanel"
+              aria-labelledby="aside-tab-coding"
+              className="space-y-6"
+            >
+              {activeThreadState.repoBinding || hasCodingSignal(activeThreadState.codingSummary) ? (
+                <>
+                  {activeThreadState.repoBinding ? (
+                    <RepositoryBindingPanel
+                      binding={activeThreadState.repoBinding}
+                      disabled={isInteractionLocked}
+                      loading={repoBindingLoading}
+                      error={repoBindingError}
+                      onBindUrl={handleBindRepositoryUrl}
+                      onBindZip={handleBindRepositoryZip}
+                      onDeleteBinding={handleDeleteRepositoryBinding}
+                      onMaterialize={handleMaterializeRepository}
+                    />
+                  ) : null}
+                  <RepoTreePanel summary={activeThreadState.codingSummary} />
+                  <VerificationStatusCard summary={activeThreadState.codingSummary} />
+                  <ExecutionPolicyCard summary={activeThreadState.codingSummary} />
+                </>
+              ) : (
+                <div className="rounded-[12px] border border-dashed border-[rgba(255,255,255,0.06)] bg-[rgba(29,31,40,0.3)] px-4 py-3 text-[12px] leading-6 text-[rgba(170,170,179,0.78)]">
+                  Bind a repository and send a coding request to see changed files, verification
+                  results, and the execution policy of the run here.
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </aside>
       </div>

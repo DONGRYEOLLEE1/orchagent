@@ -24,6 +24,7 @@ export function createInitialActiveThreadState(): ActiveThreadState {
     checkpointId: '',
     messages: [],
     repoBinding: null,
+    codingSummary: null,
     detailLoadState: 'idle',
     latestStatus: null,
     lastActivityAt: null,
@@ -51,6 +52,7 @@ export function createInitialActionSpaceState(): ActionSpaceState {
     suggestedQueriesError: '',
     rawTraces: [],
     showDebug: false,
+    activeRightTab: 'reasoning',
   };
 }
 
@@ -154,6 +156,7 @@ export function createActiveThreadStateFromDetail(
     checkpointId: detail.thread.checkpoint_id || '',
     messages: toChatMessages(detail.messages),
     repoBinding: detail.repository_binding || null,
+    codingSummary: detail.coding_summary || null,
     detailLoadState: 'success',
     latestStatus: detail.thread.latest_status,
     lastActivityAt: detail.thread.last_activity_at,

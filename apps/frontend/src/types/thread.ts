@@ -1,4 +1,5 @@
 import type { ChatMessage, StreamEvent, ToolExecution } from '@/types/agent';
+import type { CodingSummary } from '@/types/coding';
 
 export interface RepositoryBinding {
   id: string;
@@ -47,6 +48,7 @@ export interface ThreadDetail {
   thread: ThreadSummary;
   messages: ThreadMessage[];
   repository_binding?: RepositoryBinding | null;
+  coding_summary?: CodingSummary | null;
 }
 
 export interface ThreadTelemetry {
@@ -70,6 +72,7 @@ export interface ActiveThreadState {
   checkpointId: string;
   messages: ChatMessage[];
   repoBinding: RepositoryBinding | null;
+  codingSummary: CodingSummary | null;
   detailLoadState: ThreadLoadState;
   latestStatus: string | null;
   lastActivityAt: string | null;
@@ -93,6 +96,8 @@ export interface ReasoningEntry {
   runId?: string;
 }
 
+export type RightTab = 'reasoning' | 'coding';
+
 export interface ActionSpaceState {
   toolExecutions: ToolExecution[];
   reasoning: string;
@@ -102,4 +107,6 @@ export interface ActionSpaceState {
   suggestedQueriesError: string;
   rawTraces: StreamEvent[];
   showDebug: boolean;
+  /** Which right-side aside tab is currently active. Session-only, resets on thread switch. */
+  activeRightTab: RightTab;
 }
