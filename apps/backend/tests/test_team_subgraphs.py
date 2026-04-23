@@ -114,6 +114,7 @@ def test_coding_team_builder_uses_worker_specific_prompts(monkeypatch):
         ("apps/backend/workflow/teams/research.py", 2),
         ("apps/backend/workflow/teams/writing.py", 3),
         ("apps/backend/workflow/teams/vision.py", 1),
+        ("apps/backend/workflow/teams/coding.py", 3),
     ],
 )
 def test_team_modules_use_add_worker_without_blocking_wrappers(

@@ -19,6 +19,7 @@ from schemas.thread import (
 )
 from services.logging_service import LoggingService
 from services.repository_binding_service import RepositoryBindingService
+from services.repository_workspace_service import RepositoryWorkspaceService
 from services.thread_profile_service import ThreadProfileService
 from services.thread_suggested_query_service import ThreadSuggestedQueryService
 from services.thread_service import ThreadService
@@ -105,6 +106,9 @@ async def get_thread(
                 )
             )
             else None
+        ),
+        coding_summary=await RepositoryWorkspaceService.get_latest_coding_summary(
+            db, thread_id=thread_id
         ),
     )
 

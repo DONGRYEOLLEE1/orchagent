@@ -65,6 +65,6 @@ async def test_create_workspace_for_turn_copies_bound_repository(monkeypatch, tm
     assert bundle.artifact_dir.exists()
 
     (bundle.repo_dir / "app.py").write_text("print('updated')\n")
-    summary = RepositoryWorkspaceService.summarize_workspace(bundle.repo_dir)
+    summary = await RepositoryWorkspaceService.summarize_workspace(bundle.repo_dir)
     assert summary["diff_available"] is True
     assert "app.py" in summary["changed_files"]

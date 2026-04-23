@@ -79,9 +79,12 @@ def test_chat_stream_creates_repo_workspace_for_coding_request(monkeypatch, tmp_
         "api.routes.chat.RepositoryWorkspaceService.finalize_workspace_job",
         fake_finalize_workspace_job,
     )
+    async def _fake_summarize_workspace(repo_dir):
+        return {"changed_files": [], "diff_available": False}
+
     monkeypatch.setattr(
         "api.routes.chat.RepositoryWorkspaceService.summarize_workspace",
-        lambda repo_dir: {"changed_files": [], "diff_available": False},
+        _fake_summarize_workspace,
     )
 
     class Snapshot:
