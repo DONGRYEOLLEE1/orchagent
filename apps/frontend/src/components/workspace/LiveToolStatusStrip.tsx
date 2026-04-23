@@ -10,7 +10,49 @@ function truncateLabel(label: string, limit = 44) {
   return `${label.slice(0, Math.max(limit - 3, 1)).trimEnd()}...`;
 }
 
+const CODING_TOOL_COPY: Record<string, { running: string; success: string; error: string }> = {
+  apply_patch_edit: {
+    running: 'Applying patch',
+    success: 'Patch applied',
+    error: 'Patch failed',
+  },
+  create_repo_file: {
+    running: 'Creating file',
+    success: 'File created',
+    error: 'Create failed',
+  },
+  run_repo_command: {
+    running: 'Running command',
+    success: 'Command done',
+    error: 'Command failed',
+  },
+  verify_local_page: {
+    running: 'Verifying page',
+    success: 'Page verified',
+    error: 'Verify failed',
+  },
+  search_repo: { running: 'Searching repo', success: 'Search done', error: 'Search failed' },
+  read_repo_file: { running: 'Reading file', success: 'File read', error: 'Read failed' },
+  list_repo_tree: { running: 'Listing tree', success: 'Tree listed', error: 'List failed' },
+  git_status: { running: 'git status', success: 'git status done', error: 'git status failed' },
+  git_diff: { running: 'git diff', success: 'git diff done', error: 'git diff failed' },
+  git_log: { running: 'git log', success: 'git log done', error: 'git log failed' },
+};
+
+function resolveCodingKey(tool: ToolExecution): string | null {
+  if (tool.toolName && CODING_TOOL_COPY[tool.toolName]) return tool.toolName;
+  if (CODING_TOOL_COPY[tool.name]) return tool.name;
+  return null;
+}
+
 function toStatusLabel(tool: ToolExecution) {
+  const codingKey = resolveCodingKey(tool);
+  if (codingKey) {
+    const coding = CODING_TOOL_COPY[codingKey];
+    if (tool.status === 'running') return coding.running;
+    if (tool.status === 'success') return coding.success;
+    if (tool.status === 'error') return coding.error;
+  }
   if (tool.status === 'running') {
     return 'Executing';
   }
@@ -21,6 +63,15 @@ function toStatusLabel(tool: ToolExecution) {
     return 'Failed';
   }
   return 'Queued';
+}
+
+function formatToolLine(tool: ToolExecution): string {
+  const label = toStatusLabel(tool);
+  // coding tool labels already describe the action, so append tool name only for generic tools.
+  if (resolveCodingKey(tool)) {
+    return label;
+  }
+  return `${label} ${tool.name}`;
 }
 
 function toRecentItems(toolExecutions: ToolExecution[]) {
@@ -86,7 +137,7 @@ export function LiveToolStatusStrip({
               <Terminal size={10} className="shrink-0 text-slate-400" />
             ) : null}
             <span className="truncate">
-              {truncateLabel(`${toStatusLabel(tool)} ${tool.name}`)}
+              {truncateLabel(formatToolLine(tool))}
             </span>
           </div>
         );

@@ -30,7 +30,10 @@ export interface AgentStatus {
 export interface ToolExecution {
     id: string;
     runId?: string;
+    /** Display name used in UI (e.g. "Run Repo Command"). */
     name: string;
+    /** Original snake_case tool name from the backend (e.g. "run_repo_command"). Used for coding-tool copy mapping. */
+    toolName?: string;
     status: 'pending' | 'running' | 'success' | 'error';
     input?: unknown;
     output?: unknown;
