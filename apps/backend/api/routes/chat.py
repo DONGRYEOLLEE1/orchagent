@@ -387,6 +387,23 @@ def _chunk_text(text: str, chunk_size: int = 24) -> list[str]:
     return [text[i : i + chunk_size] for i in range(0, len(text), chunk_size)]
 
 
+# Cadence between fallback text chunks so review-approved / direct answers render as a
+# token-like stream in the UI instead of flushing in a single frame.
+FALLBACK_STREAM_DELAY_SECONDS = 0.02
+
+
+async def _emit_fallback_text_stream(
+    emissions, emit_text_emission, delay: float = FALLBACK_STREAM_DELAY_SECONDS
+):
+    first = True
+    for emission in emissions:
+        if not first:
+            await asyncio.sleep(delay)
+        first = False
+        payload = await emit_text_emission(emission)
+        yield payload
+
+
 def _trace_event(trace_context: _TraceWriteContext, payload: dict[str, Any]):
     trace_context.seq += 1
     run_id = payload.get("run_id")
@@ -683,6 +700,16 @@ async def _build_checkpoint_payload(graph: Any, config: dict[str, Any], thread_i
         "route_history_length": len(state_values.get("route_history", [])),
         "timestamp": _utc_timestamp(),
     }
+
+
+def _needs_coding_workspace(
+    repo_binding: Any,
+    *,
+    coding_requested: bool,
+    turn_id: Any,
+) -> bool:
+    """Single source of truth for "should we materialize a coding workspace this turn?"."""
+    return repo_binding is not None and coding_requested and turn_id is not None
 
 
 def _checkpoint_requires_user_action(payload: dict[str, Any]) -> bool:
@@ -1321,10 +1348,6 @@ async def chat_stream(
         final_state_values: dict[str, Any] = {}
         workspace_job_id: str | None = None
         workspace_summary: dict[str, Any] | None = None
-        workspace_job_id: str | None = None
-        workspace_summary: dict[str, Any] | None = None
-        workspace_job_id: str | None = None
-        workspace_summary: dict[str, Any] | None = None
 
         async def emit(payload: dict[str, Any], *, persist: bool = True):
             nonlocal final_status, final_status_node
@@ -1373,7 +1396,11 @@ async def chat_stream(
             ) as checkpointer:
                 if trace_context.turn_id is not None:
                     log_dir = None
-                    if repo_binding is not None and coding_requested:
+                    if _needs_coding_workspace(
+                        repo_binding,
+                        coding_requested=coding_requested,
+                        turn_id=trace_context.turn_id,
+                    ):
                         workspace_bundle = await RepositoryWorkspaceService.create_workspace_for_turn(
                             db,
                             binding=repo_binding,
@@ -1582,10 +1609,13 @@ async def chat_stream(
                                         )
                                     )
 
-                                for emission in collector.consume_head_supervisor_end(
-                                    update, goto=output.goto
+                                async for payload in _emit_fallback_text_stream(
+                                    collector.consume_head_supervisor_end(
+                                        update, goto=output.goto
+                                    ),
+                                    emit_text_emission,
                                 ):
-                                    yield await emit_text_emission(emission)
+                                    yield payload
 
                             elif name == "finalizer":
                                 status = update.get("streaming_status")
@@ -1599,8 +1629,11 @@ async def chat_stream(
                                             message="Completed",
                                         )
                                     )
-                                for emission in collector.consume_finalizer_end(update):
-                                    yield await emit_text_emission(emission)
+                                async for payload in _emit_fallback_text_stream(
+                                    collector.consume_finalizer_end(update),
+                                    emit_text_emission,
+                                ):
+                                    yield payload
 
                 checkpoint_payload = await _build_checkpoint_payload(
                     graph, config, request.thread_id
@@ -1611,8 +1644,11 @@ async def chat_stream(
                     snapshot.values if isinstance(snapshot.values, dict) else {}
                 )
                 final_state_values = state_values
-                for emission in collector.collect_state_fallback(state_values):
-                    yield await emit_text_emission(emission)
+                async for payload in _emit_fallback_text_stream(
+                    collector.collect_state_fallback(state_values),
+                    emit_text_emission,
+                ):
+                    yield payload
 
                 yield await emit(checkpoint_payload)
 
@@ -1744,10 +1780,14 @@ async def chat_stream(
             )
         finally:
             if runtime_token is not None:
-                if repo_binding is not None and coding_requested and trace_context.turn_id is not None:
+                if _needs_coding_workspace(
+                    repo_binding,
+                    coding_requested=coding_requested,
+                    turn_id=trace_context.turn_id,
+                ):
                     try:
                         workspace_root = get_tool_runtime_context().workspace_dir
-                        workspace_summary = RepositoryWorkspaceService.summarize_workspace(
+                        workspace_summary = await RepositoryWorkspaceService.summarize_workspace(
                             workspace_root
                         )
                     except Exception:
@@ -2053,7 +2093,13 @@ async def chat_resume_stream(
             async with AsyncPostgresSaver.from_conn_string(
                 settings.sync_database_uri
             ) as checkpointer:
-                if trace_context.turn_id is not None and repo_binding is not None:
+                # resume inherits coding context from the prior turn, so coding_requested=True
+                # mirrors the initial-turn semantics of _needs_coding_workspace.
+                if _needs_coding_workspace(
+                    repo_binding,
+                    coding_requested=True,
+                    turn_id=trace_context.turn_id,
+                ):
                     workspace_bundle = await RepositoryWorkspaceService.create_workspace_for_turn(
                         db,
                         binding=repo_binding,
@@ -2254,10 +2300,13 @@ async def chat_resume_stream(
                                         )
                                     )
 
-                                for emission in collector.consume_head_supervisor_end(
-                                    update, goto=output.goto
+                                async for payload in _emit_fallback_text_stream(
+                                    collector.consume_head_supervisor_end(
+                                        update, goto=output.goto
+                                    ),
+                                    emit_text_emission,
                                 ):
-                                    yield await emit_text_emission(emission)
+                                    yield payload
 
                             elif name == "finalizer":
                                 status = update.get("streaming_status")
@@ -2271,8 +2320,11 @@ async def chat_resume_stream(
                                             message="Completed",
                                         )
                                     )
-                                for emission in collector.consume_finalizer_end(update):
-                                    yield await emit_text_emission(emission)
+                                async for payload in _emit_fallback_text_stream(
+                                    collector.consume_finalizer_end(update),
+                                    emit_text_emission,
+                                ):
+                                    yield payload
 
                 checkpoint_payload = await _build_checkpoint_payload(
                     graph, config, request.thread_id
@@ -2283,8 +2335,11 @@ async def chat_resume_stream(
                     snapshot.values if isinstance(snapshot.values, dict) else {}
                 )
                 final_state_values = state_values
-                for emission in collector.collect_state_fallback(state_values):
-                    yield await emit_text_emission(emission)
+                async for payload in _emit_fallback_text_stream(
+                    collector.collect_state_fallback(state_values),
+                    emit_text_emission,
+                ):
+                    yield payload
 
                 yield await emit(checkpoint_payload)
 
@@ -2412,10 +2467,14 @@ async def chat_resume_stream(
         finally:
             if runtime_token is not None:
                 collected_artifacts = collect_runtime_artifacts()
-                if repo_binding is not None and trace_context.turn_id is not None:
+                if _needs_coding_workspace(
+                    repo_binding,
+                    coding_requested=True,
+                    turn_id=trace_context.turn_id,
+                ):
                     try:
                         workspace_root = get_tool_runtime_context().workspace_dir
-                        workspace_summary = RepositoryWorkspaceService.summarize_workspace(
+                        workspace_summary = await RepositoryWorkspaceService.summarize_workspace(
                             workspace_root
                         )
                     except Exception:
