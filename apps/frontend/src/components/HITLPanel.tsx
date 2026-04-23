@@ -9,12 +9,15 @@ function cn(...inputs: ClassValue[]) {
 
 export const HITLPanel = ({
   onAction,
-  loading
+  loading,
+  reason,
 }: {
   onAction: (action: string, feedback: string) => void,
-  loading: boolean
+  loading: boolean,
+  reason?: string | null,
 }) => {
   const [feedback, setFeedback] = useState('');
+  const trimmedReason = reason?.trim();
 
   return (
     <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-6 mt-4 shadow-lg shadow-amber-500/5 animate-in fade-in slide-in-from-bottom-2">
@@ -24,6 +27,14 @@ export const HITLPanel = ({
         </div>
         <h3 className="text-lg font-bold text-amber-100">Action Required</h3>
       </div>
+      {trimmedReason ? (
+        <p
+          data-testid="hitl-reason"
+          className="text-amber-100 text-sm font-medium mb-3 rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2"
+        >
+          {trimmedReason}
+        </p>
+      ) : null}
       <p className="text-amber-200/80 text-sm mb-6">
         The agent has paused execution and requires your approval to proceed.
         Please review the proposed plan or action and provide feedback.
