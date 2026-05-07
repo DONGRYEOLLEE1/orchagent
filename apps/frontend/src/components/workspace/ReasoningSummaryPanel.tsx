@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { BrainCircuit, ChevronDown } from 'lucide-react';
+import { BrainCircuit, ChevronDown, ChevronsDown, ChevronsUp } from 'lucide-react';
 import type { ReasoningEntry } from '@/types/thread';
 
 export function ReasoningSummaryPanel({
@@ -32,14 +32,34 @@ export function ReasoningSummaryPanel({
     ];
   }, [content, entries, fallbackSummary, historicalView]);
   const [collapseOverrides, setCollapseOverrides] = useState<Record<string, boolean>>({});
+  const [globalCollapsed, setGlobalCollapsed] = useState<boolean | null>(null);
   const resolvedContent = content.trim() || fallbackSummary || '';
   const hasContent = normalizedEntries.length > 0 || Boolean(resolvedContent.trim());
 
-  const toggleEntry = (entryId: string) => {
+  const resolveCollapsed = (entry: { id: string; content: string }): boolean => {
+    if (entry.id in collapseOverrides) {
+      return collapseOverrides[entry.id];
+    }
+    if (globalCollapsed !== null) {
+      return globalCollapsed;
+    }
+    return entry.content.length > 260;
+  };
+
+  const toggleEntry = (entryId: string, currentCollapsed: boolean) => {
     setCollapseOverrides((prev) => ({
       ...prev,
-      [entryId]: !(prev[entryId] ?? true),
+      [entryId]: !currentCollapsed,
     }));
+  };
+
+  const allCollapsed = normalizedEntries.length > 0 && normalizedEntries.every(resolveCollapsed);
+  const showBulkToggle = normalizedEntries.length >= 2;
+
+  const toggleAll = () => {
+    const next = !allCollapsed;
+    setGlobalCollapsed(next);
+    setCollapseOverrides({});
   };
 
   return (
@@ -48,7 +68,7 @@ export function ReasoningSummaryPanel({
         <div className="rounded-[4px] bg-[rgba(172,137,255,0.14)] p-2 text-[#ac89ff]">
           <BrainCircuit size={15} />
         </div>
-        <div>
+        <div className="flex-1">
           <h3 className="font-[var(--font-display)] text-[14px] font-bold text-[#e7e7f0]">
             Inner Monologue
           </h3>
@@ -56,13 +76,23 @@ export function ReasoningSummaryPanel({
             {isThinking ? 'Reasoning Summary Live' : historicalView ? 'Saved Summary' : 'Reasoning Summary'}
           </p>
         </div>
+        {showBulkToggle ? (
+          <button
+            type="button"
+            onClick={toggleAll}
+            aria-label={allCollapsed ? 'Expand all reasoning entries' : 'Collapse all reasoning entries'}
+            title={allCollapsed ? 'Expand all' : 'Collapse all'}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-[6px] text-[rgba(172,137,255,0.7)] transition hover:bg-[rgba(172,137,255,0.12)] hover:text-[#ac89ff]"
+          >
+            {allCollapsed ? <ChevronsDown size={14} /> : <ChevronsUp size={14} />}
+          </button>
+        ) : null}
       </div>
 
       {hasContent ? (
         <div className="space-y-3">
           {normalizedEntries.map((entry, index) => {
-            const isCollapsed =
-              collapseOverrides[entry.id] ?? entry.content.length > 260;
+            const isCollapsed = resolveCollapsed(entry);
             const heading = entry.displayName || entry.node || `Reasoning ${index + 1}`;
             return (
               <div
@@ -71,7 +101,7 @@ export function ReasoningSummaryPanel({
               >
                 <button
                   type="button"
-                  onClick={() => toggleEntry(entry.id)}
+                  onClick={() => toggleEntry(entry.id, isCollapsed)}
                   className="flex w-full items-start justify-between gap-3 text-left"
                 >
                   <div>

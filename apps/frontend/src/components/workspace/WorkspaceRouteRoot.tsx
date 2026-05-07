@@ -732,6 +732,15 @@ function WorkspaceApp({
   const [streamSessionState, setStreamSessionState] = useState<StreamSessionState>(() => createInitialStreamSessionState());
   const [actionSpaceState, setActionSpaceState] = useState<ActionSpaceState>(() => createInitialActionSpaceState());
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const composerFormRef = useRef<HTMLFormElement>(null);
+  const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const el = composerTextareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  }, [input]);
   const toolIdCounterRef = useRef(0);
   const pendingTitleRequestIdsRef = useRef<Record<string, string>>({});
   const pendingTelemetryRequestIdsRef = useRef<Record<string, string>>({});
@@ -2385,7 +2394,11 @@ function WorkspaceApp({
         </div>
 
         <div className="border-t border-[rgba(255,255,255,0.05)] bg-[rgba(29,31,40,0.8)] px-6 py-6 backdrop-blur-xl md:px-8">
-          <form onSubmit={handleSubmit} className="mx-auto flex w-full max-w-[720px] flex-col gap-3">
+          <form
+            ref={composerFormRef}
+            onSubmit={handleSubmit}
+            className="mx-auto flex w-full max-w-[720px] flex-col gap-3"
+          >
             <SelectedAttachmentTray
               files={selectedFiles}
               statuses={selectedFileStatuses}
@@ -2394,36 +2407,55 @@ function WorkspaceApp({
               onRemove={removeSelectedFile}
             />
 
-            <div className="relative">
-              <input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="Message OrchAgent..."
-                className="w-full rounded-[16px] border border-[rgba(255,255,255,0.1)] bg-black px-14 py-4 pr-32 text-[14px] text-[#e7e7f0] outline-none transition placeholder:text-[rgba(170,170,179,0.42)] focus:border-[rgba(143,245,255,0.3)]"
-                disabled={isInteractionLocked}
-              />
-              <button
-                type="button"
-                aria-label="Add files"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isInteractionLocked}
-                className="absolute left-3 top-1/2 -translate-y-1/2 p-2 text-[rgba(170,170,179,0.72)] transition hover:text-[#8ff5ff] disabled:text-slate-800"
-              >
-                <Paperclip size={18} />
-              </button>
-              <input
-                type="file"
-                multiple
-                accept="image/*,.pdf,.xlsx,.csv,.json,.docx"
-                className="hidden"
-                ref={fileInputRef}
-                onChange={handleAttachmentChange}
-              />
+            <p className="px-1 text-right text-[9px] tracking-[0.18em] text-[rgba(170,170,179,0.45)]">
+              ENTER · SEND &nbsp;·&nbsp; SHIFT + ENTER · NEW LINE
+            </p>
+            <div className="flex items-stretch gap-2">
+              <div className="flex flex-1 items-center rounded-[16px] border border-[rgba(255,255,255,0.1)] bg-black px-2 transition focus-within:border-[rgba(143,245,255,0.35)]">
+                <button
+                  type="button"
+                  aria-label="Add files"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isInteractionLocked}
+                  className="shrink-0 p-2 text-[rgba(170,170,179,0.72)] transition hover:text-[#8ff5ff] disabled:text-slate-800"
+                >
+                  <Paperclip size={18} />
+                </button>
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*,.pdf,.xlsx,.csv,.json,.docx"
+                  className="hidden"
+                  ref={fileInputRef}
+                  onChange={handleAttachmentChange}
+                />
+                <textarea
+                  ref={composerTextareaRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (
+                      e.key === 'Enter' &&
+                      !e.shiftKey &&
+                      !e.nativeEvent.isComposing &&
+                      !isInteractionLocked
+                    ) {
+                      e.preventDefault();
+                      composerFormRef.current?.requestSubmit();
+                    }
+                  }}
+                  placeholder="Message OrchAgent..."
+                  rows={1}
+                  className="flex-1 resize-none border-0 bg-transparent py-2 leading-6 text-[#e7e7f0] outline-none placeholder:text-[rgba(170,170,179,0.42)]"
+                  style={{ fontSize: '14px', maxHeight: '200px', overflowY: 'auto' }}
+                  disabled={isInteractionLocked}
+                />
+              </div>
               <button
                 type="submit"
                 aria-label="Send message"
                 disabled={isInteractionLocked || (!input.trim() && !hasSendableAttachments)}
-                className="absolute right-3 top-1/2 inline-flex -translate-y-1/2 items-center justify-center rounded-[12px] bg-[#8ff5ff] px-5 py-2.5 text-[12px] font-bold uppercase tracking-[0.18em] text-[#005d63] shadow-[0px_10px_15px_-3px_rgba(143,245,255,0.2),0px_4px_6px_-4px_rgba(143,245,255,0.2)] transition hover:brightness-105 disabled:bg-slate-800 disabled:text-slate-600"
+                className="shrink-0 self-stretch inline-flex items-center justify-center rounded-[12px] bg-[#8ff5ff] px-5 text-[12px] font-bold uppercase tracking-[0.18em] text-[#005d63] shadow-[0px_10px_15px_-3px_rgba(143,245,255,0.2),0px_4px_6px_-4px_rgba(143,245,255,0.2)] transition hover:brightness-105 disabled:bg-slate-800 disabled:text-slate-600"
               >
                 {streamSessionState.loading ? <Loader2 className="animate-spin" size={16} /> : 'Send'}
               </button>
