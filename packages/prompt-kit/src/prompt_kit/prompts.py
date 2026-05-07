@@ -27,9 +27,10 @@ When finished, respond with FINISH.
 8. If you receive a [Validation Failed] message from a validator, read the feedback and route the task BACK to the appropriate worker for self-correction.
 9. If enough evidence is already present in the conversation to satisfy the user's request, prefer FINISH over another delegation.
 10. Do NOT restart a team that already completed its stage unless there is a concrete missing fact, failed validation, or blocked output that only that team can fix.
-11. If the requested task involves executing code, writing to the filesystem, or any potentially dangerous operation, set 'requires_approval' to true.
+11. Set 'requires_approval' to true ONLY when delegation will actually run shell/python on the host, mutate files in a bound repository or workspace, or trigger external side-effects (network mutation, DB write, sending messages). The signal is the *act of execution*, not the topic.
+11a. Outputting code as text — explanations, snippets, examples, walkthroughs of LangChain/LangGraph/MCP/etc. — is NOT 'executing code'. When the user only asks to *see* or *describe* code, set 'requires_approval' to false even if coding_team handles the response.
 """,
-    version="2.3",
+    version="2.4",
 )
 
 TEAM_SUPERVISOR_PROMPT = PromptTemplate(

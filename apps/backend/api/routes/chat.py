@@ -1638,21 +1638,25 @@ async def chat_stream(
                 checkpoint_payload = await _build_checkpoint_payload(
                     graph, config, request.thread_id
                 )
+                requires_user_action = _checkpoint_requires_user_action(
+                    checkpoint_payload
+                )
 
                 snapshot = await graph.aget_state(config, subgraphs=True)
                 state_values = (
                     snapshot.values if isinstance(snapshot.values, dict) else {}
                 )
                 final_state_values = state_values
-                async for payload in _emit_fallback_text_stream(
-                    collector.collect_state_fallback(state_values),
-                    emit_text_emission,
-                ):
-                    yield payload
+                if not requires_user_action:
+                    async for payload in _emit_fallback_text_stream(
+                        collector.collect_state_fallback(state_values),
+                        emit_text_emission,
+                    ):
+                        yield payload
 
                 yield await emit(checkpoint_payload)
 
-                if _checkpoint_requires_user_action(checkpoint_payload):
+                if requires_user_action:
                     yield await emit(
                         _status_payload(
                             status="interrupted",
@@ -1674,7 +1678,7 @@ async def chat_stream(
                 final_answer = collector.final_answer()
                 if runtime_token is not None:
                     collected_artifacts = collect_runtime_artifacts()
-                if final_answer:
+                if final_answer and not requires_user_action:
                     assistant_attachments = await _persist_generated_artifact_uploads(
                         db,
                         user_id=user_id,
@@ -2329,21 +2333,25 @@ async def chat_resume_stream(
                 checkpoint_payload = await _build_checkpoint_payload(
                     graph, config, request.thread_id
                 )
+                requires_user_action = _checkpoint_requires_user_action(
+                    checkpoint_payload
+                )
 
                 snapshot = await graph.aget_state(config, subgraphs=True)
                 state_values = (
                     snapshot.values if isinstance(snapshot.values, dict) else {}
                 )
                 final_state_values = state_values
-                async for payload in _emit_fallback_text_stream(
-                    collector.collect_state_fallback(state_values),
-                    emit_text_emission,
-                ):
-                    yield payload
+                if not requires_user_action:
+                    async for payload in _emit_fallback_text_stream(
+                        collector.collect_state_fallback(state_values),
+                        emit_text_emission,
+                    ):
+                        yield payload
 
                 yield await emit(checkpoint_payload)
 
-                if _checkpoint_requires_user_action(checkpoint_payload):
+                if requires_user_action:
                     yield await emit(
                         _status_payload(
                             status="interrupted",
@@ -2363,7 +2371,7 @@ async def chat_resume_stream(
                     )
 
                 final_answer = collector.final_answer()
-                if final_answer:
+                if final_answer and not requires_user_action:
                     assistant_attachments = []
                     if runtime_token is not None:
                         assistant_attachments = await _persist_generated_artifact_uploads(
