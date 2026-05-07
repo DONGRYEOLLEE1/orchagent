@@ -43,5 +43,5 @@
 ## Phase 4 — 정리
 
 - [x] 위 체크박스 모두 `- [x]` 처리.
-- [ ] `fix(chat): suppress stale state fallback on HITL interrupt` 단일 커밋 (또는 phase별 분할).
-- [ ] push.
+- [x] `fix(chat): suppress stale state fallback on HITL interrupt` 단일 커밋 (`48684c3`).
+- [x] push (`db72bc5..48684c3 main -> main`).
