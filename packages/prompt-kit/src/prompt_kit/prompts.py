@@ -18,6 +18,7 @@ When finished, respond with FINISH.
 1. Write concise routing reasoning in the 'reasoning' field. If a CURRENT TASK PLAN is provided, refer to the current stage, but do not expand a simple task into unnecessary micro-steps.
 2. For any questions about current events, news, or topics that require the latest information (e.g., wars, politics, stock market), you MUST delegate to the 'research_team'. Do not attempt to answer from your own internal knowledge.
 2a. If a repository is bound to the current thread and the user is asking for code changes, debugging, tests, refactors, or repo-local implementation work, prefer `coding_team`.
+2b. **Use `coding_team` ONLY when a repository is bound to the thread.** When no repository is bound and the user simply wants to *see* code (snippets, examples, walkthroughs, framework explanations), the coding workers' repo-bound tools are useless. In that case set `next` to `FINISH` and let the finalizer (or your own direct response) produce the code as text — do NOT delegate to coding_team.
 3. Only put end-user facing answer text in the 'content' field when 'next' is 'FINISH'. If you are delegating to another team, 'content' must be empty.
 4. If you can answer simple greetings or general common sense directly, provide your answer in the 'content' field and set 'next' to 'FINISH'.
 5. Prefer the FEWEST handoffs that can complete the task safely. For a simple research-and-answer request, one research handoff and then final synthesis is usually enough.
@@ -29,8 +30,9 @@ When finished, respond with FINISH.
 10. Do NOT restart a team that already completed its stage unless there is a concrete missing fact, failed validation, or blocked output that only that team can fix.
 11. Set 'requires_approval' to true ONLY when delegation will actually run shell/python on the host, mutate files in a bound repository or workspace, or trigger external side-effects (network mutation, DB write, sending messages). The signal is the *act of execution*, not the topic.
 11a. Outputting code as text — explanations, snippets, examples, walkthroughs of LangChain/LangGraph/MCP/etc. — is NOT 'executing code'. When the user only asks to *see* or *describe* code, set 'requires_approval' to false even if coding_team handles the response.
+12. AVOID re-dispatching the same team after it already returned control once in this turn. If the latest `[Review Failed]`/`[Review Warning]`/team feedback in the conversation came from a team you already routed to, prefer FINISH so the finalizer synthesizes from what is already gathered. Only re-route to the same team when there is a concrete actionable gap that team alone can fix.
 """,
-    version="2.4",
+    version="2.5",
 )
 
 TEAM_SUPERVISOR_PROMPT = PromptTemplate(
@@ -181,10 +183,11 @@ Evaluate based on the following criteria:
 Be pragmatic. Mark the response invalid only when there is a substantive problem: missing required content, factual risk, broken format, or a clear failure to follow the user's request.
 Minor wording or style improvements should usually remain valid and be described in critique/feedback without failing the output.
 If the task required visualization and the tool outputs show that a PNG/chart artifact was successfully generated or auto-registered, treat the visualization requirement as satisfied. Do not fail the response only because the chart file is not described inline in the text.
+For pure code-output requests where the user only asks to *see* or *describe* code (no repository changes, no execution, no runtime verification) — e.g. "show me a LangGraph + MCP example", "give me a snippet" — DO NOT mark invalid based on "runnability uncertainty", missing environment-specific imports, ambiguous tool/SDK versions, or imperfect dependency assumptions. If the snippet is syntactically reasonable and illustrates the requested architecture, mark valid and put any caveats in critique/feedback only.
 Provide a detailed 'critique' and specific 'feedback' for the worker to follow.
 Approve (is_valid=True) when the response materially satisfies the user's request and has no meaningful factual or formatting issues.
 """,
-    version="1.0",
+    version="1.1",
 )
 
 DOC_WRITER_PROMPT = PromptTemplate(

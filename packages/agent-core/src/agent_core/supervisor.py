@@ -558,8 +558,45 @@ def make_supervisor_node(
                 next_node = "FINISH"
                 content = ""
 
+        # Helper: how many times has the head supervisor already routed into a given team this turn?
+        def _head_redirects_for(team_full_name: str) -> int:
+            normalized = normalize_team_name(team_full_name)
+            return sum(
+                1
+                for entry in route_history
+                if entry.get("layer") == "head" and entry.get("team") == normalized
+            )
+
+        HEAD_TEAM_REDIRECT_LIMIT = 2
+
         if layer == "head" and task_plan and task_plan != "NO_PLAN":
             next_planned_stage = _next_pending_team_stage(task_plan, route_history)
+
+            # Patch B (inside plan): coding_team's repo-bound tools are useless without
+            # a bound repository. If the plan still wants coding_team but no repo is bound,
+            # treat the stage as unreachable so the override falls through to FINISH.
+            if (
+                next_planned_stage == "coding_team"
+                and not shared_context.get("repo_binding")
+            ):
+                print(
+                    "[Supervisor] Plan stage coding_team skipped: thread has no bound repository.",
+                    flush=True,
+                )
+                next_planned_stage = None
+
+            # Patch A (inside plan): if head has already cycled into the same team
+            # HEAD_TEAM_REDIRECT_LIMIT times, treat that stage as exhausted so the plan
+            # cannot keep ping-ponging us back into it.
+            if next_planned_stage and next_planned_stage.endswith("_team"):
+                head_redirects = _head_redirects_for(next_planned_stage)
+                if head_redirects >= HEAD_TEAM_REDIRECT_LIMIT:
+                    print(
+                        f"[Supervisor] Plan stage {next_planned_stage} skipped: head already redirected {head_redirects} times this turn.",
+                        flush=True,
+                    )
+                    next_planned_stage = None
+
             if next_planned_stage:
                 if next_node != next_planned_stage:
                     print(
@@ -580,6 +617,32 @@ def make_supervisor_node(
                     discarded_content = content
                 next_node = "FINISH"
                 content = ""  # Explicitly clear content when plan is complete to avoid mixing with finalizer
+
+        # Patch B (final guard): catch any path that left next_node == "coding_team"
+        # without a bound repository (e.g. when there is no task_plan to override).
+        if (
+            layer == "head"
+            and next_node == "coding_team"
+            and not shared_context.get("repo_binding")
+        ):
+            print(
+                "[Supervisor] coding_team requested without a bound repository; routing to FINISH for direct LLM answer.",
+                flush=True,
+            )
+            next_node = "FINISH"
+            content = ""
+
+        # Patch A (final guard): last-line cap on head→same-team cycles, regardless of
+        # whether the plan or the LLM's raw decision picked the team.
+        if layer == "head" and next_node.endswith("_team"):
+            head_redirects_to_team = _head_redirects_for(next_node)
+            if head_redirects_to_team >= HEAD_TEAM_REDIRECT_LIMIT:
+                print(
+                    f"[Supervisor] Head supervisor halting after {head_redirects_to_team} consecutive {next_node} redirects; routing to FINISH.",
+                    flush=True,
+                )
+                next_node = "FINISH"
+                content = ""
 
         if layer == "team" and normalized_team == "data_science":
             dispatched_workers = _dispatched_team_workers(route_history, normalized_team)
