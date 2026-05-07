@@ -3,7 +3,8 @@ services:
     image: postgres:15-alpine
     container_name: orchagent-db
     ports:
-      - "5432:5432"
+      # - "5432:5432"  # before: 모든 인터페이스(0.0.0.0)에 바인딩 → LAN 노출
+      - "127.0.0.1:5432:5432"
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -20,7 +21,8 @@ services:
     image: adminer
     container_name: orchagent-adminer
     ports:
-      - "9090:8080"
+      # - "9090:8080"  # before: 모든 인터페이스(0.0.0.0)에 바인딩 → LAN 노출
+      - "127.0.0.1:9090:8080"
     environment:
       ADMINER_DEFAULT_SERVER: db
     depends_on:
@@ -35,7 +37,8 @@ services:
     env_file:
       - ../../apps/backend/.env
     ports:
-      - "8002:8002"
+      # - "8002:8002"  # before: 모든 인터페이스(0.0.0.0)에 바인딩 → LAN 노출
+      - "127.0.0.1:8002:8002"
     environment:
       POSTGRES_SERVER: db
       POSTGRES_USER: postgres
@@ -62,7 +65,8 @@ services:
         NEXT_PUBLIC_API_URL: http://localhost:8002
     container_name: orchagent-frontend
     ports:
-      - "3000:3000"
+      # - "3000:3000"  # before: 모든 인터페이스(0.0.0.0)에 바인딩 → LAN 노출
+      - "127.0.0.1:3000:3000"
     environment:
       NODE_ENV: development
       NEXT_PUBLIC_API_URL: http://localhost:8002
