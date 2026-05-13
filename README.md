@@ -1,5 +1,6 @@
 # 🤖 OrchAgent: Hierarchical Multi-Agent Platform
 
+[![Live Demo](https://img.shields.io/badge/Live-orchagent.vercel.app-8ff5ff?style=for-the-badge&logo=vercel&logoColor=white)](https://orchagent.vercel.app)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/release/python-3120/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-05998b.svg)](https://fastapi.tiangolo.com/)
 [![LangGraph](https://img.shields.io/badge/LangGraph-latest-black.svg)](https://github.com/langchain-ai/langgraph)
@@ -7,6 +8,9 @@
 [![Package Manager: uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
 
 > **OrchAgent** is a hierarchical multi-agent workspace built around `LangGraph`, `FastAPI`, and `Next.js`. It routes requests through a `Head Supervisor -> Team Supervisor -> Worker` structure and exposes reasoning summaries, tool activity, routing, and checkpoints in real time.
+
+> 🌐 **Try OrchAgent now — no setup required → [orchagent.vercel.app](https://orchagent.vercel.app)**
+> The hosted product page walks through the orchestration workspace, HITL flow, and live SSE telemetry. Open it from any browser to see what the platform does before cloning the repo.
 
 ---
 
