@@ -418,7 +418,7 @@ revert 후 _workspace의 audit/baseline 파일을 그대로 두고 원인 분석
 
 ### 6.2 Phase 4 태스크
 
-- [ ] 4.1 agent-tools 공통 예외 처리 스키마 정의 — `ToolErrorPayload` Pydantic 모델 + 모든 도구가 `{"ok": False, "error": {...}}` 통일
+- [x] 4.1 agent-tools 공통 예외 처리 스키마 정의 — `packages/agent-tools/src/agent_tools/errors.py`에 `ToolError`(kind/message/details), `ToolErrorPayload`(ok=False+error), `make_tool_error_payload()` helper 신설. `ToolErrorKind` Literal(`input_validation`/`external_api`/`timeout`/`runtime`/`permission`/`not_found`/`unknown`). 단위 테스트 4 cases. **실제 도구 모듈 일괄 마이그레이션은 후속**(각 도구가 raise/문자열/dict 혼재 형식 → 통일 payload).
 - [ ] 4.2 runtime context 의존 도구(data, coding) 테스트 커버리지 보강 — `test_agent_tools.py`에 `data_engineer_tools_with_runtime`, `coding_tools_with_repo_binding` 픽스처 추가
 - [ ] 4.3 PDF/DOCX 추출 에러 경로 명세화 — 손상 파일/암호화 파일 케이스 추가, warning만 반환하던 패턴을 구조화된 error로 교체
 - [x] 4.4 timeout 정책 통합 — `packages/agent-tools/src/agent_tools/config.py` 신설. `TIMEOUTS` dataclass(`coding_subprocess_seconds=180`, `web_http_seconds=12`, `runtime_context_default_seconds=60`). env override(`TOOL_TIMEOUT_CODING/_WEB/_DEFAULT`) 지원. 기본값은 기존 하드코딩 값과 byte-identical(coding.py 180s/web.py 12s 보존). 실제 도구 모듈의 import 적용은 후속.
