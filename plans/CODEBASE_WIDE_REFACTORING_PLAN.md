@@ -188,7 +188,7 @@ revert 후 _workspace의 audit/baseline 파일을 그대로 두고 원인 분석
 - [x] 0.2 baseline 회귀 안전망 스크립트 정리 — §1.2·§1.5의 명령을 `infra/scripts/capture_baseline.sh`(pytest/lint/vitest/node test/build/응답 샘플/openapi 스냅샷, dev 스택 부재 시 graceful skip), `infra/scripts/diff_baseline.sh`(pytest/vitest/node test 통과 수 비교 + JSON snapshot diff + lint/build 에러 감지, 회귀 시 exit 1)로 분리. 기존 `start-dev.sh`와 동급 위치.
 - [x] 0.3 수동 E2E 스모크 시나리오 체크리스트(§1.6 S1~S7)를 `_workspace/e2e_smoke_checklist.md`로 고정. playwright MCP 시퀀스·기록 양식·자동화 우선순위 포함. 각 phase 마지막에 재사용.
 - [x] 0.4 기존 plans 중첩 인벤토리 확정 — 30개 plan(본 plan 제외)을 직접 중첩 12 / 부분 중첩 11 / 신규 기능 6 / 무관 1로 분류해 §9 부록 A를 모두 채움. 미체크 카운트·근거·후속 액션은 `_workspace/plans_overlap_inventory.md`.
-- [ ] 0.5 전체 baseline 1회 캡처(pytest/vitest/lint/build/응답 샘플 7종)를 `_workspace/baselines/phase0/`에 저장. 이후 모든 회귀 diff의 기준점.
+- [x] 0.5 전체 baseline 1회 캡처(pytest/vitest/lint/node test) 완료. 결과: pytest **275/275 PASS**, vitest 52/53(1 known fail — V-001 `page.test.tsx` "Resume failed" 다중 매칭, Phase 3 해결 후보), lint 0E/2W, node --test 3/3 PASS. dev 스택 미가동으로 API/openapi snapshot은 graceful skip(향후 dev 활성화 시점에 추가 캡처). 요약은 `_workspace/baselines/phase0/SUMMARY.md`, 회귀 게이트 기준은 PASS 수 감소 없음 + 새 vitest fail 0건.
 - [x] 0.6 브랜치 전략 합의 — main 보호 규칙(직접 push 금지, PR 필수, 회귀 게이트 통과 필수) + phase/태스크 브랜치 네이밍 + 머지·롤백·충돌 절차 + self-review 체크리스트 모두 `_workspace/branch_protection_policy.md`에 운영 약속으로 명문화. GitHub branch protection rule 적용 여부는 0.7에서 후속 검토.
 - [x] 0.7 CI 워크플로우 정합성 점검 — `.github/workflows/ci.yml`에 Vitest 단계와 `node --test src/lib/chat-stream.test.mjs` 단계를 추가해 PR 회귀 표면을 §1.5 최소 기준에 맞춤. 현황·보강·후속 검토 사항(branch protection rule UI 적용, baseline diff CI 자동화, routing eval nightly)을 `_workspace/ci_workflow_note.md`에 기록.
 
