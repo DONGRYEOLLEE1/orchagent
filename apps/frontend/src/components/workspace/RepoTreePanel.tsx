@@ -118,12 +118,15 @@ function TreeRow({
 
 export function RepoTreePanel({ summary }: { summary: CodingSummary | null | undefined }) {
   const tree = summary?.tree ?? [];
-  const diffs = summary?.diffs ?? [];
+  // Phase 3.5 — derive ``diffs`` and the indexed lookup inside the same
+  // useMemo so the dependency list is the stable ``summary?.diffs`` reference
+  // instead of a freshly-allocated [] on every render.
   const diffByPath = useMemo(() => {
+    const diffs = summary?.diffs ?? [];
     const m: Record<string, DiffSnippet> = {};
     for (const d of diffs) m[d.path] = d;
     return m;
-  }, [diffs]);
+  }, [summary?.diffs]);
 
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const changedCount = tree.filter((e) => e.changed_status).length;

@@ -160,7 +160,9 @@ def make_finalizer_node(llm: BaseChatModel) -> Callable:
 
             # Absolute fallback
             if not final_content:
-                final_content = "I'm sorry, I couldn't synthesize a final answer. Please check the tool activity for details."
+                from agent_core.fallback_messages import finalizer_absolute_fallback
+
+                final_content = finalizer_absolute_fallback()
 
         return Command(
             update={

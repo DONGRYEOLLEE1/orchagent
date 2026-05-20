@@ -13,8 +13,7 @@ import {
   FileJson,
   X,
 } from 'lucide-react';
-import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
+import { cn } from '@/lib/cn';
 import NextImage from 'next/image';
 import { ChatAttachment, ChatMessage, StreamEvent, ToolExecution } from '@/types/agent';
 import type { AuthUser } from '@/types/auth';
@@ -109,10 +108,6 @@ function appendReasoningEntry(
     runId: payload.run_id,
   });
   return nextEntries;
-}
-
-function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
 }
 
 function deriveRouteThreadId(pathname: string): string | null {

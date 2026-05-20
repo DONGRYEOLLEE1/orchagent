@@ -341,7 +341,7 @@ revert 후 _workspace의 audit/baseline 파일을 그대로 두고 원인 분석
 - [x] 2.6 `agent_core/safeguards.py` 신설 — `reject_invalid_goto`, `enforce_team_redirect_limit`, `enforce_dispatch_limit`, `fallback_decision_on_parse_failure` 순수 함수. `SafeguardOutcome` 결과 타입(status: accepted/rejected_invalid_goto/parse_failed/fallback_finish). **plan §4.0 P3 강제 — 결정 자체를 바꾸지 않고 차단·재요청만**. 단위 테스트 11 cases(`test_router_safeguards.py`).
 - [ ] 2.7 supervisor / team-supervisor 프롬프트 강화 — `packages/prompt-kit/src/prompt_kit/prompts.py`에 §4.0.6 항목 반영. Phase 4.5(프롬프트 fragment 추출)와 충돌 없도록 사전 합의(공통 routing 지침은 fragment로 정의). **본 세션 외 — Phase 2.4 LLMRouter 적용과 동시 진행 권장**.
 - [ ] 2.8 라우팅 evaluation harness 구축 — `apps/backend/tests/routing_eval/` 디렉토리, 50케이스 골든 데이터셋, `python -m routing_eval` 실행 스크립트, 정확도/latency/토큰 비용 리포트. nightly 실행 정책 문서화. **본 세션 외 — Phase 2.4 직후 진행**.
-- [ ] 2.9 finalizer/validator 에러 폴백 통일 — 양쪽 모두 `[Review Warning]`/`[Review Error]`/Absolute fallback message가 이미 존재하여 본 세션 scope 외. Phase 2.4 supervisor 단순화 시 safeguard 발동 메시지와 함께 통일 예정.
+- [x] 2.9 finalizer/validator 에러 폴백 통일 — `agent_core/fallback_messages.py` 신설. `finalizer_absolute_fallback()`, `validator_recursion_warning()`, `validator_review_error()`, `validator_review_passed()`, `supervisor_safeguard_finish(reason)` 5개 helper. finalizer + validator 양쪽이 동일 출처에서 메시지 로드 — 사용자 가시 톤 일관성 확보. Phase 2.4 safeguard 발동 시 `supervisor_safeguard_finish(decision.reason)` 사용 준비 완료.
 - [x] 2.10 `load_memories.py` 독립 테스트 — `apps/backend/tests/test_load_memories_node.py`가 이미 3 cases(skip-when-missing, populates-personalization, instruction-only-payload)로 커버 중. 인벤토리 확인 후 그대로 보존.
 - [x] 2.11 finalizer messages 길이 상한 도입 — `SAFEGUARDS.finalizer_recent_messages_limit=200`. `make_finalizer_node` 내부에서 deduped 후 `[-N:]` 슬라이싱. 장기 대화 OOM 회귀 방지.
 - [x] 2.12 `make_validator_node` alias 제거 — 외부 사용처 0건(builder.py, test 모두 `make_reviewer_node` 직접 사용) 확인 후 제거. validator.py에 주석으로 transition 완료 표시.
@@ -386,7 +386,7 @@ revert 후 _workspace의 audit/baseline 파일을 그대로 두고 원인 분석
 - [ ] 3.4 `lib/api.ts` 도메인 분할 — `lib/api/{threads,chat,auth,memory,uploads,repositories,dashboard}.ts`. CSRF/에러 헬퍼는 `lib/api/_client.ts`로
 - [ ] 3.5 분할된 컴포넌트별 vitest 테스트 신설 (각 컴포넌트 최소 1개의 렌더링 + 핵심 인터랙션 케이스)
 - [ ] 3.6 Tailwind 디자인 토큰 추출 — `tailwind.config.{ts|js}`에 색상·간격 토큰, 반복 className은 `@apply` 또는 컴포넌트 클래스로
-- [ ] 3.7 `cn()` 유틸 중복 제거 — `lib/cn.ts` 단일 출처
+- [x] 3.7 `cn()` 유틸 중복 제거 — `apps/frontend/src/lib/cn.ts` 단일 출처(clsx + tailwind-merge). HITLPanel.tsx + WorkspaceRouteRoot.tsx의 중복 정의 제거 + `@/lib/cn` import로 통일. 동시에 L-001(`CodingSummaryPanels.tsx` 미사용 `EmptyCopy` import) + L-002(`RepoTreePanel.tsx` exhaustive-deps `diffs`) 해결. **lint 결과: 0 errors / 0 warnings** (이전 0E/2W → 0E/0W).
 - [ ] 3.8 **Phase 3 통합 회귀** — `npm run lint && npm run test -- --run && node --test src/lib/chat-stream.test.mjs && npm run build`, S1~S7 전체 스모크
 
 ### 5.3 Phase 3 태스크별 추가 검증 포인트
