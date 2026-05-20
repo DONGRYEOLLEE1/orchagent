@@ -62,6 +62,18 @@ jobs:
           cd apps/frontend
           npm run lint
 
+      - name: Run Vitest
+        run: |
+          cd apps/frontend
+          npm run test -- --run
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8000
+
+      - name: Run chat-stream node test
+        run: |
+          cd apps/frontend
+          node --test src/lib/chat-stream.test.mjs
+
       - name: Build Next.js
         run: |
           cd apps/frontend

@@ -190,7 +190,7 @@ revert 후 _workspace의 audit/baseline 파일을 그대로 두고 원인 분석
 - [ ] 0.4 기존 plans 중첩 인벤토리 확정 — §9 부록 A 표를 채워, 각 기존 plan별로 (a) 본 리팩토링에 흡수 / (b) 본 리팩토링 후 진행 / (c) 무관 으로 분류.
 - [ ] 0.5 전체 baseline 1회 캡처(pytest/vitest/lint/build/응답 샘플 7종)를 `_workspace/baselines/phase0/`에 저장. 이후 모든 회귀 diff의 기준점.
 - [x] 0.6 브랜치 전략 합의 — main 보호 규칙(직접 push 금지, PR 필수, 회귀 게이트 통과 필수) + phase/태스크 브랜치 네이밍 + 머지·롤백·충돌 절차 + self-review 체크리스트 모두 `_workspace/branch_protection_policy.md`에 운영 약속으로 명문화. GitHub branch protection rule 적용 여부는 0.7에서 후속 검토.
-- [ ] 0.7 CI 워크플로우 정합성 점검 — PR 단위로 pytest + vitest + node test + lint + build가 자동 실행되는지 확인. 없으면 최소 워크플로우 정의서(`_workspace/ci_workflow_note.md`)를 작성하고 Phase 1 시작 전 우선 보강 여부 결정.
+- [x] 0.7 CI 워크플로우 정합성 점검 — `.github/workflows/ci.yml`에 Vitest 단계와 `node --test src/lib/chat-stream.test.mjs` 단계를 추가해 PR 회귀 표면을 §1.5 최소 기준에 맞춤. 현황·보강·후속 검토 사항(branch protection rule UI 적용, baseline diff CI 자동화, routing eval nightly)을 `_workspace/ci_workflow_note.md`에 기록.
 
 **검증:** 0.1~0.7 자체는 코드 변경 없음(스크립트/문서만 추가). baseline 캡처 명령이 모두 PASS인지만 확인하고 phase 브랜치를 PR로 main에 머지(`docs(plan): set up codebase-wide refactor baselines and branch policy`). 머지 후 `refactor-phase-0-complete` 태그를 권장.
 
