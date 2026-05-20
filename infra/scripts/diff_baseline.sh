@@ -67,11 +67,14 @@ B="$DIR/pytest_before.log"; A="$DIR/pytest_after.log"
 B="$DIR/vitest_before.log"; A="$DIR/vitest_after.log"
 [[ -f "$B" && -f "$A" ]] && compare_count "vitest" "$(vitest_pass_count "$B")" "$(vitest_pass_count "$A")"
 
-# node --test
+# node --test (handles both '# pass N' and the newer 'ℹ pass N' summary format)
 B="$DIR/nodetest_before.log"; A="$DIR/nodetest_after.log"
 if [[ -f "$B" && -f "$A" ]]; then
-  bf="$(grep -oE '# pass [0-9]+' "$B" | awk '{print $3}' | tail -1)"
-  af="$(grep -oE '# pass [0-9]+' "$A" | awk '{print $3}' | tail -1)"
+  nodetest_pass() {
+    grep -oE '(# pass [0-9]+|pass [0-9]+)' "$1" | awk '{print $NF}' | tail -1
+  }
+  bf="$(nodetest_pass "$B")"
+  af="$(nodetest_pass "$A")"
   compare_count "nodetest" "${bf:-0}" "${af:-0}"
 fi
 
@@ -91,15 +94,27 @@ for before in "$DIR"/*_before.json; do
   fi
 done
 
-# Lint / build logs — surface non-zero summary if present
+# Lint summary — parse "N errors, M warnings" and only fail when errors > 0.
+# Build log — search for explicit error/fail markers, ignoring "0 errors".
 for kind in lint build; do
   A="$DIR/${kind}_after.log"
-  if [[ -f "$A" ]]; then
-    if grep -qiE 'error|fail' "$A"; then
-      fail "$kind after-log contains error/fail markers"
+  [[ -f "$A" ]] || continue
+  if [[ "$kind" == "lint" ]]; then
+    err_count="$(grep -oE '[0-9]+ errors?' "$A" | awk '{print $1}' | tail -1)"
+    err_count="${err_count:-0}"
+    if (( err_count > 0 )); then
+      fail "lint reports $err_count error(s)"
       regression=1
     else
-      ok "$kind after-log clean"
+      ok "lint reports 0 errors"
+    fi
+  else
+    # build log: ignore '0 errors' / 'no errors' phrases when scanning.
+    if grep -viE 'no errors|0 errors' "$A" | grep -qiE '\b(error|failed|fatal)\b'; then
+      fail "build after-log contains error/fail markers"
+      regression=1
+    else
+      ok "build after-log clean"
     fi
   fi
 done
