@@ -42,7 +42,7 @@ from core.timezone import iso_now_kst, now_kst
 from services.logging_service import LoggingService
 from services.memory_agent_service import MemoryAgentService
 from services.memory_service import MemoryService
-from services.file_logger import JsonLogger
+from services.event_recording_service import EventRecordingService
 from services.repository_binding_service import RepositoryBindingService
 from services.repository_workspace_service import RepositoryWorkspaceService
 from services.storage_service import StorageService
@@ -621,7 +621,7 @@ async def chat_stream(
     )
 
     # 2. File Logging (Session start/turn)
-    JsonLogger.log_session(
+    EventRecordingService.record_session_event(
         session_id=request.thread_id,
         user_id=user_id,
         event_type="turn_start",
@@ -1064,13 +1064,13 @@ async def chat_stream(
                             persist=False,
                         )
 
-                    JsonLogger.log_session(
+                    EventRecordingService.record_session_event(
                         session_id=request.thread_id,
                         user_id=user_id,
                         event_type="turn_end",
                         metadata={"response_length": len(final_answer)},
                     )
-                    JsonLogger.log_usage(
+                    EventRecordingService.record_usage(
                         user_id=user_id,
                         model=DEFAULT_LLM_MODEL,
                         prompt_tokens=len(request.message) // 4,
@@ -1336,7 +1336,7 @@ async def chat_resume_stream(
         or str(getattr(started_turn, "id", "")),
     )
 
-    JsonLogger.log_session(
+    EventRecordingService.record_session_event(
         session_id=request.thread_id,
         user_id=user_id,
         event_type="resume_start",
@@ -1741,7 +1741,7 @@ async def chat_resume_stream(
                             persist=False,
                         )
 
-                    JsonLogger.log_session(
+                    EventRecordingService.record_session_event(
                         session_id=request.thread_id,
                         user_id=user_id,
                         event_type="turn_end",
