@@ -22,6 +22,21 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-body);
   --font-mono: var(--font-geist-mono);
+
+  /* Phase 3.6 — surface the OrchAgent design tokens to Tailwind utilities.
+     Use as `bg-oa-panel`, `text-oa-accent`, `border-oa-border`, etc.
+     Hard-coded `bg-[rgba(...)]` literals migrate over time; both styles
+     resolve to the same CSS variable so the migration is incremental. */
+  --color-oa-bg: var(--oa-bg);
+  --color-oa-panel: var(--oa-panel);
+  --color-oa-panel-strong: var(--oa-panel-strong);
+  --color-oa-panel-soft: var(--oa-panel-soft);
+  --color-oa-border: var(--oa-border);
+  --color-oa-border-soft: var(--oa-border-soft);
+  --color-oa-accent: var(--oa-accent);
+  --color-oa-accent-strong: var(--oa-accent-strong);
+  --color-oa-copy: var(--oa-copy);
+  --color-oa-copy-soft: var(--oa-copy-soft);
 }
 
 body {

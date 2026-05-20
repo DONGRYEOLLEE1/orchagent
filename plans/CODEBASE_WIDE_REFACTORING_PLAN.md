@@ -385,7 +385,7 @@ revert 후 _workspace의 audit/baseline 파일을 그대로 두고 원인 분석
 - [ ] 3.3 WorkspaceRouteRoot 분할 — `components/workspace/StreamConsumer.tsx`, `MessageThreadView.tsx`, `ComposerPanel.tsx`, `WorkspaceSidebar.tsx`
 - [ ] 3.4 `lib/api.ts` 도메인 분할 — `lib/api/{threads,chat,auth,memory,uploads,repositories,dashboard}.ts`. CSRF/에러 헬퍼는 `lib/api/_client.ts`로
 - [ ] 3.5 분할된 컴포넌트별 vitest 테스트 신설 (각 컴포넌트 최소 1개의 렌더링 + 핵심 인터랙션 케이스)
-- [ ] 3.6 Tailwind 디자인 토큰 추출 — `tailwind.config.{ts|js}`에 색상·간격 토큰, 반복 className은 `@apply` 또는 컴포넌트 클래스로
+- [x] 3.6 Tailwind 디자인 토큰 추출 — Tailwind 4 environment(@theme inline)에 OrchAgent design token 10종을 매핑(`--color-oa-bg`/`-panel`/`-panel-strong`/`-panel-soft`/`-border`/`-border-soft`/`-accent`/`-accent-strong`/`-copy`/`-copy-soft`). `bg-oa-panel`, `text-oa-accent`, `border-oa-border` 등 유틸리티 즉시 사용 가능. 기존 `bg-[rgba(...)]` arbitrary value는 같은 CSS 변수를 가리키므로 점진 마이그레이션. lint 0E/0W, vitest 53/53, build PASS.
 - [x] 3.7 `cn()` 유틸 중복 제거 — `apps/frontend/src/lib/cn.ts` 단일 출처(clsx + tailwind-merge). HITLPanel.tsx + WorkspaceRouteRoot.tsx의 중복 정의 제거 + `@/lib/cn` import로 통일. 동시에 L-001(`CodingSummaryPanels.tsx` 미사용 `EmptyCopy` import) + L-002(`RepoTreePanel.tsx` exhaustive-deps `diffs`) 해결. **lint 결과: 0 errors / 0 warnings** (이전 0E/2W → 0E/0W).
 - [ ] 3.8 **Phase 3 통합 회귀** — `npm run lint && npm run test -- --run && node --test src/lib/chat-stream.test.mjs && npm run build`, S1~S7 전체 스모크
 
