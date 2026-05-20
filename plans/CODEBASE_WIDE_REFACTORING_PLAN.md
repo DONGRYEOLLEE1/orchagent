@@ -2,7 +2,7 @@
 작업명: Codebase-Wide Refactoring Plan
 간단요약: 4개 영역(agent-core, backend, frontend, tools/prompts) 감사 결과를 통합한 단계별 리팩토링 + 회귀 검증 프로토콜 + Phase별 브랜치/PR 전략 + 라우팅/handoff 정책을 룰베이스에서 LLM-Driven Delegation으로 전면 전환하는 마스터 플랜
 작성일시: 2026-05-19 16:30 KST
-최종 수정일시: 2026-05-19 17:50 KST
+최종 수정일시: 2026-05-20 18:00 KST
 ---
 
 ## 0. 개요
