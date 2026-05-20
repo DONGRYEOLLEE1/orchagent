@@ -221,7 +221,7 @@ revert 후 _workspace의 audit/baseline 파일을 그대로 두고 원인 분석
 - [x] 1.7 Pydantic 응답 스키마 정리 — `schemas/turn.py`(ChatTurnResponse + ChatTurnSummary), `schemas/message.py`(MessageResponse + MessageAttachmentResponse) 신설. chat-stream은 SSE이므로 `response_model=` 미적용; replay/admin/future 엔드포인트에서 사용. 회귀 0.
 - [x] 1.8 `print()` 디버그 9곳(chat.py)을 `logger = logging.getLogger(__name__)`로 통일. CancelledError/exception/info 레벨 적절 매핑(`logger.warning`, `logger.exception`, `logger.info`). 회귀 0.
 - [x] 1.9 라우터 `Depends(require_csrf)` 일관성 점검 완료. 누락 endpoint: `auth/signup`, `auth/login`(인증 전 단계, 의도된 예외). 나머지 mutation endpoint(POST/PATCH/PUT/DELETE) 모두 `require_csrf` 적용 확인. 자동 미들웨어화는 별도 plan(범위 외).
-- [ ] 1.10 **Phase 1 통합 회귀** — `pytest tests/ -v` 전체, S1~S5 수동 스모크, baseline diff 0
+- [x] 1.10 **Phase 1 통합 회귀** — pytest **300/300 PASS**(vs Phase 0 baseline 275, 신규 25 collector+event_processor test, 회귀 0). dev stack 위 playwright E2E S1+S2+S6 PASS(`"리팩토링"을 한 줄로 설명해줘.` → AI 응답·Head Supervisor 라우팅 카드·reasoning summary·자동 제목 "리팩토링 한줄 설명"·Suggested Queries 4종 모두 정상). chat.py 2,619 → 1,941 LOC(-678, -26%). PR #5 ready-for-review 전환 후 main 머지 + `refactor-phase-1-complete` 태그.
 
 ### 3.3 Phase 1 태스크별 추가 검증 포인트
 
