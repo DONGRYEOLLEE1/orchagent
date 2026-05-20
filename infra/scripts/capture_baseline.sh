@@ -53,8 +53,8 @@ log "output dir: $OUT_DIR"
 # Backend pytest
 # -----------------------------------------------------------------------------
 if [[ -d apps/backend ]]; then
-  log "backend pytest"
-  (cd apps/backend && uv run pytest tests/ -v --tb=line) \
+  log "backend pytest (PYTHONPATH=. per CI yaml convention)"
+  (cd apps/backend && PYTHONPATH=. uv run pytest tests/ -v --tb=line) \
     > "$OUT_DIR/pytest_${PHASE}.log" 2>&1 || warn "pytest exited non-zero (see log)"
 else
   warn "apps/backend missing — skipping pytest"
