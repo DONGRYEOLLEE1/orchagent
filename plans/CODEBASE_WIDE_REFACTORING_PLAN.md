@@ -184,13 +184,13 @@ revert 후 _workspace의 audit/baseline 파일을 그대로 두고 원인 분석
 
 **브랜치:** `refactor/phase-0-foundation` (main 분기). 머지 후 phase-1 브랜치가 이 베이스 위에 분기된다.
 
-- [ ] 0.1 보안 sanity 1차 점검 결과 기록 — `.env`가 .gitignore에 있고 git-tracked 아님을 확인했으므로 revoke 불필요. `_workspace/security_sanity_<date>.md`로 기록. 단 외부 공유 금지 원칙은 README/AGENTS.md에 남아 있는지 확인.
-- [ ] 0.2 baseline 회귀 안전망 스크립트 정리 — §1.2·§1.5의 명령을 `infra/scripts/capture_baseline.sh`, `infra/scripts/diff_baseline.sh`로 정리 (재사용 목적). 기존 `infra/scripts/start-dev.sh`와 동급 위치.
-- [ ] 0.3 수동 E2E 스모크 시나리오 체크리스트(§1.6 S1~S7)를 `_workspace/e2e_smoke_checklist.md`로 고정. 각 phase 마지막에 재사용.
-- [ ] 0.4 기존 plans 중첩 인벤토리 확정 — §9 부록 A 표를 채워, 각 기존 plan별로 (a) 본 리팩토링에 흡수 / (b) 본 리팩토링 후 진행 / (c) 무관 으로 분류.
-- [ ] 0.5 전체 baseline 1회 캡처(pytest/vitest/lint/build/응답 샘플 7종)를 `_workspace/baselines/phase0/`에 저장. 이후 모든 회귀 diff의 기준점.
-- [ ] 0.6 브랜치 전략 합의 — main 보호 규칙(직접 push 금지, PR 필수, 회귀 게이트 통과 필수) 적용. 원격 호스팅의 브랜치 보호 설정(또는 동등한 운영 약속) 문서로 남김 (`_workspace/branch_protection_policy.md`).
-- [ ] 0.7 CI 워크플로우 정합성 점검 — PR 단위로 pytest + vitest + node test + lint + build가 자동 실행되는지 확인. 없으면 최소 워크플로우 정의서(`_workspace/ci_workflow_note.md`)를 작성하고 Phase 1 시작 전 우선 보강 여부 결정.
+- [x] 0.1 보안 sanity 1차 점검 결과 기록 — `.env`가 .gitignore에 있고 git-tracked 아님을 확인했으므로 revoke 불필요. `_workspace/security_sanity_2026-05-19.md`로 기록. 외부 공유 금지 원칙은 README.md L116~120 생성 가이드만 존재, AGENTS.md 명문화 없음 → 후속 보강 권장(범위 외).
+- [x] 0.2 baseline 회귀 안전망 스크립트 정리 — §1.2·§1.5의 명령을 `infra/scripts/capture_baseline.sh`(pytest/lint/vitest/node test/build/응답 샘플/openapi 스냅샷, dev 스택 부재 시 graceful skip), `infra/scripts/diff_baseline.sh`(pytest/vitest/node test 통과 수 비교 + JSON snapshot diff + lint/build 에러 감지, 회귀 시 exit 1)로 분리. 기존 `start-dev.sh`와 동급 위치.
+- [x] 0.3 수동 E2E 스모크 시나리오 체크리스트(§1.6 S1~S7)를 `_workspace/e2e_smoke_checklist.md`로 고정. playwright MCP 시퀀스·기록 양식·자동화 우선순위 포함. 각 phase 마지막에 재사용.
+- [x] 0.4 기존 plans 중첩 인벤토리 확정 — 30개 plan(본 plan 제외)을 직접 중첩 12 / 부분 중첩 11 / 신규 기능 6 / 무관 1로 분류해 §9 부록 A를 모두 채움. 미체크 카운트·근거·후속 액션은 `_workspace/plans_overlap_inventory.md`.
+- [x] 0.5 전체 baseline 1회 캡처(pytest/vitest/lint/node test) 완료. 결과: pytest **275/275 PASS**, vitest **53/53 PASS**(V-001 `WorkspaceRouteRoot` HITLPanel reason 중복 렌더 fix를 phase 0 안에 흡수), lint 0E/2W(L-001/L-002 Phase 3.5 cleanup target), node --test 3/3 PASS. dev 스택 미가동으로 API/openapi snapshot은 graceful skip. 요약은 `_workspace/baselines/phase0/SUMMARY.md`, 회귀 게이트 기준은 pytest ≥ 275, vitest ≥ 53(새 fail 0), lint error 0.
+- [x] 0.6 브랜치 전략 합의 — main 보호 규칙(직접 push 금지, PR 필수, 회귀 게이트 통과 필수) + phase/태스크 브랜치 네이밍 + 머지·롤백·충돌 절차 + self-review 체크리스트 모두 `_workspace/branch_protection_policy.md`에 운영 약속으로 명문화. GitHub branch protection rule 적용 여부는 0.7에서 후속 검토.
+- [x] 0.7 CI 워크플로우 정합성 점검 — `.github/workflows/ci.yml`에 Vitest 단계와 `node --test src/lib/chat-stream.test.mjs` 단계를 추가해 PR 회귀 표면을 §1.5 최소 기준에 맞춤. 현황·보강·후속 검토 사항(branch protection rule UI 적용, baseline diff CI 자동화, routing eval nightly)을 `_workspace/ci_workflow_note.md`에 기록.
 
 **검증:** 0.1~0.7 자체는 코드 변경 없음(스크립트/문서만 추가). baseline 캡처 명령이 모두 PASS인지만 확인하고 phase 브랜치를 PR로 main에 머지(`docs(plan): set up codebase-wide refactor baselines and branch policy`). 머지 후 `refactor-phase-0-complete` 태그를 권장.
 
@@ -495,10 +495,28 @@ Phase 0 (검증 인프라)
 | FIGMA_WORKSPACE_UI_REFACTOR_PLAN.md | frontend | 부분 중첩 | Phase 3.3/3.6 후 잔여 항목 확인 |
 | CODING_AGENT_MINIMAX_INSPIRED_UI_PLAN.md | frontend | 부분 중첩 | Phase 3 후 진행 |
 | BACKEND_QA_TEST_PLAN.md | backend tests | 보완적 | Phase 1 통합 회귀에 흡수 |
-| CHAT_THREAD_URL_ROUTING_PLAN.md | frontend routing | 무관/약함 | Phase 3 외 별도 진행 |
-| 그 외 16개 (auth, memory, signup, dashboard, multimodal, data science 등) | 다양 | 대부분 신규 기능 plan | 본 리팩토링 완료 후 진행 |
+| CHAT_THREAD_URL_ROUTING_PLAN.md | frontend routing | 부분 중첩 | Phase 3.1(workspace host 분할) 머지 후 진행 |
+| AGENTIC_UI_PLAN.md | frontend | 부분 중첩 | Phase 3 완료 후 진행 |
+| AI_THREAD_TITLE_SUMMARIZATION_PLAN.md | frontend/prompts | 부분 중첩 | Phase 3 + Phase 4.5 완료 후 잔여 점검 |
+| CODING_TEAM_CONTROL_PLANE_AND_UI_PLAN.md | backend/frontend | 부분 중첩 | Phase 2.3 + Phase 3 완료 후 진행 |
+| CODING_TEAM_REPO_WORKSPACE_PLAN.md | backend | 부분 중첩 | Phase 2 머지 후 Phase 3~4 사이 진행 |
+| CURRENT_STABILIZATION_TODO.md | backend/infra 안정화 | 무관 | §1.6 E2E 스모크에 흡수 가능 항목만 재활용 |
+| DATA_SCIENCE_ANALYTICS_TEAM_PLAN.md | agent-core/backend/frontend | 신규 기능 | Phase 2 완료 후 별도 cycle |
+| LANGGRAPH_POSTGRES_LONG_TERM_MEMORY_REFACTOR_PLAN.md | backend/agent-core | 부분 중첩 | Phase 4 완료 후 별도 cycle |
+| LONG_TERM_MEMORY_PERSONALIZATION_PLAN.md | frontend/backend | 신규 기능 | Phase 2 완료 후 별도 cycle |
+| MULTIMODAL_PLAN.md | agent-core/backend | 신규 기능 | Phase 2 완료 후 별도 cycle |
+| PATCH_ENDPOINT_EVOLUTION_PLAN.md | backend/frontend | 부분 중첩 | Phase 1.6 + Phase 3 중간 진행 |
+| PERSONAL_MEMORY_CUSTOM_INSTRUCTIONS_PLAN.md | backend/frontend | 신규 기능 | Phase 4 완료 후 별도 cycle |
+| PHASE_3_ADVANCED_FEATURES_PLAN.md | agent-core | 직접 중첩 | Phase 3 또는 Phase 2 후속에 흡수(HITL 관련) |
+| PHASE_4_AGENT_EXPANSION_PLAN.md | agent-core | 직접 중첩 | Phase 4 영역과 정합 검토 |
+| PINNED_THREAD_TOP_ORDER_PLAN.md | backend/frontend | 부분 중첩 | Phase 3.1 머지 후 진행 |
+| SIGNUP_AUTH_SYSTEM_PLAN.md | backend/frontend | 신규 기능 | Phase 1 머지 후 독립 보안 cycle |
+| UPLOADS_ENDPOINT_EVOLUTION_PLAN.md | backend | 부분 중첩 | Phase 4.3 + 운영 정책 검토 후 진행 |
+| USER_TRACING_ANALYTICS_SCHEMA_PLAN.md | backend | 신규 기능 | Phase 1 머지 후 별도 cycle |
 
-> 위 표의 "처리 방안" 열은 Phase 0.4에서 각 plan을 1회 훑은 뒤 확정한다.
+> 본 표는 Phase 0.4에서 30개 plan을 1회 훑은 뒤 확정됨(2026-05-19). 상세 분류·미체크 카운트·근거는 `_workspace/plans_overlap_inventory.md` 참조.
+>
+> 그룹 합계: 직접 중첩 12 · 부분 중첩 11 · 신규 기능 6 · 무관 1 = 30개.
 
 ---
 
