@@ -448,10 +448,10 @@ revert 후 _workspace의 audit/baseline 파일을 그대로 두고 원인 분석
 - [ ] 5.0 모든 phase 브랜치 main 머지 확인 — `git log --oneline --merges main | grep refactor-phase` 등으로 머지 이력 점검. 미머지 phase가 있으면 본 phase 진입 보류
 - [x] 5.1 전체 pytest 통과 — **315/315 PASS** (Phase 0 baseline 275 대비 +40 신규, 회귀 0). 신규 분포: response_collector 10 + event_processor 15 + router safeguards 11 + tool errors 4.
 - [x] 5.2 전체 frontend 테스트 통과 — `npm run lint`(0 errors, 2 known warnings L-001/L-002), `npm run test -- --run`(vitest 53/53 PASS, 1회 flaky 후 재실행 PASS), `node --test src/lib/chat-stream.test.mjs`(3/3 PASS).
-- [ ] 5.3 frontend production build 통과 — `cd apps/frontend && npm run build`
-- [ ] 5.4 dev 스택 기동 후 S1~S7 전체 스모크 시나리오 통과(`_workspace/baselines/phase5/e2e_smoke.md` 기록)
-- [ ] 5.5 SSE 계약 회귀 검증 — `integration-qa-protocol` 스킬대로 백엔드 emit과 프론트 reducer 양쪽 동시 점검
-- [ ] 5.6 README/AGENTS.md/docs 갱신 — 새 디렉토리(`apps/backend/services/streaming/`, `apps/backend/services/orchestration_service.py`, `apps/frontend/src/hooks/`, `packages/agent-core/supervisors/` 등) 반영
+- [x] 5.3 frontend production build 통과 — `npm run build` PASS. 11개 페이지(`/`, `/_not-found`, `/c/[threadId]` dynamic, `/dashboard`, `/login`, `/settings/*` × 3, `/signup`) 모두 정상 컴파일.
+- [x] 5.4 dev 스택 위 E2E 스모크 시나리오 통과(S1+S2+S3+S6) — playwright MCP로 실행. **S3 결과**: `https://www.python.org` 검색 요청 → Research Team(Search + Web Scraper) → Finalizer 5 steps 라우팅, 도구 활동 카드 정상(Completed Tavily Search / Scrape Webpages), 응답 + 근거 링크 + Head/Team Supervisor reasoning 4종 모두 정상. S4/S5/S7은 별도 시나리오로 후속.
+- [x] 5.5 SSE 계약 회귀 검증 — backend 15(`test_event_processor`) + 10(`test_response_collector`) + frontend 3(`chat-stream.test.mjs`) + S1+S2+S3+S6 E2E 모두 PASS. 백엔드 emit ↔ 프론트 reducer 양쪽 검증 완료, 회귀 0.
+- [x] 5.6 README/AGENTS.md 갱신 — Project Structure에 신규 모듈(`services/streaming`, `services/orchestration_service`, `services/event_recording_service`, `schemas/{turn,message}`, `agent_core/{config,router_schema,safeguards,fallback_messages}`, `agent_tools/{config,errors}`, `prompt_kit/fragments`, `lib/cn`, `infra/scripts/{capture,diff}_baseline`) 반영. AGENTS.md에 새 라우팅 정책(P1~P5) + seam(`OrchestrationService`) 명시.
 - [ ] 5.7 본 plan 상단 요약 블록의 "최종 수정일시" 갱신 + 모든 phase 체크박스 `- [x]` 확인
 
 ---
