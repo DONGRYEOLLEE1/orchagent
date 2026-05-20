@@ -208,7 +208,28 @@ def apply_patch_edit(
     old_text: str,
     new_text: str,
 ) -> dict:
-    """Replace one exact snippet in a repository file."""
+    """Replace exactly one occurrence of ``old_text`` with ``new_text`` in a repo file.
+
+    Behaviour:
+    - ``file_path`` is interpreted relative to the bound repository workspace.
+    - ``old_text`` must appear in the file **literally** (whitespace and casing
+      sensitive). If it doesn't, the call returns ``{"success": False, ...}``
+      with no side effect — preferred over a noisy exception so the supervisor
+      can retry with a different snippet.
+    - The first occurrence is replaced; any further occurrences are left
+      untouched. Pass a longer ``old_text`` to disambiguate when needed.
+
+    Returns:
+    - On success: ``{"success": True, "file_path": "<repo-relative>", "message": ...}``
+    - On failure: ``{"success": False, "message": "<reason>"}``
+
+    Example:
+        apply_patch_edit(
+            file_path="src/server.py",
+            old_text="DEFAULT_TIMEOUT = 5",
+            new_text="DEFAULT_TIMEOUT = 30",
+        )
+    """
     target = _resolve_repo_path(file_path)
     if not target.exists() or not target.is_file():
         return {"success": False, "message": f"File not found: {file_path}"}
@@ -287,7 +308,23 @@ def git_log(limit: int = 5) -> dict:
 
 @tool
 def verify_local_page(url: str, expected_text: str = "") -> dict:
-    """Fetch a localhost URL and optionally verify that specific text is present."""
+    """Fetch a localhost URL and optionally assert that ``expected_text`` is in the body.
+
+    Designed to verify a freshly-started dev server during a coding task.
+    Only ``http(s)://127.0.0.1`` and ``http(s)://localhost`` URLs are allowed —
+    any other host is rejected with ``{"success": False}``. The body is
+    truncated to 4000 characters before being returned so the response payload
+    stays manageable for the LLM.
+
+    Returns:
+    - On reachable + expected_text match: ``{"success": True, "status_code": 200, "expected_text_found": True, "body_excerpt": "..."}``
+    - On reachable but no expected_text given: ``"success": True`` and
+      ``"expected_text_found": None``.
+    - On network or non-localhost failure: ``{"success": False, "message": "..."}``.
+
+    Example:
+        verify_local_page(url="http://localhost:3000/login", expected_text="Login")
+    """
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"} or parsed.hostname not in {"127.0.0.1", "localhost"}:
         return {"success": False, "message": "Only localhost URLs are allowed."}

@@ -159,12 +159,49 @@ def extract_document_text(
     attachment_id: Annotated[str, "Attachment id returned by inspect_attachments."],
     max_chars: Annotated[int, "Maximum characters to return from the document."] = 6000,
 ) -> str:
-    """Extract text from a PDF or DOCX attachment. Use when the task needs document text."""
-    return json.dumps(
-        _extract_document_text_internal(attachment_id, max_chars=max_chars),
-        ensure_ascii=False,
-        indent=2,
-    )
+    """Extract text from a PDF or DOCX attachment. Use when the task needs document text.
+
+    Phase 4.3 — corrupted/encrypted/unsupported files surface a structured
+    ToolErrorPayload instead of bubbling an opaque library exception, so the
+    supervisor/validator can react cleanly and the SSE ``tool_error`` event
+    carries an actionable message.
+    """
+    from agent_tools.errors import make_tool_error_payload
+
+    try:
+        result = _extract_document_text_internal(attachment_id, max_chars=max_chars)
+    except ValueError as exc:
+        # raised when attachment kind is not pdf/docx
+        return json.dumps(
+            make_tool_error_payload(
+                kind="input_validation",
+                message=str(exc),
+                details={"attachment_id": attachment_id},
+            ),
+            ensure_ascii=False,
+        )
+    except FileNotFoundError as exc:
+        return json.dumps(
+            make_tool_error_payload(
+                kind="not_found",
+                message=f"document file is missing on disk: {exc}",
+                details={"attachment_id": attachment_id},
+            ),
+            ensure_ascii=False,
+        )
+    except Exception as exc:
+        # pypdf / python-docx raise a variety of subclasses for corrupted or
+        # encrypted files; keep the structured envelope so the caller can decide.
+        return json.dumps(
+            make_tool_error_payload(
+                kind="runtime",
+                message=f"failed to extract document text: {type(exc).__name__}: {exc}",
+                details={"attachment_id": attachment_id},
+            ),
+            ensure_ascii=False,
+        )
+
+    return json.dumps(result, ensure_ascii=False, indent=2)
 
 
 @tool
@@ -286,7 +323,35 @@ def _stage_attachments_for_repl() -> None:
 def python_repl_data_tool(
     code: Annotated[str, "Python code for data processing or visualization."],
 ) -> str:
-    """Execute Python for dataframe analysis and chart generation in a restricted analysis workspace."""
+    """Execute Python in a sandboxed analysis workspace for dataframe / chart tasks.
+
+    Available libraries (pre-imported as ``_`` aliases): ``matplotlib.pyplot``
+    as ``_plt``, ``matplotlib.figure.Figure`` as ``_Figure``,
+    ``matplotlib.font_manager`` as ``_font_manager``, ``pandas``,
+    ``numpy``, ``duckdb``. The current working directory is the per-turn
+    artifact directory so saved files end up in the right place.
+
+    Restrictions:
+    - Network access (``socket``, ``urllib.request``, ``requests``) is
+      monkey-patched to raise immediately — this REPL is for local analysis,
+      not external API calls.
+    - Long stdout is truncated; charts must be saved via ``_plt.savefig`` so
+      the artifact-collector can pick them up. Newly created files in the
+      workspace are reported back to the agent.
+
+    Returns:
+    - JSON-serialised dict with ``stdout``, ``new_files``, and any registered
+      ``artifacts`` since the previous invocation.
+
+    Example::
+
+        python_repl_data_tool(code='''
+            import pandas as pd
+            df = pd.read_csv("attached.csv")
+            df["amount"].plot.bar()
+            _plt.savefig("amount.png")
+        ''')
+    """
     context = get_tool_runtime_context()
     _stage_attachments_for_repl()
     before_files = _snapshot_workspace_files(context)
