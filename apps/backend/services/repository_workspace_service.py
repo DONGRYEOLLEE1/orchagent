@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
+from core.database import AsyncSessionLocal
 from models.analytics import ChatTurn
 from models.repository import ThreadRepositoryBinding, WorkspaceJob
 from models.logging import KST
@@ -483,3 +484,16 @@ class RepositoryWorkspaceService:
         await db.commit()
         await db.refresh(job)
         return job
+
+    @staticmethod
+    async def finalize_workspace_job_with_fresh_session(
+        *,
+        job_id: str,
+        status: str,
+    ) -> None:
+        async with AsyncSessionLocal() as db:
+            await RepositoryWorkspaceService.finalize_workspace_job(
+                db,
+                job_id=job_id,
+                status=status,
+            )

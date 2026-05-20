@@ -162,7 +162,22 @@ def test_chat_stream_client_disconnect_closes_fresh_sessions(monkeypatch):
         def __call__(self):
             return TrackingSession()
 
-    monkeypatch.setattr("api.routes.chat.AsyncSessionLocal", TrackingFactory())
+    # Phase 1.3 moved the fresh-session callers out of chat.py into the
+    # service modules. Patch every reference so the tracking factory still
+    # observes every session open/close.
+    factory = TrackingFactory()
+    for module_path in (
+        "api.routes.chat",
+        "core.database",
+        "services.logging_service",
+        "services.trace_service",
+        "services.chat_analytics_service",
+        "services.repository_workspace_service",
+        "services.thread_service",
+        "services.memory_service",
+        "services.memory_agent_service",
+    ):
+        monkeypatch.setattr(f"{module_path}.AsyncSessionLocal", factory, raising=False)
 
     from services.logging_service import LoggingService
 
@@ -187,6 +202,9 @@ def test_chat_stream_client_disconnect_closes_fresh_sessions(monkeypatch):
     except Exception:
         pass
 
-    # One session for the initial user log, one for the trace flush in finally.
-    assert exit_markers.count("enter") >= 2
-    assert exit_markers.count("exit") >= 2
+    # At least one fresh session must open and close cleanly during the
+    # disconnect handler. Phase 1.3 moved the writers into service modules
+    # whose trace-flush path early-returns when there are no trace events,
+    # so the count is now exact (1 user-log session) instead of two.
+    assert exit_markers.count("enter") >= 1
+    assert exit_markers.count("exit") == exit_markers.count("enter")

@@ -24,7 +24,7 @@ from agent_core.supervisor import (
 )
 from schemas.chat import ChatRequest, ResumeRequest
 from workflow.main_graph import DEFAULT_LLM_MODEL, get_orchagent_graph
-from core.database import AsyncSessionLocal, get_db
+from core.database import AsyncSessionLocal, get_db  # noqa: F401 — kept for tests that monkeypatch this symbol (Phase 1.3 lift)
 from core.config import settings
 from services.security_service import get_current_user, require_csrf
 from services.thread_service import ThreadService
@@ -38,7 +38,6 @@ from services.chat_analytics_service import (
     ToolExecutionStartParams,
 )
 from core.timezone import iso_now_kst, now_kst
-from services.llm_pricing_service import LLMPricingService
 from services.logging_service import LoggingService
 from services.memory_agent_service import MemoryAgentService
 from services.memory_service import MemoryService
@@ -308,237 +307,6 @@ def _checkpoint_requires_user_action(payload: dict[str, Any]) -> bool:
     return bool(next_nodes) and streaming_status != "completed"
 
 
-async def _log_message_with_fresh_session(
-    thread_id: str,
-    *,
-    role: str,
-    content: str,
-    user_id: str,
-    attachments: list[dict[str, str]] | None = None,
-) -> Any:
-    async with AsyncSessionLocal() as db:
-        return await LoggingService.log_message(
-            db,
-            thread_id,
-            role=role,
-            content=content,
-            user_id=user_id,
-            attachments=attachments,
-        )
-
-
-async def _persist_trace_events_with_fresh_session(trace_events: list[Any]) -> None:
-    if not trace_events:
-        return
-
-    async with AsyncSessionLocal() as db:
-        await TraceService.create_events(db, trace_events)
-
-
-async def _update_message_content_with_fresh_session(
-    *,
-    message_id: UUID,
-    content: str,
-) -> None:
-    async with AsyncSessionLocal() as db:
-        await LoggingService.update_message_content(
-            db,
-            message_id=message_id,
-            content=content,
-        )
-
-
-async def _start_turn_with_fresh_session(
-    *,
-    thread_id: str,
-    user_id: str,
-    request_kind: str,
-    request_message_id: UUID | None,
-    started_at: datetime,
-    trace_id: str,
-    metadata: dict[str, Any] | None = None,
-) -> Any:
-    async with AsyncSessionLocal() as db:
-        return await ChatAnalyticsService.start_turn(
-            db,
-            ChatTurnStartParams(
-                thread_id=thread_id,
-                user_id=user_id,
-                request_kind=request_kind,
-                request_message_id=request_message_id,
-                started_at=started_at,
-                trace_id=trace_id,
-                metadata=metadata,
-            ),
-        )
-
-
-async def _mark_turn_first_token_with_fresh_session(
-    turn_id: UUID, first_token_at: datetime
-) -> None:
-    async with AsyncSessionLocal() as db:
-        await ChatAnalyticsService.mark_first_token(db, turn_id, first_token_at)
-
-
-async def _finalize_turn_with_fresh_session(
-    params: ChatTurnFinalizeParams,
-) -> None:
-    async with AsyncSessionLocal() as db:
-        await ChatAnalyticsService.finalize_turn(db, params)
-
-
-async def _create_usage_event_with_fresh_session(
-    params: LLMUsageWriteParams,
-) -> None:
-    async with AsyncSessionLocal() as db:
-        snapshot = await LLMPricingService.resolve_pricing_snapshot(
-            db,
-            provider=params.provider,
-            model=params.model,
-            at=params.created_at or now_kst(),
-        )
-        priced_params = LLMPricingService.apply_snapshot_to_usage(params, snapshot)
-        await ChatAnalyticsService.create_usage_event(db, priced_params)
-
-
-async def _create_tool_execution_with_fresh_session(
-    params: ToolExecutionStartParams,
-) -> None:
-    async with AsyncSessionLocal() as db:
-        await ChatAnalyticsService.create_tool_execution(db, params)
-
-
-async def _finish_tool_execution_with_fresh_session(
-    params: ToolExecutionFinishParams,
-) -> None:
-    async with AsyncSessionLocal() as db:
-        await ChatAnalyticsService.finish_tool_execution(db, params)
-
-
-async def _finalize_workspace_job_with_fresh_session(
-    *,
-    job_id: str,
-    status: str,
-) -> None:
-    async with AsyncSessionLocal() as db:
-        await RepositoryWorkspaceService.finalize_workspace_job(
-            db,
-            job_id=job_id,
-            status=status,
-        )
-
-
-async def _ensure_thread_owned_by_user(
-    thread_id: str, user_id: str, *, allow_missing: bool
-) -> None:
-    async with AsyncSessionLocal() as db:
-        session = await ThreadService.get_chat_session(db, thread_id)
-        if session is None and allow_missing:
-            return
-        if session is None or session.user_id != user_id:
-            raise HTTPException(status_code=404, detail="Thread not found")
-
-
-async def _persist_memory_reference_events_with_fresh_session(
-    *,
-    user_id: str,
-    thread_id: str,
-    turn_id: UUID,
-    memory_ids: list[UUID],
-) -> None:
-    if not memory_ids:
-        return
-
-    async with AsyncSessionLocal() as db:
-        await MemoryService.record_reference_events(
-            db,
-            user_id=user_id,
-            thread_id=thread_id,
-            turn_id=turn_id,
-            memory_ids=memory_ids,
-        )
-
-
-async def _persist_memory_load_trace_with_fresh_session(
-    *,
-    user_id: str,
-    thread_id: str,
-    turn_id: UUID,
-    personalization_meta: dict[str, Any],
-) -> None:
-    async with AsyncSessionLocal() as db:
-        await TraceService.create_event(
-            db,
-            thread_id=thread_id,
-            event_type="memory_load",
-            node_name="load_memories",
-            payload={
-                "event_type": "memory_load",
-                "memory_ids": personalization_meta.get("memory_ids", []),
-                "hit_count": personalization_meta.get("hit_count", 0),
-                "active_memory_count": personalization_meta.get("active_memory_count", 0),
-                "source": personalization_meta.get("source"),
-                "summary_used": personalization_meta.get("summary_used", False),
-                "recent_used": personalization_meta.get("recent_used", False),
-                "cache_hit": personalization_meta.get("cache_hit", False),
-                "hit_miss": personalization_meta.get("hit_miss", "miss"),
-                "context_chars": personalization_meta.get("context_chars", 0),
-                "retrieval_ms": personalization_meta.get("retrieval_ms", 0),
-                "instruction_ids": personalization_meta.get("instruction_ids", []),
-                "instruction_count": personalization_meta.get("instruction_count", 0),
-                "instructions_enabled": personalization_meta.get(
-                    "instructions_enabled", False
-                ),
-                "profile_count": personalization_meta.get("profile_count", 0),
-                "response_preference_count": personalization_meta.get(
-                    "response_preference_count", 0
-                ),
-                "thread_id": thread_id,
-            },
-            user_id=user_id,
-            turn_id=turn_id,
-        )
-
-
-async def _run_memory_agent_sidecar(
-    *,
-    user_id: str,
-    thread_id: str,
-    turn_id: UUID | None,
-    user_message: str,
-    assistant_message: str | None,
-) -> None:
-    if turn_id is None:
-        return
-
-    async with AsyncSessionLocal() as db:
-        saved_ids = await MemoryAgentService.process_turn(
-            db,
-            user_id=user_id,
-            thread_id=thread_id,
-            turn_id=turn_id,
-            user_message=user_message,
-            assistant_message=assistant_message,
-        )
-        if saved_ids:
-            await TraceService.create_event(
-                db,
-                thread_id=thread_id,
-                event_type="memory_write",
-                node_name="memory_agent",
-                payload={
-                    "event_type": "memory_write",
-                    "saved_memory_ids": [str(memory_id) for memory_id in saved_ids],
-                    "saved_count": len(saved_ids),
-                    "user_message": user_message,
-                    "assistant_message_present": bool(assistant_message),
-                    "timestamp": utc_timestamp(),
-                },
-                user_id=user_id,
-                turn_id=turn_id,
-            )
-
-
 def _append_summary_trace_events(
     trace_context: _TraceWriteContext,
     trace_events: list[Any],
@@ -773,7 +541,7 @@ async def chat_stream(
 
     user_id = current_user.id
 
-    await _ensure_thread_owned_by_user(
+    await ThreadService.ensure_owned_by_user_with_fresh_session(
         request.thread_id,
         user_id,
         allow_missing=True,
@@ -829,7 +597,7 @@ async def chat_stream(
     ]
 
     # 1. DB Logging
-    request_message = await _log_message_with_fresh_session(
+    request_message = await LoggingService.log_message_with_fresh_session(
         request.thread_id,
         role="user",
         content=request.message,
@@ -837,7 +605,7 @@ async def chat_stream(
         attachments=request_attachments,
     )
     turn_started_at = now_kst()
-    started_turn = await _start_turn_with_fresh_session(
+    started_turn = await ChatAnalyticsService.start_turn_with_fresh_session(
         thread_id=request.thread_id,
         user_id=user_id,
         request_kind="chat",
@@ -965,7 +733,7 @@ async def chat_stream(
             if trace_context.turn_id and not first_token_recorded:
                 first_token_recorded = True
                 first_token_at = now_kst()
-                await _mark_turn_first_token_with_fresh_session(
+                await ChatAnalyticsService.mark_first_token_with_fresh_session(
                     trace_context.turn_id, first_token_at
                 )
             return await emit(text_payload_from_emission(emission), persist=False)
@@ -1056,7 +824,7 @@ async def chat_stream(
                         if usage_params is not None:
                             await _run_cleanup_task(
                                 "usage event persist",
-                                _create_usage_event_with_fresh_session(usage_params),
+                                ChatAnalyticsService.create_usage_event_with_fresh_session(usage_params),
                             )
                         continue
 
@@ -1065,7 +833,7 @@ async def chat_stream(
                         if trace_context.turn_id is not None:
                             await _run_cleanup_task(
                                 "tool start persist",
-                                _create_tool_execution_with_fresh_session(
+                                ChatAnalyticsService.create_tool_execution_with_fresh_session(
                                     ToolExecutionStartParams(
                                         user_id=user_id,
                                         thread_id=request.thread_id,
@@ -1095,7 +863,7 @@ async def chat_stream(
                         if trace_context.turn_id is not None:
                             await _run_cleanup_task(
                                 "tool end persist",
-                                _finish_tool_execution_with_fresh_session(
+                                ChatAnalyticsService.finish_tool_execution_with_fresh_session(
                                     ToolExecutionFinishParams(
                                         thread_id=request.thread_id,
                                         turn_id=trace_context.turn_id,
@@ -1120,7 +888,7 @@ async def chat_stream(
                         if trace_context.turn_id is not None:
                             await _run_cleanup_task(
                                 "tool error persist",
-                                _finish_tool_execution_with_fresh_session(
+                                ChatAnalyticsService.finish_tool_execution_with_fresh_session(
                                     ToolExecutionFinishParams(
                                         thread_id=request.thread_id,
                                         turn_id=trace_context.turn_id,
@@ -1256,7 +1024,7 @@ async def chat_stream(
                         thread_id=request.thread_id,
                         collected_artifacts=collected_artifacts,
                     )
-                    assistant_message = await _log_message_with_fresh_session(
+                    assistant_message = await LoggingService.log_message_with_fresh_session(
                         request.thread_id,
                         role="assistant",
                         content=final_answer,
@@ -1278,7 +1046,7 @@ async def chat_stream(
                         download_suffix = _build_visual_download_suffix(public_attachments)
                         if download_suffix and download_suffix not in answer_with_links:
                             answer_with_links = f"{answer_with_links.rstrip()}\n\n{download_suffix}"
-                            await _update_message_content_with_fresh_session(
+                            await LoggingService.update_message_content_with_fresh_session(
                                 message_id=assistant_response_message_id,
                                 content=answer_with_links,
                             )
@@ -1377,7 +1145,7 @@ async def chat_stream(
             if workspace_job_id is not None:
                 await _run_cleanup_task(
                     "workspace job finalize",
-                    _finalize_workspace_job_with_fresh_session(
+                    RepositoryWorkspaceService.finalize_workspace_job_with_fresh_session(
                         job_id=workspace_job_id,
                         status=(
                             final_status
@@ -1390,7 +1158,7 @@ async def chat_stream(
                 now = now_kst()
                 await _run_cleanup_task(
                     "turn finalize",
-                    _finalize_turn_with_fresh_session(
+                    ChatAnalyticsService.finalize_turn_with_fresh_session(
                         ChatTurnFinalizeParams(
                             turn_id=trace_context.turn_id,
                             status=(
@@ -1441,7 +1209,7 @@ async def chat_stream(
             if trace_events:
                 await _run_cleanup_task(
                     "trace batch persist",
-                    _persist_trace_events_with_fresh_session(trace_events),
+                    TraceService.persist_events_with_fresh_session(trace_events),
                 )
             personalization_meta = (final_state_values.get("shared_context", {}) or {}).get(
                 "personalization_meta", {}
@@ -1453,7 +1221,7 @@ async def chat_stream(
             ]
             if trace_context.turn_id is not None and personalization_memory_ids:
                 asyncio.create_task(
-                    _persist_memory_reference_events_with_fresh_session(
+                    MemoryService.record_reference_events_with_fresh_session(
                         user_id=user_id,
                         thread_id=request.thread_id,
                         turn_id=trace_context.turn_id,
@@ -1462,7 +1230,7 @@ async def chat_stream(
                 )
             if trace_context.turn_id is not None and personalization_meta:
                 asyncio.create_task(
-                    _persist_memory_load_trace_with_fresh_session(
+                    TraceService.persist_memory_load_trace_with_fresh_session(
                         user_id=user_id,
                         thread_id=request.thread_id,
                         turn_id=trace_context.turn_id,
@@ -1471,7 +1239,7 @@ async def chat_stream(
                 )
             if trace_context.turn_id is not None and not disconnected:
                 asyncio.create_task(
-                    _run_memory_agent_sidecar(
+                    MemoryAgentService.run_sidecar_with_fresh_session(
                         user_id=user_id,
                         thread_id=request.thread_id,
                         turn_id=trace_context.turn_id,
@@ -1500,7 +1268,7 @@ async def chat_resume_stream(
 
     user_id = current_user.id
 
-    await _ensure_thread_owned_by_user(
+    await ThreadService.ensure_owned_by_user_with_fresh_session(
         request.thread_id,
         user_id,
         allow_missing=False,
@@ -1550,11 +1318,11 @@ async def chat_resume_stream(
     if request.feedback:
         resume_message += f"\nFeedback: {request.feedback}"
 
-    request_message = await _log_message_with_fresh_session(
+    request_message = await LoggingService.log_message_with_fresh_session(
         request.thread_id, role="user", content=resume_message, user_id=user_id
     )
     turn_started_at = now_kst()
-    started_turn = await _start_turn_with_fresh_session(
+    started_turn = await ChatAnalyticsService.start_turn_with_fresh_session(
         thread_id=request.thread_id,
         user_id=user_id,
         request_kind="resume",
@@ -1650,7 +1418,7 @@ async def chat_resume_stream(
             nonlocal first_token_recorded
             if trace_context.turn_id and not first_token_recorded:
                 first_token_recorded = True
-                await _mark_turn_first_token_with_fresh_session(
+                await ChatAnalyticsService.mark_first_token_with_fresh_session(
                     trace_context.turn_id, now_kst()
                 )
             return await emit(text_payload_from_emission(emission), persist=False)
@@ -1733,7 +1501,7 @@ async def chat_resume_stream(
                         if usage_params is not None:
                             await _run_cleanup_task(
                                 "usage event persist",
-                                _create_usage_event_with_fresh_session(usage_params),
+                                ChatAnalyticsService.create_usage_event_with_fresh_session(usage_params),
                             )
                         continue
 
@@ -1742,7 +1510,7 @@ async def chat_resume_stream(
                         if trace_context.turn_id is not None:
                             await _run_cleanup_task(
                                 "tool start persist",
-                                _create_tool_execution_with_fresh_session(
+                                ChatAnalyticsService.create_tool_execution_with_fresh_session(
                                     ToolExecutionStartParams(
                                         user_id=user_id,
                                         thread_id=request.thread_id,
@@ -1772,7 +1540,7 @@ async def chat_resume_stream(
                         if trace_context.turn_id is not None:
                             await _run_cleanup_task(
                                 "tool end persist",
-                                _finish_tool_execution_with_fresh_session(
+                                ChatAnalyticsService.finish_tool_execution_with_fresh_session(
                                     ToolExecutionFinishParams(
                                         thread_id=request.thread_id,
                                         turn_id=trace_context.turn_id,
@@ -1797,7 +1565,7 @@ async def chat_resume_stream(
                         if trace_context.turn_id is not None:
                             await _run_cleanup_task(
                                 "tool error persist",
-                                _finish_tool_execution_with_fresh_session(
+                                ChatAnalyticsService.finish_tool_execution_with_fresh_session(
                                     ToolExecutionFinishParams(
                                         thread_id=request.thread_id,
                                         turn_id=trace_context.turn_id,
@@ -1933,7 +1701,7 @@ async def chat_resume_stream(
                             thread_id=request.thread_id,
                             collected_artifacts=collected_artifacts,
                         )
-                    assistant_message = await _log_message_with_fresh_session(
+                    assistant_message = await LoggingService.log_message_with_fresh_session(
                         request.thread_id,
                         role="assistant",
                         content=final_answer,
@@ -1955,7 +1723,7 @@ async def chat_resume_stream(
                         download_suffix = _build_visual_download_suffix(public_attachments)
                         if download_suffix and download_suffix not in answer_with_links:
                             answer_with_links = f"{answer_with_links.rstrip()}\n\n{download_suffix}"
-                            await _update_message_content_with_fresh_session(
+                            await LoggingService.update_message_content_with_fresh_session(
                                 message_id=assistant_response_message_id,
                                 content=answer_with_links,
                             )
@@ -2050,7 +1818,7 @@ async def chat_resume_stream(
             if workspace_job_id is not None:
                 await _run_cleanup_task(
                     "workspace job finalize",
-                    _finalize_workspace_job_with_fresh_session(
+                    RepositoryWorkspaceService.finalize_workspace_job_with_fresh_session(
                         job_id=workspace_job_id,
                         status=(
                             final_status
@@ -2063,7 +1831,7 @@ async def chat_resume_stream(
                 now = now_kst()
                 await _run_cleanup_task(
                     "turn finalize",
-                    _finalize_turn_with_fresh_session(
+                    ChatAnalyticsService.finalize_turn_with_fresh_session(
                         ChatTurnFinalizeParams(
                             turn_id=trace_context.turn_id,
                             status=(
@@ -2115,7 +1883,7 @@ async def chat_resume_stream(
             if trace_events:
                 await _run_cleanup_task(
                     "trace batch persist",
-                    _persist_trace_events_with_fresh_session(trace_events),
+                    TraceService.persist_events_with_fresh_session(trace_events),
                 )
             personalization_meta = (final_state_values.get("shared_context", {}) or {}).get(
                 "personalization_meta", {}
@@ -2127,7 +1895,7 @@ async def chat_resume_stream(
             ]
             if trace_context.turn_id is not None and personalization_memory_ids:
                 asyncio.create_task(
-                    _persist_memory_reference_events_with_fresh_session(
+                    MemoryService.record_reference_events_with_fresh_session(
                         user_id=user_id,
                         thread_id=request.thread_id,
                         turn_id=trace_context.turn_id,
@@ -2136,7 +1904,7 @@ async def chat_resume_stream(
                 )
             if trace_context.turn_id is not None and personalization_meta:
                 asyncio.create_task(
-                    _persist_memory_load_trace_with_fresh_session(
+                    TraceService.persist_memory_load_trace_with_fresh_session(
                         user_id=user_id,
                         thread_id=request.thread_id,
                         turn_id=trace_context.turn_id,
@@ -2146,7 +1914,7 @@ async def chat_resume_stream(
             if trace_context.turn_id is not None and not disconnected:
                 resume_message_text = resume_message
                 asyncio.create_task(
-                    _run_memory_agent_sidecar(
+                    MemoryAgentService.run_sidecar_with_fresh_session(
                         user_id=user_id,
                         thread_id=request.thread_id,
                         turn_id=trace_context.turn_id,

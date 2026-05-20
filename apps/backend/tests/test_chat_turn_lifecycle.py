@@ -114,11 +114,11 @@ def test_chat_stream_records_completed_turn_lifecycle(monkeypatch):
     async def mock_finalize_turn(params):
         finalize_calls.append(params)
 
-    monkeypatch.setattr("api.routes.chat._log_message_with_fresh_session", mock_log_message)
-    monkeypatch.setattr("api.routes.chat._start_turn_with_fresh_session", mock_start_turn)
-    monkeypatch.setattr("api.routes.chat._mark_turn_first_token_with_fresh_session", mock_mark_first_token)
-    monkeypatch.setattr("api.routes.chat._finalize_turn_with_fresh_session", mock_finalize_turn)
-    monkeypatch.setattr("api.routes.chat._persist_trace_events_with_fresh_session", mock_persist_traces)
+    monkeypatch.setattr("services.logging_service.LoggingService.log_message_with_fresh_session", mock_log_message)
+    monkeypatch.setattr("services.chat_analytics_service.ChatAnalyticsService.start_turn_with_fresh_session", mock_start_turn)
+    monkeypatch.setattr("services.chat_analytics_service.ChatAnalyticsService.mark_first_token_with_fresh_session", mock_mark_first_token)
+    monkeypatch.setattr("services.chat_analytics_service.ChatAnalyticsService.finalize_turn_with_fresh_session", mock_finalize_turn)
+    monkeypatch.setattr("services.trace_service.TraceService.persist_events_with_fresh_session", mock_persist_traces)
 
     with client.stream(
         "POST", "/api/chat", json={"message": "hello", "thread_id": "thread-completed"}
@@ -179,10 +179,10 @@ def test_chat_stream_records_interrupted_turn_lifecycle(monkeypatch):
     async def mock_finalize_turn(params):
         finalize_calls.append(params)
 
-    monkeypatch.setattr("api.routes.chat._log_message_with_fresh_session", mock_log_message)
-    monkeypatch.setattr("api.routes.chat._start_turn_with_fresh_session", mock_start_turn)
-    monkeypatch.setattr("api.routes.chat._finalize_turn_with_fresh_session", mock_finalize_turn)
-    monkeypatch.setattr("api.routes.chat._persist_trace_events_with_fresh_session", mock_persist_traces)
+    monkeypatch.setattr("services.logging_service.LoggingService.log_message_with_fresh_session", mock_log_message)
+    monkeypatch.setattr("services.chat_analytics_service.ChatAnalyticsService.start_turn_with_fresh_session", mock_start_turn)
+    monkeypatch.setattr("services.chat_analytics_service.ChatAnalyticsService.finalize_turn_with_fresh_session", mock_finalize_turn)
+    monkeypatch.setattr("services.trace_service.TraceService.persist_events_with_fresh_session", mock_persist_traces)
 
     with client.stream(
         "POST", "/api/chat", json={"message": "need approval", "thread_id": "thread-interrupted"}
@@ -226,10 +226,10 @@ def test_chat_stream_records_errored_turn_lifecycle(monkeypatch):
     async def mock_finalize_turn(params):
         finalize_calls.append(params)
 
-    monkeypatch.setattr("api.routes.chat._log_message_with_fresh_session", mock_log_message)
-    monkeypatch.setattr("api.routes.chat._start_turn_with_fresh_session", mock_start_turn)
-    monkeypatch.setattr("api.routes.chat._finalize_turn_with_fresh_session", mock_finalize_turn)
-    monkeypatch.setattr("api.routes.chat._persist_trace_events_with_fresh_session", mock_persist_traces)
+    monkeypatch.setattr("services.logging_service.LoggingService.log_message_with_fresh_session", mock_log_message)
+    monkeypatch.setattr("services.chat_analytics_service.ChatAnalyticsService.start_turn_with_fresh_session", mock_start_turn)
+    monkeypatch.setattr("services.chat_analytics_service.ChatAnalyticsService.finalize_turn_with_fresh_session", mock_finalize_turn)
+    monkeypatch.setattr("services.trace_service.TraceService.persist_events_with_fresh_session", mock_persist_traces)
 
     with client.stream(
         "POST", "/api/chat", json={"message": "explode", "thread_id": "thread-errored"}
@@ -303,10 +303,10 @@ def test_chat_resume_records_resume_turn_kind(monkeypatch):
     async def mock_persist_traces(*args, **kwargs):
         return None
 
-    monkeypatch.setattr("api.routes.chat._log_message_with_fresh_session", mock_log_message)
-    monkeypatch.setattr("api.routes.chat._start_turn_with_fresh_session", mock_start_turn)
-    monkeypatch.setattr("api.routes.chat._finalize_turn_with_fresh_session", mock_finalize_turn)
-    monkeypatch.setattr("api.routes.chat._persist_trace_events_with_fresh_session", mock_persist_traces)
+    monkeypatch.setattr("services.logging_service.LoggingService.log_message_with_fresh_session", mock_log_message)
+    monkeypatch.setattr("services.chat_analytics_service.ChatAnalyticsService.start_turn_with_fresh_session", mock_start_turn)
+    monkeypatch.setattr("services.chat_analytics_service.ChatAnalyticsService.finalize_turn_with_fresh_session", mock_finalize_turn)
+    monkeypatch.setattr("services.trace_service.TraceService.persist_events_with_fresh_session", mock_persist_traces)
 
     with client.stream(
         "POST",

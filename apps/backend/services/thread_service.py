@@ -5,9 +5,11 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
+from fastapi import HTTPException
 from sqlalchemy import delete, desc, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.database import AsyncSessionLocal
 from models.analytics import ChatTurn, LLMUsageEvent, ToolExecutionEvent
 from models.logging import ChatMessageLog, ChatSession
 from models.repository import ThreadRepositoryBinding, WorkspaceJob
@@ -322,6 +324,22 @@ class ThreadService:
             stmt = stmt.where(ChatSession.user_id == user_id)
         result = await db.execute(stmt)
         return result.scalar_one_or_none()
+
+    @staticmethod
+    async def ensure_owned_by_user_with_fresh_session(
+        thread_id: str, user_id: str, *, allow_missing: bool
+    ) -> None:
+        """Verify thread ownership in a one-off session.
+
+        Raises ``HTTPException(404)`` when the thread is missing (unless
+        ``allow_missing`` is True) or owned by another user.
+        """
+        async with AsyncSessionLocal() as db:
+            session = await ThreadService.get_chat_session(db, thread_id)
+            if session is None and allow_missing:
+                return
+            if session is None or session.user_id != user_id:
+                raise HTTPException(status_code=404, detail="Thread not found")
 
     @staticmethod
     async def list_thread_summaries(

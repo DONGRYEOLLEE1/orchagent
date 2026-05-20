@@ -8,6 +8,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.database import AsyncSessionLocal
 from core.timezone import now_kst
 from models.analytics import ChatTurn, LLMUsageEvent, ToolExecutionEvent
 
@@ -289,3 +290,74 @@ class ChatAnalyticsService:
         await db.commit()
         await db.refresh(tool_event)
         return tool_event
+
+    # ---- Fresh-session wrappers (Phase 1.3 — chat-stream sidecar tasks) ----
+    @staticmethod
+    async def start_turn_with_fresh_session(
+        *,
+        thread_id: str,
+        user_id: str,
+        request_kind: str,
+        request_message_id: UUID | None,
+        started_at: datetime,
+        trace_id: str,
+        metadata: dict | None = None,
+    ) -> ChatTurn:
+        async with AsyncSessionLocal() as db:
+            return await ChatAnalyticsService.start_turn(
+                db,
+                ChatTurnStartParams(
+                    thread_id=thread_id,
+                    user_id=user_id,
+                    request_kind=request_kind,
+                    request_message_id=request_message_id,
+                    started_at=started_at,
+                    trace_id=trace_id,
+                    metadata=metadata,
+                ),
+            )
+
+    @staticmethod
+    async def mark_first_token_with_fresh_session(
+        turn_id: UUID, first_token_at: datetime
+    ) -> None:
+        async with AsyncSessionLocal() as db:
+            await ChatAnalyticsService.mark_first_token(db, turn_id, first_token_at)
+
+    @staticmethod
+    async def finalize_turn_with_fresh_session(
+        params: ChatTurnFinalizeParams,
+    ) -> None:
+        async with AsyncSessionLocal() as db:
+            await ChatAnalyticsService.finalize_turn(db, params)
+
+    @staticmethod
+    async def create_usage_event_with_fresh_session(
+        params: LLMUsageWriteParams,
+    ) -> None:
+        # Import locally to avoid a startup-time cycle with LLMPricingService.
+        from services.llm_pricing_service import LLMPricingService
+
+        async with AsyncSessionLocal() as db:
+            snapshot = await LLMPricingService.resolve_pricing_snapshot(
+                db,
+                provider=params.provider,
+                model=params.model,
+                at=params.created_at or now_kst(),
+            )
+            priced_params = LLMPricingService.apply_snapshot_to_usage(params, snapshot)
+            await ChatAnalyticsService.create_usage_event(db, priced_params)
+
+    @staticmethod
+    async def create_tool_execution_with_fresh_session(
+        params: ToolExecutionStartParams,
+    ) -> None:
+        async with AsyncSessionLocal() as db:
+            await ChatAnalyticsService.create_tool_execution(db, params)
+
+    @staticmethod
+    async def finish_tool_execution_with_fresh_session(
+        params: ToolExecutionFinishParams,
+    ) -> None:
+        async with AsyncSessionLocal() as db:
+            await ChatAnalyticsService.finish_tool_execution(db, params)

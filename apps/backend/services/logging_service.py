@@ -1,8 +1,10 @@
 from datetime import datetime
+from uuid import UUID
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.database import AsyncSessionLocal
 from models.logging import KST, ChatMessageLog, ChatSession
 
 
@@ -63,3 +65,40 @@ class LoggingService:
             .values(content=content)
         )
         await db.commit()
+
+    @staticmethod
+    async def log_message_with_fresh_session(
+        thread_id: str,
+        *,
+        role: str,
+        content: str,
+        user_id: str,
+        attachments: list[dict[str, str]] | None = None,
+    ) -> ChatMessageLog:
+        """Open a fresh AsyncSession and persist a chat message.
+
+        Used by the chat-stream sidecar tasks so that long-running SSE
+        generators don't share a single session across cleanup tasks.
+        """
+        async with AsyncSessionLocal() as db:
+            return await LoggingService.log_message(
+                db,
+                thread_id,
+                role=role,
+                content=content,
+                user_id=user_id,
+                attachments=attachments,
+            )
+
+    @staticmethod
+    async def update_message_content_with_fresh_session(
+        *,
+        message_id: UUID,
+        content: str,
+    ) -> None:
+        async with AsyncSessionLocal() as db:
+            await LoggingService.update_message_content(
+                db,
+                message_id=message_id,
+                content=content,
+            )

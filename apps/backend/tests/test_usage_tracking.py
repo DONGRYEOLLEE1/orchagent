@@ -139,11 +139,11 @@ def test_chat_stream_persists_usage_from_model_end(monkeypatch):
     async def mock_finalize_turn(params):
         return None
 
-    monkeypatch.setattr("api.routes.chat._log_message_with_fresh_session", mock_log_message)
-    monkeypatch.setattr("api.routes.chat._start_turn_with_fresh_session", mock_start_turn)
-    monkeypatch.setattr("api.routes.chat._create_usage_event_with_fresh_session", mock_create_usage_event)
-    monkeypatch.setattr("api.routes.chat._persist_trace_events_with_fresh_session", mock_persist_traces)
-    monkeypatch.setattr("api.routes.chat._finalize_turn_with_fresh_session", mock_finalize_turn)
+    monkeypatch.setattr("services.logging_service.LoggingService.log_message_with_fresh_session", mock_log_message)
+    monkeypatch.setattr("services.chat_analytics_service.ChatAnalyticsService.start_turn_with_fresh_session", mock_start_turn)
+    monkeypatch.setattr("services.chat_analytics_service.ChatAnalyticsService.create_usage_event_with_fresh_session", mock_create_usage_event)
+    monkeypatch.setattr("services.trace_service.TraceService.persist_events_with_fresh_session", mock_persist_traces)
+    monkeypatch.setattr("services.chat_analytics_service.ChatAnalyticsService.finalize_turn_with_fresh_session", mock_finalize_turn)
 
     with client.stream(
         "POST", "/api/chat", json={"message": "usage", "thread_id": "usage-thread"}

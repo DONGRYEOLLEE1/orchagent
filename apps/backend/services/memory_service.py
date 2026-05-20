@@ -7,9 +7,10 @@ from uuid import UUID
 from sqlalchemy import case, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.trace_service import TraceService
+from core.database import AsyncSessionLocal
 from models.user_memory import MemoryReferenceEvent, UserMemoryEntry, UserMemorySettings
 from services.memory_store_service import MemoryStoreService
+from services.trace_service import TraceService
 
 
 @dataclass(slots=True)
@@ -388,3 +389,22 @@ class MemoryService:
         ]
         db.add_all(events)
         await db.commit()
+
+    @staticmethod
+    async def record_reference_events_with_fresh_session(
+        *,
+        user_id: str,
+        thread_id: str,
+        turn_id: UUID,
+        memory_ids: list[UUID],
+    ) -> None:
+        if not memory_ids:
+            return
+        async with AsyncSessionLocal() as db:
+            await MemoryService.record_reference_events(
+                db,
+                user_id=user_id,
+                thread_id=thread_id,
+                turn_id=turn_id,
+                memory_ids=memory_ids,
+            )

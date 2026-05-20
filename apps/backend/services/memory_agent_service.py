@@ -10,8 +10,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
+from core.database import AsyncSessionLocal
+from core.timezone import iso_now_kst
 from prompt_kit.prompts import MEMORY_EXTRACTOR_PROMPT
 from services.memory_service import MemoryCandidate, MemoryService
+from services.trace_service import TraceService
 
 
 class MemoryCandidatePayload(BaseModel):
@@ -187,3 +190,47 @@ class MemoryAgentService:
             )
             saved_ids.append(memory.id)
         return saved_ids
+
+    @staticmethod
+    async def run_sidecar_with_fresh_session(
+        *,
+        user_id: str,
+        thread_id: str,
+        turn_id: UUID | None,
+        user_message: str,
+        assistant_message: str | None,
+    ) -> None:
+        """Run process_turn + persist a memory_write trace in a fresh session.
+
+        Mirrors the previous chat.py `_run_memory_agent_sidecar` helper so chat
+        stream cleanup tasks call a single service entry point.
+        """
+        if turn_id is None:
+            return
+
+        async with AsyncSessionLocal() as db:
+            saved_ids = await MemoryAgentService.process_turn(
+                db,
+                user_id=user_id,
+                thread_id=thread_id,
+                turn_id=turn_id,
+                user_message=user_message,
+                assistant_message=assistant_message,
+            )
+            if saved_ids:
+                await TraceService.create_event(
+                    db,
+                    thread_id=thread_id,
+                    event_type="memory_write",
+                    node_name="memory_agent",
+                    payload={
+                        "event_type": "memory_write",
+                        "saved_memory_ids": [str(memory_id) for memory_id in saved_ids],
+                        "saved_count": len(saved_ids),
+                        "user_message": user_message,
+                        "assistant_message_present": bool(assistant_message),
+                        "timestamp": iso_now_kst(),
+                    },
+                    user_id=user_id,
+                    turn_id=turn_id,
+                )
