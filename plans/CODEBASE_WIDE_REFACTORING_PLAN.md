@@ -186,7 +186,7 @@ revert 후 _workspace의 audit/baseline 파일을 그대로 두고 원인 분석
 
 - [x] 0.1 보안 sanity 1차 점검 결과 기록 — `.env`가 .gitignore에 있고 git-tracked 아님을 확인했으므로 revoke 불필요. `_workspace/security_sanity_2026-05-19.md`로 기록. 외부 공유 금지 원칙은 README.md L116~120 생성 가이드만 존재, AGENTS.md 명문화 없음 → 후속 보강 권장(범위 외).
 - [ ] 0.2 baseline 회귀 안전망 스크립트 정리 — §1.2·§1.5의 명령을 `infra/scripts/capture_baseline.sh`, `infra/scripts/diff_baseline.sh`로 정리 (재사용 목적). 기존 `infra/scripts/start-dev.sh`와 동급 위치.
-- [ ] 0.3 수동 E2E 스모크 시나리오 체크리스트(§1.6 S1~S7)를 `_workspace/e2e_smoke_checklist.md`로 고정. 각 phase 마지막에 재사용.
+- [x] 0.3 수동 E2E 스모크 시나리오 체크리스트(§1.6 S1~S7)를 `_workspace/e2e_smoke_checklist.md`로 고정. playwright MCP 시퀀스·기록 양식·자동화 우선순위 포함. 각 phase 마지막에 재사용.
 - [ ] 0.4 기존 plans 중첩 인벤토리 확정 — §9 부록 A 표를 채워, 각 기존 plan별로 (a) 본 리팩토링에 흡수 / (b) 본 리팩토링 후 진행 / (c) 무관 으로 분류.
 - [ ] 0.5 전체 baseline 1회 캡처(pytest/vitest/lint/build/응답 샘플 7종)를 `_workspace/baselines/phase0/`에 저장. 이후 모든 회귀 diff의 기준점.
 - [ ] 0.6 브랜치 전략 합의 — main 보호 규칙(직접 push 금지, PR 필수, 회귀 게이트 통과 필수) 적용. 원격 호스팅의 브랜치 보호 설정(또는 동등한 운영 약속) 문서로 남김 (`_workspace/branch_protection_policy.md`).
