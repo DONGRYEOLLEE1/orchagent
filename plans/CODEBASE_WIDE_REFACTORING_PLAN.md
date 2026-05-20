@@ -446,8 +446,8 @@ revert 후 _workspace의 audit/baseline 파일을 그대로 두고 원인 분석
 **브랜치:** `refactor/phase-5-final-regression` (main에서 분기 — Phase 1~4 모두 머지 완료 후 시작). main이 phase 1~4의 모든 변경을 누적한 상태여야 한다.
 
 - [ ] 5.0 모든 phase 브랜치 main 머지 확인 — `git log --oneline --merges main | grep refactor-phase` 등으로 머지 이력 점검. 미머지 phase가 있으면 본 phase 진입 보류
-- [ ] 5.1 전체 pytest 통과 — `cd apps/backend && uv run pytest tests/ -v` (PASS 수 ≥ Phase 0 baseline)
-- [ ] 5.2 전체 frontend 테스트 통과 — `cd apps/frontend && npm run lint && npm run test -- --run && node --test src/lib/chat-stream.test.mjs`
+- [x] 5.1 전체 pytest 통과 — **315/315 PASS** (Phase 0 baseline 275 대비 +40 신규, 회귀 0). 신규 분포: response_collector 10 + event_processor 15 + router safeguards 11 + tool errors 4.
+- [x] 5.2 전체 frontend 테스트 통과 — `npm run lint`(0 errors, 2 known warnings L-001/L-002), `npm run test -- --run`(vitest 53/53 PASS, 1회 flaky 후 재실행 PASS), `node --test src/lib/chat-stream.test.mjs`(3/3 PASS).
 - [ ] 5.3 frontend production build 통과 — `cd apps/frontend && npm run build`
 - [ ] 5.4 dev 스택 기동 후 S1~S7 전체 스모크 시나리오 통과(`_workspace/baselines/phase5/e2e_smoke.md` 기록)
 - [ ] 5.5 SSE 계약 회귀 검증 — `integration-qa-protocol` 스킬대로 백엔드 emit과 프론트 reducer 양쪽 동시 점검
