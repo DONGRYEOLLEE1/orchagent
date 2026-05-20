@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sys
 import asyncio
 import base64
@@ -67,6 +68,8 @@ from services.streaming import (
     tool_start_payload,
     utc_timestamp,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 _BACKEND_APP_ROOT = Path(__file__).resolve().parents[2]
@@ -336,13 +339,12 @@ async def _run_cleanup_task(label: str, operation: Any) -> None:
     try:
         await asyncio.shield(operation)
     except asyncio.CancelledError:
-        print(
-            f"[Chat] Cancelled while waiting for {label}; background cleanup may still continue.",
-            file=sys.stderr,
-            flush=True,
+        logger.warning(
+            "Cancelled while waiting for %s; background cleanup may still continue.",
+            label,
         )
     except Exception as exc:
-        print(f"[Chat] Failed during {label}: {exc}", file=sys.stderr, flush=True)
+        logger.exception("Failed during %s: %s", label, exc)
 
 
 def _attachment_prompt_block(attachments: list[dict[str, Any]]) -> str:
@@ -526,11 +528,7 @@ async def chat_stream(
     _: None = Depends(require_csrf),
 ):
     """Streaming endpoint for chat with persistence and tracing."""
-    print(
-        f"[Chat] Endpoint called! thread_id={request.thread_id}",
-        file=sys.stderr,
-        flush=True,
-    )
+    logger.info("Chat endpoint invoked: thread_id=%s", request.thread_id)
 
     user_id = current_user.id
 
@@ -1078,7 +1076,7 @@ async def chat_stream(
                     )
 
         except GraphInterrupt as gi:
-            print(f"[Chat] Graph interrupted: {gi}", file=sys.stderr, flush=True)
+            logger.warning("Graph interrupted: %s", gi)
             yield await emit(
                 status_payload(
                     status="interrupted",
@@ -1088,10 +1086,9 @@ async def chat_stream(
                 )
             )
         except asyncio.CancelledError:
-            print(
-                f"[Chat] Client disconnected during stream for thread_id={request.thread_id}",
-                file=sys.stderr,
-                flush=True,
+            logger.info(
+                "Client disconnected during stream for thread_id=%s",
+                request.thread_id,
             )
             disconnected = True
             # Trace events will still be persisted by the finally block
@@ -1253,10 +1250,10 @@ async def chat_resume_stream(
     _: None = Depends(require_csrf),
 ):
     """Streaming endpoint to resume an interrupted graph."""
-    print(
-        f"[Chat] Resume Endpoint called! thread_id={request.thread_id}, action={request.action}",
-        file=sys.stderr,
-        flush=True,
+    logger.info(
+        "Chat resume endpoint invoked: thread_id=%s action=%s",
+        request.thread_id,
+        request.action,
     )
 
     user_id = current_user.id
@@ -1749,7 +1746,7 @@ async def chat_resume_stream(
                     )
 
         except GraphInterrupt as gi:
-            print(f"[Chat] Graph interrupted again: {gi}", file=sys.stderr, flush=True)
+            logger.warning("Graph interrupted again: %s", gi)
             yield await emit(
                 status_payload(
                     status="interrupted",
@@ -1759,10 +1756,9 @@ async def chat_resume_stream(
                 )
             )
         except asyncio.CancelledError:
-            print(
-                f"[Chat] Client disconnected during stream for thread_id={request.thread_id}",
-                file=sys.stderr,
-                flush=True,
+            logger.info(
+                "Client disconnected during stream for thread_id=%s",
+                request.thread_id,
             )
             disconnected = True
             # We don't yield any more SSE events since the connection is gone,
