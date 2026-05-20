@@ -212,7 +212,7 @@ revert 후 _workspace의 audit/baseline 파일을 그대로 두고 원인 분석
 
 ### 3.2 Phase 1 태스크
 
-- [ ] 1.1 `_FinalResponseCollector` 및 dataclass 추출 → `apps/backend/services/streaming/response_collector.py` (FINAL_RESPONSE_STREAM_OWNERSHIP 계약 unit test 보강)
+- [x] 1.1 `_FinalResponseCollector` 및 dataclass 추출 → `apps/backend/services/streaming/response_collector.py` + `event_utils.py` + `__init__.py` (FINAL_RESPONSE_STREAM_OWNERSHIP 계약 unit test 10개 신설). 부수 효과: `_event_node_name`/`_extract_text_content`/내부 헬퍼 5종 함께 이동, chat.py 2,619 → 2,288 LOC(-331). 회귀: pytest 275 → 285 PASS, vitest 53/53, lint 0E, nodetest 3/3. baseline diff(`_workspace/baselines/phase1.1/`) PASS.
 - [ ] 1.2 `event_generator()` 내부 이벤트 처리 분기를 `apps/backend/services/streaming/event_processor.py`로 이동. 각 SSE event_type별 처리 함수 분리
 - [ ] 1.3 라우터 헬퍼(`_log_message_with_fresh_session`, `_start_turn_with_fresh_session` 등 14개)를 `services/turn_service.py`, `services/message_logging_service.py`로 승격
 - [ ] 1.4 `AsyncSessionLocal()` 직접 호출 제거 → `Depends(get_db)` 또는 서비스 메서드 내부 단일 컨텍스트로 통일 (116회 호출 감사)
