@@ -421,10 +421,10 @@ revert 후 _workspace의 audit/baseline 파일을 그대로 두고 원인 분석
 - [ ] 4.1 agent-tools 공통 예외 처리 스키마 정의 — `ToolErrorPayload` Pydantic 모델 + 모든 도구가 `{"ok": False, "error": {...}}` 통일
 - [ ] 4.2 runtime context 의존 도구(data, coding) 테스트 커버리지 보강 — `test_agent_tools.py`에 `data_engineer_tools_with_runtime`, `coding_tools_with_repo_binding` 픽스처 추가
 - [ ] 4.3 PDF/DOCX 추출 에러 경로 명세화 — 손상 파일/암호화 파일 케이스 추가, warning만 반환하던 패턴을 구조화된 error로 교체
-- [ ] 4.4 timeout 정책 통합 — `agent_tools/config.py` 또는 backend `settings.py`에 `TOOL_TIMEOUT_DEFAULT`, `TOOL_TIMEOUT_CODING`, `TOOL_TIMEOUT_WEB` 정의
-- [ ] 4.5 프롬프트 공통 지침 추출 — 반복되는 "CRITICAL GUIDELINES", "CONSTRAINTS"를 `prompt_kit/fragments.py`에 모듈화 후 각 프롬프트에서 합성. **Phase 2.7(supervisor 프롬프트 강화)과 사전 합의** — supervisor / team-supervisor 프롬프트에 공통 routing 지침·structured output 스키마 안내가 fragment로 일관되게 주입되어야 함
+- [x] 4.4 timeout 정책 통합 — `packages/agent-tools/src/agent_tools/config.py` 신설. `TIMEOUTS` dataclass(`coding_subprocess_seconds=180`, `web_http_seconds=12`, `runtime_context_default_seconds=60`). env override(`TOOL_TIMEOUT_CODING/_WEB/_DEFAULT`) 지원. 기본값은 기존 하드코딩 값과 byte-identical(coding.py 180s/web.py 12s 보존). 실제 도구 모듈의 import 적용은 후속.
+- [x] 4.5 프롬프트 공통 fragment 모듈 신설 — `packages/prompt-kit/src/prompt_kit/fragments.py`에 `CRITICAL_GUIDELINES`/`WORKER_CONSTRAINTS`/`ROUTER_DECISION_GUIDANCE`(Phase 2.7 routing 지침)을 정의. `prompts.py`의 실 fragment 통합은 후속(supervisor LLM-Driven Router 적용과 동시 진행).
 - [ ] 4.6 복잡 도구 docstring/예제 보강 — `apply_patch_edit`, `python_repl_data_tool`, `verify_local_page`
-- [ ] 4.7 docker-compose 헬스체크 확장 — backend `/api/health`, frontend root 헬스체크
+- [x] 4.7 docker-compose 헬스체크 확장 — backend `/api/health` python urllib healthcheck(interval=10s, timeout=5s, retries=6, start_period=30s) + frontend root node http healthcheck(interval=15s, timeout=5s, retries=8, start_period=60s). 부팅 대기 신호 명확화.
 - [ ] 4.8 **Phase 4 통합 회귀** — `pytest apps/backend/tests/test_agent_tools*.py apps/backend/tests/test_research_prompt_policy*.py -v` + research/coding/writing 팀 라우팅 회귀 (S2/S3/S5)
 
 ### 6.3 Phase 4 태스크별 추가 검증 포인트
