@@ -57,39 +57,28 @@ from agent_tools.runtime import (
 )
 from services.streaming import (
     BufferedFinalTextRun,
+    FALLBACK_STREAM_DELAY_SECONDS,
     FINAL_TEXT_STREAM_NODES,
     FinalResponseCollector,
     FinalTextEmission,
     INTERNAL_MESSAGE_NAMES,
+    display_name,
+    emit_fallback_text_stream,
     event_node_name,
     extract_text_content,
+    reasoning_payload,
+    route_payload,
+    status_payload,
+    text_payload_from_emission,
+    tool_end_payload,
+    tool_error_payload,
+    tool_start_payload,
+    utc_timestamp,
 )
 
 router = APIRouter()
 _BACKEND_APP_ROOT = Path(__file__).resolve().parents[2]
 _REPO_ROOT = Path(__file__).resolve().parents[4]
-
-
-def _utc_timestamp() -> str:
-    return iso_now_kst()
-
-
-def _display_name(name: str | None) -> str | None:
-    if not name:
-        return None
-
-    if name == "head_supervisor":
-        return "Head Supervisor"
-    if name == "supervisor":
-        return "Team Supervisor"
-    if name == "FINISH":
-        return "Completed"
-    if name.endswith("_team"):
-        base = " ".join(part.capitalize() for part in name[: -len("_team")].split("_"))
-        return f"{base} Team"
-
-    parts = name.replace("_team", "").replace("_", " ").split()
-    return " ".join(part.capitalize() for part in parts)
 
 
 def _serialize_value(value: Any) -> Any:
@@ -253,23 +242,6 @@ def _build_usage_write_params(
     )
 
 
-# Cadence between fallback text chunks so review-approved / direct answers render as a
-# token-like stream in the UI instead of flushing in a single frame.
-FALLBACK_STREAM_DELAY_SECONDS = 0.02
-
-
-async def _emit_fallback_text_stream(
-    emissions, emit_text_emission, delay: float = FALLBACK_STREAM_DELAY_SECONDS
-):
-    first = True
-    for emission in emissions:
-        if not first:
-            await asyncio.sleep(delay)
-        first = False
-        payload = await emit_text_emission(emission)
-        yield payload
-
-
 def _trace_event(trace_context: _TraceWriteContext, payload: dict[str, Any]):
     trace_context.seq += 1
     run_id = payload.get("run_id")
@@ -296,57 +268,6 @@ class _TraceWriteContext:
     seq: int = 0
 
 
-def _status_payload(
-    *,
-    status: str,
-    thread_id: str,
-    node: str | None,
-    message: str,
-    active_team: str | None = None,
-    active_worker: str | None = None,
-) -> dict[str, Any]:
-    return {
-        "event_type": "status",
-        "status": status,
-        "thread_id": thread_id,
-        "node": node,
-        "display_name": _display_name(active_worker or active_team or node),
-        "active_team": active_team,
-        "active_worker": active_worker,
-        "message": message,
-        "timestamp": _utc_timestamp(),
-    }
-
-
-def _route_payload(node: str, route_entry: dict[str, Any]) -> dict[str, Any]:
-    target = route_entry.get("next")
-    display_target = route_entry.get("worker") or target or route_entry.get("team")
-    return {
-        "event_type": "route",
-        "node": node,
-        "layer": route_entry.get("layer"),
-        "source": route_entry.get("node"),
-        "target": target,
-        "team": route_entry.get("team"),
-        "worker": route_entry.get("worker"),
-        "status": route_entry.get("status"),
-        "reasoning": route_entry.get("reasoning"),
-        "display_name": _display_name(display_target),
-        "timestamp": _utc_timestamp(),
-    }
-
-
-def _text_payload_from_emission(emission: FinalTextEmission) -> dict[str, Any]:
-    return {
-        "event_type": "text",
-        "node": emission.node,
-        "display_name": _display_name(emission.node),
-        "content": emission.content,
-        "run_id": emission.run_id,
-        "timestamp": _utc_timestamp(),
-    }
-
-
 async def _build_checkpoint_payload(graph: Any, config: dict[str, Any], thread_id: str):
     snapshot = await graph.aget_state(config, subgraphs=True)
     configurable = snapshot.config.get("configurable", {})
@@ -366,7 +287,7 @@ async def _build_checkpoint_payload(graph: Any, config: dict[str, Any], thread_i
         "streaming_status": state_values.get("streaming_status"),
         "message_count": len(state_values.get("messages", [])),
         "route_history_length": len(state_values.get("route_history", [])),
-        "timestamp": _utc_timestamp(),
+        "timestamp": utc_timestamp(),
     }
 
 
@@ -611,7 +532,7 @@ async def _run_memory_agent_sidecar(
                     "saved_count": len(saved_ids),
                     "user_message": user_message,
                     "assistant_message_present": bool(assistant_message),
-                    "timestamp": _utc_timestamp(),
+                    "timestamp": utc_timestamp(),
                 },
                 user_id=user_id,
                 turn_id=turn_id,
@@ -632,7 +553,7 @@ def _append_summary_trace_events(
                     "event_type": "reasoning_summary",
                     "node": "assistant",
                     "content": "".join(reasoning_chunks),
-                    "timestamp": _utc_timestamp(),
+                    "timestamp": utc_timestamp(),
                 },
             )
         )
@@ -644,7 +565,7 @@ def _append_summary_trace_events(
                     "event_type": "text_summary",
                     "node": "assistant",
                     "content": "".join(final_answer_chunks),
-                    "timestamp": _utc_timestamp(),
+                    "timestamp": utc_timestamp(),
                 },
             )
         )
@@ -1047,11 +968,11 @@ async def chat_stream(
                 await _mark_turn_first_token_with_fresh_session(
                     trace_context.turn_id, first_token_at
                 )
-            return await emit(_text_payload_from_emission(emission), persist=False)
+            return await emit(text_payload_from_emission(emission), persist=False)
 
         try:
             yield await emit(
-                _status_payload(
+                status_payload(
                     status="running",
                     thread_id=request.thread_id,
                     node="head_supervisor",
@@ -1109,14 +1030,11 @@ async def chat_stream(
                         if reasoning_chunk:
                             reasoning_chunks.append(reasoning_chunk)
                             yield await emit(
-                                {
-                                    "event_type": "reasoning",
-                                    "node": event_node,
-                                    "display_name": _display_name(event_node),
-                                    "content": reasoning_chunk,
-                                    "run_id": run_id,
-                                    "timestamp": _utc_timestamp(),
-                                },
+                                reasoning_payload(
+                                    node=event_node,
+                                    content=reasoning_chunk,
+                                    run_id=run_id,
+                                ),
                                 persist=False,
                             )
 
@@ -1158,22 +1076,18 @@ async def chat_stream(
                                         parent_span_id=None,
                                         node_name=name,
                                         tool_name=name,
-                                        display_name=_display_name(name),
+                                        display_name=display_name(name),
                                         started_at=now_kst(),
                                         input_summary=_serialize_value(data.get("input")),
                                     )
                                 ),
                             )
                         yield await emit(
-                            {
-                                "event_type": "tool_start",
-                                "node": name,
-                                "tool_name": name,
-                                "display_name": _display_name(name),
-                                "input": _serialize_value(data.get("input")),
-                                "run_id": run_id,
-                                "timestamp": _utc_timestamp(),
-                            }
+                            tool_start_payload(
+                                name=name,
+                                input_summary=_serialize_value(data.get("input")),
+                                run_id=run_id,
+                            )
                         )
                         continue
 
@@ -1194,15 +1108,11 @@ async def chat_stream(
                                 ),
                             )
                         yield await emit(
-                            {
-                                "event_type": "tool_end",
-                                "node": name,
-                                "tool_name": name,
-                                "display_name": _display_name(name),
-                                "output": _serialize_value(data.get("output")),
-                                "run_id": run_id,
-                                "timestamp": _utc_timestamp(),
-                            }
+                            tool_end_payload(
+                                name=name,
+                                output_summary=_serialize_value(data.get("output")),
+                                run_id=run_id,
+                            )
                         )
                         continue
 
@@ -1223,15 +1133,11 @@ async def chat_stream(
                                 ),
                             )
                         yield await emit(
-                            {
-                                "event_type": "tool_error",
-                                "node": name,
-                                "tool_name": name,
-                                "display_name": _display_name(name),
-                                "error": _serialize_value(data.get("error")),
-                                "run_id": run_id,
-                                "timestamp": _utc_timestamp(),
-                            }
+                            tool_error_payload(
+                                name=name,
+                                error_summary=_serialize_value(data.get("error")),
+                                run_id=run_id,
+                            )
                         )
                         continue
 
@@ -1242,19 +1148,16 @@ async def chat_stream(
                             route_history = update.get("route_history") or []
                             if route_history:
                                 latest_route = route_history[-1]
-                                yield await emit(_route_payload(name, latest_route))
+                                yield await emit(route_payload(name, latest_route))
                                 route_reasoning = str(latest_route.get("reasoning") or "").strip()
                                 if route_reasoning:
                                     reasoning_chunks.append(route_reasoning)
                                     yield await emit(
-                                        {
-                                            "event_type": "reasoning",
-                                            "node": name,
-                                            "display_name": _display_name(name),
-                                            "content": route_reasoning,
-                                            "run_id": run_id,
-                                            "timestamp": _utc_timestamp(),
-                                        },
+                                        reasoning_payload(
+                                            node=name,
+                                            content=route_reasoning,
+                                            run_id=run_id,
+                                        ),
                                         persist=False,
                                     )
 
@@ -1263,7 +1166,7 @@ async def chat_stream(
                                 if status:
                                     completed_payload_emitted = status == "completed"
                                     yield await emit(
-                                        _status_payload(
+                                        status_payload(
                                             status=status,
                                             thread_id=request.thread_id,
                                             node=name,
@@ -1277,7 +1180,7 @@ async def chat_stream(
                                         )
                                     )
 
-                                async for payload in _emit_fallback_text_stream(
+                                async for payload in emit_fallback_text_stream(
                                     collector.consume_head_supervisor_end(
                                         update, goto=output.goto
                                     ),
@@ -1290,14 +1193,14 @@ async def chat_stream(
                                 if status:
                                     completed_payload_emitted = status == "completed"
                                     yield await emit(
-                                        _status_payload(
+                                        status_payload(
                                             status=status,
                                             thread_id=request.thread_id,
                                             node=name,
                                             message="Completed",
                                         )
                                     )
-                                async for payload in _emit_fallback_text_stream(
+                                async for payload in emit_fallback_text_stream(
                                     collector.consume_finalizer_end(update),
                                     emit_text_emission,
                                 ):
@@ -1316,7 +1219,7 @@ async def chat_stream(
                 )
                 final_state_values = state_values
                 if not requires_user_action:
-                    async for payload in _emit_fallback_text_stream(
+                    async for payload in emit_fallback_text_stream(
                         collector.collect_state_fallback(state_values),
                         emit_text_emission,
                     ):
@@ -1326,7 +1229,7 @@ async def chat_stream(
 
                 if requires_user_action:
                     yield await emit(
-                        _status_payload(
+                        status_payload(
                             status="interrupted",
                             thread_id=request.thread_id,
                             node="OrchAgent",
@@ -1335,7 +1238,7 @@ async def chat_stream(
                     )
                 elif not completed_payload_emitted:
                     yield await emit(
-                        _status_payload(
+                        status_payload(
                             status="completed",
                             thread_id=request.thread_id,
                             node="OrchAgent",
@@ -1383,9 +1286,9 @@ async def chat_stream(
                                 {
                                     "event_type": "text",
                                     "node": "assistant",
-                                    "display_name": _display_name("assistant"),
+                                    "display_name": display_name("assistant"),
                                     "content": f"\n\n{download_suffix}",
-                                    "timestamp": _utc_timestamp(),
+                                    "timestamp": utc_timestamp(),
                                 },
                                 persist=False,
                             )
@@ -1395,7 +1298,7 @@ async def chat_stream(
                                 "role": "assistant",
                                 "message_id": str(assistant_response_message_id),
                                 "attachments": public_attachments,
-                                "timestamp": _utc_timestamp(),
+                                "timestamp": utc_timestamp(),
                             },
                             persist=False,
                         )
@@ -1416,7 +1319,7 @@ async def chat_stream(
         except GraphInterrupt as gi:
             print(f"[Chat] Graph interrupted: {gi}", file=sys.stderr, flush=True)
             yield await emit(
-                _status_payload(
+                status_payload(
                     status="interrupted",
                     thread_id=request.thread_id,
                     node="OrchAgent",
@@ -1435,7 +1338,7 @@ async def chat_stream(
         except Exception as e:
             error_message = str(e)
             yield await emit(
-                _status_payload(
+                status_payload(
                     status="errored",
                     thread_id=request.thread_id,
                     node="OrchAgent",
@@ -1447,7 +1350,7 @@ async def chat_stream(
                     "event_type": "error",
                     "node": "OrchAgent",
                     "message": str(e),
-                    "timestamp": _utc_timestamp(),
+                    "timestamp": utc_timestamp(),
                 }
             )
         finally:
@@ -1750,11 +1653,11 @@ async def chat_resume_stream(
                 await _mark_turn_first_token_with_fresh_session(
                     trace_context.turn_id, now_kst()
                 )
-            return await emit(_text_payload_from_emission(emission), persist=False)
+            return await emit(text_payload_from_emission(emission), persist=False)
 
         try:
             yield await emit(
-                _status_payload(
+                status_payload(
                     status="running",
                     thread_id=request.thread_id,
                     node="head_supervisor",
@@ -1804,14 +1707,11 @@ async def chat_resume_stream(
                         if reasoning_chunk:
                             reasoning_chunks.append(reasoning_chunk)
                             yield await emit(
-                                {
-                                    "event_type": "reasoning",
-                                    "node": event_node,
-                                    "display_name": _display_name(event_node),
-                                    "content": reasoning_chunk,
-                                    "run_id": run_id,
-                                    "timestamp": _utc_timestamp(),
-                                },
+                                reasoning_payload(
+                                    node=event_node,
+                                    content=reasoning_chunk,
+                                    run_id=run_id,
+                                ),
                                 persist=False,
                             )
 
@@ -1853,22 +1753,18 @@ async def chat_resume_stream(
                                         parent_span_id=None,
                                         node_name=name,
                                         tool_name=name,
-                                        display_name=_display_name(name),
+                                        display_name=display_name(name),
                                         started_at=now_kst(),
                                         input_summary=_serialize_value(data.get("input")),
                                     )
                                 ),
                             )
                         yield await emit(
-                            {
-                                "event_type": "tool_start",
-                                "node": name,
-                                "tool_name": name,
-                                "display_name": _display_name(name),
-                                "input": _serialize_value(data.get("input")),
-                                "run_id": run_id,
-                                "timestamp": _utc_timestamp(),
-                            }
+                            tool_start_payload(
+                                name=name,
+                                input_summary=_serialize_value(data.get("input")),
+                                run_id=run_id,
+                            )
                         )
                         continue
 
@@ -1889,15 +1785,11 @@ async def chat_resume_stream(
                                 ),
                             )
                         yield await emit(
-                            {
-                                "event_type": "tool_end",
-                                "node": name,
-                                "tool_name": name,
-                                "display_name": _display_name(name),
-                                "output": _serialize_value(data.get("output")),
-                                "run_id": run_id,
-                                "timestamp": _utc_timestamp(),
-                            }
+                            tool_end_payload(
+                                name=name,
+                                output_summary=_serialize_value(data.get("output")),
+                                run_id=run_id,
+                            )
                         )
                         continue
 
@@ -1918,15 +1810,11 @@ async def chat_resume_stream(
                                 ),
                             )
                         yield await emit(
-                            {
-                                "event_type": "tool_error",
-                                "node": name,
-                                "tool_name": name,
-                                "display_name": _display_name(name),
-                                "error": _serialize_value(data.get("error")),
-                                "run_id": run_id,
-                                "timestamp": _utc_timestamp(),
-                            }
+                            tool_error_payload(
+                                name=name,
+                                error_summary=_serialize_value(data.get("error")),
+                                run_id=run_id,
+                            )
                         )
                         continue
 
@@ -1937,19 +1825,16 @@ async def chat_resume_stream(
                             route_history = update.get("route_history") or []
                             if route_history:
                                 latest_route = route_history[-1]
-                                yield await emit(_route_payload(name, latest_route))
+                                yield await emit(route_payload(name, latest_route))
                                 route_reasoning = str(latest_route.get("reasoning") or "").strip()
                                 if route_reasoning:
                                     reasoning_chunks.append(route_reasoning)
                                     yield await emit(
-                                        {
-                                            "event_type": "reasoning",
-                                            "node": name,
-                                            "display_name": _display_name(name),
-                                            "content": route_reasoning,
-                                            "run_id": run_id,
-                                            "timestamp": _utc_timestamp(),
-                                        },
+                                        reasoning_payload(
+                                            node=name,
+                                            content=route_reasoning,
+                                            run_id=run_id,
+                                        ),
                                         persist=False,
                                     )
 
@@ -1958,7 +1843,7 @@ async def chat_resume_stream(
                                 if status:
                                     completed_payload_emitted = status == "completed"
                                     yield await emit(
-                                        _status_payload(
+                                        status_payload(
                                             status=status,
                                             thread_id=request.thread_id,
                                             node=name,
@@ -1972,7 +1857,7 @@ async def chat_resume_stream(
                                         )
                                     )
 
-                                async for payload in _emit_fallback_text_stream(
+                                async for payload in emit_fallback_text_stream(
                                     collector.consume_head_supervisor_end(
                                         update, goto=output.goto
                                     ),
@@ -1985,14 +1870,14 @@ async def chat_resume_stream(
                                 if status:
                                     completed_payload_emitted = status == "completed"
                                     yield await emit(
-                                        _status_payload(
+                                        status_payload(
                                             status=status,
                                             thread_id=request.thread_id,
                                             node=name,
                                             message="Completed",
                                         )
                                     )
-                                async for payload in _emit_fallback_text_stream(
+                                async for payload in emit_fallback_text_stream(
                                     collector.consume_finalizer_end(update),
                                     emit_text_emission,
                                 ):
@@ -2011,7 +1896,7 @@ async def chat_resume_stream(
                 )
                 final_state_values = state_values
                 if not requires_user_action:
-                    async for payload in _emit_fallback_text_stream(
+                    async for payload in emit_fallback_text_stream(
                         collector.collect_state_fallback(state_values),
                         emit_text_emission,
                     ):
@@ -2021,7 +1906,7 @@ async def chat_resume_stream(
 
                 if requires_user_action:
                     yield await emit(
-                        _status_payload(
+                        status_payload(
                             status="interrupted",
                             thread_id=request.thread_id,
                             node="OrchAgent",
@@ -2030,7 +1915,7 @@ async def chat_resume_stream(
                     )
                 elif not completed_payload_emitted:
                     yield await emit(
-                        _status_payload(
+                        status_payload(
                             status="completed",
                             thread_id=request.thread_id,
                             node="OrchAgent",
@@ -2078,9 +1963,9 @@ async def chat_resume_stream(
                                 {
                                     "event_type": "text",
                                     "node": "assistant",
-                                    "display_name": _display_name("assistant"),
+                                    "display_name": display_name("assistant"),
                                     "content": f"\n\n{download_suffix}",
-                                    "timestamp": _utc_timestamp(),
+                                    "timestamp": utc_timestamp(),
                                 },
                                 persist=False,
                             )
@@ -2090,7 +1975,7 @@ async def chat_resume_stream(
                                 "role": "assistant",
                                 "message_id": str(assistant_response_message_id),
                                 "attachments": public_attachments,
-                                "timestamp": _utc_timestamp(),
+                                "timestamp": utc_timestamp(),
                             },
                             persist=False,
                         )
@@ -2105,7 +1990,7 @@ async def chat_resume_stream(
         except GraphInterrupt as gi:
             print(f"[Chat] Graph interrupted again: {gi}", file=sys.stderr, flush=True)
             yield await emit(
-                _status_payload(
+                status_payload(
                     status="interrupted",
                     thread_id=request.thread_id,
                     node="OrchAgent",
@@ -2125,7 +2010,7 @@ async def chat_resume_stream(
         except Exception as e:
             error_message = str(e)
             yield await emit(
-                _status_payload(
+                status_payload(
                     status="errored",
                     thread_id=request.thread_id,
                     node="OrchAgent",
@@ -2137,7 +2022,7 @@ async def chat_resume_stream(
                     "event_type": "error",
                     "node": "OrchAgent",
                     "message": str(e),
-                    "timestamp": _utc_timestamp(),
+                    "timestamp": utc_timestamp(),
                 }
             )
         finally:
