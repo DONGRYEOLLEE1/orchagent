@@ -1,4 +1,9 @@
+from typing import Any
+from uuid import UUID
+
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from core.database import AsyncSessionLocal
 from models.trace import TraceEvent
 
 
@@ -116,3 +121,53 @@ class TraceService:
             .order_by(TraceEvent.created_at.asc())
         )
         return result.scalars().all()
+
+    @staticmethod
+    async def persist_events_with_fresh_session(trace_events: list[Any]) -> None:
+        if not trace_events:
+            return
+        async with AsyncSessionLocal() as db:
+            await TraceService.create_events(db, trace_events)
+
+    @staticmethod
+    async def persist_memory_load_trace_with_fresh_session(
+        *,
+        user_id: str,
+        thread_id: str,
+        turn_id: UUID,
+        personalization_meta: dict[str, Any],
+    ) -> None:
+        async with AsyncSessionLocal() as db:
+            await TraceService.create_event(
+                db,
+                thread_id=thread_id,
+                event_type="memory_load",
+                node_name="load_memories",
+                payload={
+                    "event_type": "memory_load",
+                    "memory_ids": personalization_meta.get("memory_ids", []),
+                    "hit_count": personalization_meta.get("hit_count", 0),
+                    "active_memory_count": personalization_meta.get(
+                        "active_memory_count", 0
+                    ),
+                    "source": personalization_meta.get("source"),
+                    "summary_used": personalization_meta.get("summary_used", False),
+                    "recent_used": personalization_meta.get("recent_used", False),
+                    "cache_hit": personalization_meta.get("cache_hit", False),
+                    "hit_miss": personalization_meta.get("hit_miss", "miss"),
+                    "context_chars": personalization_meta.get("context_chars", 0),
+                    "retrieval_ms": personalization_meta.get("retrieval_ms", 0),
+                    "instruction_ids": personalization_meta.get("instruction_ids", []),
+                    "instruction_count": personalization_meta.get("instruction_count", 0),
+                    "instructions_enabled": personalization_meta.get(
+                        "instructions_enabled", False
+                    ),
+                    "profile_count": personalization_meta.get("profile_count", 0),
+                    "response_preference_count": personalization_meta.get(
+                        "response_preference_count", 0
+                    ),
+                    "thread_id": thread_id,
+                },
+                user_id=user_id,
+                turn_id=turn_id,
+            )

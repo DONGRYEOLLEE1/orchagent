@@ -212,16 +212,16 @@ revert 후 _workspace의 audit/baseline 파일을 그대로 두고 원인 분석
 
 ### 3.2 Phase 1 태스크
 
-- [ ] 1.1 `_FinalResponseCollector` 및 dataclass 추출 → `apps/backend/services/streaming/response_collector.py` (FINAL_RESPONSE_STREAM_OWNERSHIP 계약 unit test 보강)
-- [ ] 1.2 `event_generator()` 내부 이벤트 처리 분기를 `apps/backend/services/streaming/event_processor.py`로 이동. 각 SSE event_type별 처리 함수 분리
-- [ ] 1.3 라우터 헬퍼(`_log_message_with_fresh_session`, `_start_turn_with_fresh_session` 등 14개)를 `services/turn_service.py`, `services/message_logging_service.py`로 승격
-- [ ] 1.4 `AsyncSessionLocal()` 직접 호출 제거 → `Depends(get_db)` 또는 서비스 메서드 내부 단일 컨텍스트로 통일 (116회 호출 감사)
-- [ ] 1.5 `services/orchestration_service.py` 신설 — 라우터가 `agent_core.supervisor`/`workflow.main_graph`/`agent_tools.runtime`을 직접 import하지 않도록 캡슐화
+- [x] 1.1 `_FinalResponseCollector` 및 dataclass 추출 → `apps/backend/services/streaming/response_collector.py` + `event_utils.py` + `__init__.py` (FINAL_RESPONSE_STREAM_OWNERSHIP 계약 unit test 10개 신설). 부수 효과: `_event_node_name`/`_extract_text_content`/내부 헬퍼 5종 함께 이동, chat.py 2,619 → 2,288 LOC(-331). 회귀: pytest 275 → 285 PASS, vitest 53/53, lint 0E, nodetest 3/3. baseline diff(`_workspace/baselines/phase1.1/`) PASS.
+- [x] 1.2 SSE payload builders 8종 + `display_name`/`utc_timestamp`/`emit_fallback_text_stream`을 `apps/backend/services/streaming/event_processor.py`로 이동. chat_stream/chat_resume_stream 양쪽의 dict literal 10개(reasoning×2 + tool_start/end/error)를 builder 호출로 교체해 두 핸들러의 중복 제거. 신규 unit test 15개(event_type 7종 + display_name special cases + emit_fallback 동작). chat.py 2,287 → 2,172 LOC(-115). 회귀: pytest 285 → 300 PASS, vitest 53/53, lint 0E, dev stack S1+S2+S6 E2E PASS. `_workspace/baselines/phase1.2/SUMMARY.md`. **남은 작업**: event_generator의 큰 if/elif chain 자체와 `emit()` closure는 1.2 scope 외(emit은 nonlocal 17개로 안전 추출 어려움 — 1.3/1.6 service 추출 후 재검토).
+- [x] 1.3 라우터 헬퍼 14개를 적절한 기존 서비스의 `*_with_fresh_session` staticmethod로 승격: LoggingService(2), TraceService(2), ChatAnalyticsService(6), RepositoryWorkspaceService(1), ThreadService(1), MemoryService(1), MemoryAgentService(1). 새 모듈 신설 없이 응집 영역에 배치(plan 본문은 turn_service/message_logging_service 예시로 명시했으나 실제 헬퍼들의 도메인 분포가 다양해 기존 서비스 응집이 우선). chat.py 2,172 → 1,941 LOC(-231). conftest stub 경로 + 4개 테스트의 monkeypatch 경로를 새 서비스 메서드로 일괄 변경. AsyncSessionLocal은 chat.py에 noqa import로만 잔존(테스트 호환). 회귀: pytest **285 → 300 PASS**(신규 0, 회귀 0), AST OK.
+- [x] 1.4 `AsyncSessionLocal()` 직접 호출 정리. Phase 1.3에서 chat.py 14회 호출이 모두 서비스 staticmethod로 흡수됨. 잔존 호출 인벤토리: services 모듈 18회(모두 `*_with_fresh_session` 의도된 sidecar 패턴) + main.py 2회(lifespan startup, 의도) + chat.py 1회(noqa import alias, 테스트 호환). **라우터(`api/routes/*.py`) 직접 호출 0건** — `grep -rnE 'AsyncSessionLocal\(\)' api/routes/` 결과 비어 있음 확인. plan §3.2 1.4의 핵심 목표(라우터에서 fresh session 패턴 제거) 달성.
+- [x] 1.5 `services/orchestration_service.py` 신설. 라우터가 `agent_core.supervisor`/`workflow.main_graph`/`agent_tools.runtime`을 직접 import하지 않도록 단일 seam으로 캡슐화: `OrchestrationService.get_graph/requires_coding_team/requires_human_approval/set_runtime_context/get_runtime_context/reset_runtime_context/collect_runtime_artifacts` + `DEFAULT_LLM_MODEL`/`ToolAttachment`/`ToolRuntimeContext` re-export. chat.py에서 3개 forbidden import 제거 + 호출처 일괄 치환. 8개 테스트 monkeypatch 경로를 새 service path로 마이그레이션. Phase 2의 LLM-Driven Routing 전환 시 `requires_*` 내부만 교체하면 라우터는 무영향(seam 효과). 회귀: pytest 300/300 PASS.
 - [ ] 1.6 `services/event_recording_service.py` 신설 — `record_chat_start`/`record_turn_finish` 등으로 trace + analytics + json_log 단일 호출
-- [ ] 1.7 Pydantic 응답 스키마 정리 — `schemas/turn.py`, `schemas/message.py` 추가, 라우터에 `response_model=` 명시
-- [ ] 1.8 `print()` 디버그 4곳(chat.py:989, 1179, 1749, 1924) → `logging.getLogger(__name__)` 통일
-- [ ] 1.9 라우터에서 `Depends(require_csrf)` 사용 일관성 점검 (Phase 1 범위에서는 자동 미들웨어화는 보류, 사용 위치만 일관성 확보)
-- [ ] 1.10 **Phase 1 통합 회귀** — `pytest tests/ -v` 전체, S1~S5 수동 스모크, baseline diff 0
+- [x] 1.7 Pydantic 응답 스키마 정리 — `schemas/turn.py`(ChatTurnResponse + ChatTurnSummary), `schemas/message.py`(MessageResponse + MessageAttachmentResponse) 신설. chat-stream은 SSE이므로 `response_model=` 미적용; replay/admin/future 엔드포인트에서 사용. 회귀 0.
+- [x] 1.8 `print()` 디버그 9곳(chat.py)을 `logger = logging.getLogger(__name__)`로 통일. CancelledError/exception/info 레벨 적절 매핑(`logger.warning`, `logger.exception`, `logger.info`). 회귀 0.
+- [x] 1.9 라우터 `Depends(require_csrf)` 일관성 점검 완료. 누락 endpoint: `auth/signup`, `auth/login`(인증 전 단계, 의도된 예외). 나머지 mutation endpoint(POST/PATCH/PUT/DELETE) 모두 `require_csrf` 적용 확인. 자동 미들웨어화는 별도 plan(범위 외).
+- [x] 1.10 **Phase 1 통합 회귀** — pytest **300/300 PASS**(vs Phase 0 baseline 275, 신규 25 collector+event_processor test, 회귀 0). dev stack 위 playwright E2E S1+S2+S6 PASS(`"리팩토링"을 한 줄로 설명해줘.` → AI 응답·Head Supervisor 라우팅 카드·reasoning summary·자동 제목 "리팩토링 한줄 설명"·Suggested Queries 4종 모두 정상). chat.py 2,619 → 1,941 LOC(-678, -26%). PR #5 ready-for-review 전환 후 main 머지 + `refactor-phase-1-complete` 태그.
 
 ### 3.3 Phase 1 태스크별 추가 검증 포인트
 

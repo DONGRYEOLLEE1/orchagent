@@ -57,8 +57,21 @@ def stub_chat_async_session_local(monkeypatch):
         def __call__(self):
             return DummySession()
 
-    monkeypatch.setattr("api.routes.chat.AsyncSessionLocal", DummySessionFactory())
-    monkeypatch.setattr("core.database.AsyncSessionLocal", DummySessionFactory())
+    # AsyncSessionLocal moved out of api.routes.chat in Phase 1.3; patch every
+    # service module that now owns a fresh-session writer plus the original
+    # core.database entry point.
+    factory = DummySessionFactory()
+    monkeypatch.setattr("core.database.AsyncSessionLocal", factory)
+    for service_module in (
+        "services.logging_service",
+        "services.trace_service",
+        "services.chat_analytics_service",
+        "services.repository_workspace_service",
+        "services.thread_service",
+        "services.memory_service",
+        "services.memory_agent_service",
+    ):
+        monkeypatch.setattr(f"{service_module}.AsyncSessionLocal", factory)
 
 
 @pytest.fixture(autouse=True)
@@ -122,5 +135,9 @@ def stub_thread_ownership_guard(monkeypatch, request):
     async def allow_thread_access(*args, **kwargs):
         return None
 
-    monkeypatch.setattr("api.routes.chat._ensure_thread_owned_by_user", allow_thread_access)
+    # Phase 1.3 lifted the helper from chat.py into ThreadService.
+    monkeypatch.setattr(
+        "services.thread_service.ThreadService.ensure_owned_by_user_with_fresh_session",
+        staticmethod(allow_thread_access),
+    )
     yield

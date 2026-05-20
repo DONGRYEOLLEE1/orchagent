@@ -209,7 +209,7 @@ def test_chat_stream_emits_normalized_events(monkeypatch):
             return Snapshot()
 
     monkeypatch.setattr(
-        "api.routes.chat.get_orchagent_graph",
+        "services.orchestration_service.OrchestrationService.get_graph",
         lambda: type("B", (), {"compile": lambda self, checkpointer: MockGraph()})(),
     )
 
@@ -334,7 +334,7 @@ def test_chat_stream_direct_supervisor_response_uses_same_text_contract(monkeypa
             return Snapshot()
 
     monkeypatch.setattr(
-        "api.routes.chat.get_orchagent_graph",
+        "services.orchestration_service.OrchestrationService.get_graph",
         lambda: type("B", (), {"compile": lambda self, checkpointer: MockGraph()})(),
     )
 
@@ -454,7 +454,7 @@ def test_chat_stream_suppresses_internal_structured_output_tokens(monkeypatch):
             return Snapshot()
 
     monkeypatch.setattr(
-        "api.routes.chat.get_orchagent_graph",
+        "services.orchestration_service.OrchestrationService.get_graph",
         lambda: type("B", (), {"compile": lambda self, checkpointer: MockGraph()})(),
     )
 
@@ -557,7 +557,7 @@ def test_chat_stream_suppresses_worker_text_from_final_answer_channel(monkeypatc
             return Snapshot()
 
     monkeypatch.setattr(
-        "api.routes.chat.get_orchagent_graph",
+        "services.orchestration_service.OrchestrationService.get_graph",
         lambda: type("B", (), {"compile": lambda self, checkpointer: MockGraph()})(),
     )
 
@@ -727,7 +727,7 @@ def test_chat_stream_discards_speculative_supervisor_text_before_finalizer(monke
             return Snapshot()
 
     monkeypatch.setattr(
-        "api.routes.chat.get_orchagent_graph",
+        "services.orchestration_service.OrchestrationService.get_graph",
         lambda: type("B", (), {"compile": lambda self, checkpointer: MockGraph()})(),
     )
 
@@ -848,7 +848,7 @@ def test_chat_stream_resume_same_thread_id_restores_checkpoint_state(monkeypatch
     compiled_graph = builder.compile(checkpointer=checkpointer)
 
     monkeypatch.setattr(
-        "api.routes.chat.get_orchagent_graph",
+        "services.orchestration_service.OrchestrationService.get_graph",
         lambda: type("B", (), {"compile": lambda self, checkpointer: compiled_graph})(),
     )
 
@@ -997,7 +997,7 @@ def test_chat_resume_discards_speculative_supervisor_text_before_finalizer(monke
             return Snapshot()
 
     monkeypatch.setattr(
-        "api.routes.chat.get_orchagent_graph",
+        "services.orchestration_service.OrchestrationService.get_graph",
         lambda: type("B", (), {"compile": lambda self, checkpointer: ResumeGraph()})(),
     )
 
@@ -1125,7 +1125,7 @@ def test_chat_stream_interrupt_and_resume(monkeypatch):
             return Snapshot()
 
     monkeypatch.setattr(
-        "api.routes.chat.get_orchagent_graph",
+        "services.orchestration_service.OrchestrationService.get_graph",
         lambda: type(
             "B", (), {"compile": lambda self, checkpointer: InterruptGraph()}
         )(),
@@ -1176,7 +1176,7 @@ def test_chat_stream_interrupt_and_resume(monkeypatch):
             return Snapshot()
 
     monkeypatch.setattr(
-        "api.routes.chat.get_orchagent_graph",
+        "services.orchestration_service.OrchestrationService.get_graph",
         lambda: type("B", (), {"compile": lambda self, checkpointer: ResumeGraph()})(),
     )
 
@@ -1233,7 +1233,7 @@ def test_chat_stream_emits_interrupted_status_for_paused_checkpoint(monkeypatch)
             return Snapshot()
 
     monkeypatch.setattr(
-        "api.routes.chat.get_orchagent_graph",
+        "services.orchestration_service.OrchestrationService.get_graph",
         lambda: type("B", (), {"compile": lambda self, checkpointer: MockGraph()})(),
     )
 
