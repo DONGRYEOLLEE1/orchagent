@@ -40,6 +40,10 @@ class RoutingSafeguards:
     # many times before falling back to FINISH.
     structured_output_retry_count: int = 1
 
+    # Finalizer keeps only the most-recent N messages when synthesising the
+    # final answer. Prevents unbounded prompt growth on long conversations.
+    finalizer_recent_messages_limit: int = 200
+
 
 # Single import point used throughout agent_core / workflow.
 SAFEGUARDS = RoutingSafeguards()

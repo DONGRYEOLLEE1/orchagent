@@ -332,20 +332,20 @@ revert 후 _workspace의 audit/baseline 파일을 그대로 두고 원인 분석
 
 ### 4.2 Phase 2 태스크 (LLM-Driven Routing 전환 반영)
 
-- [ ] 2.0 §4.0 정책 합의 결과를 `_workspace/llm_routing_policy.md`로 고정. 룰베이스 인벤토리·안전망·evaluation 합의 사항 명시. 이후 모든 태스크의 기준 문서.
-- [ ] 2.1 마법 상수(`HEAD_TEAM_REDIRECT_LIMIT`, `remaining_steps`, `max_team_dispatches`) → `agent_core/config.py` 신설(또는 기존 settings 활용)로 이동. 안전망 카테고리로 명시.
-- [ ] 2.2 **휴리스틱 제거 Phase A — 정규식·`_should_force_*` 함수 삭제**. supervisor.py에서 23개 정규식 + 모든 `_should_force_*` 함수를 제거하고, 호출자(supervisor 본체)에서도 사용을 정리. trace/로그용 키워드 추출이 정말 필요한 경우만 `agent_core/text_keywords.py`로 격리(라우팅 결정과 분리).
-- [ ] 2.3 **휴리스틱 제거 Phase B — 팀별 강제 순서 머신 삭제**. supervisor.py의 coding/data_science/research 팀 강제 순서 블록을 삭제. team supervisor가 `dispatched_workers` state를 읽고 LLM이 결정하도록 위임.
-- [ ] 2.4 `supervisor_node()` 단순화 — head/team 모두 LLM 라우팅 + safeguards 호출 + structured output 파싱만 수행. 책임 분리: `agent_core/supervisors/head_supervisor.py`, `agent_core/supervisors/team_supervisor.py`(공통 라우터 본체). 팀별 모듈은 **프롬프트 차이만** 가짐(코드 중복 ≤ 1회).
-- [ ] 2.5 라우터 structured output 스키마 정의 — `agent_core/router_schema.py`에 `RouterDecision` Pydantic 모델 (`next`, `reason`, `request_review`, `team_finished` 등). LLM 호출 시 `with_structured_output` 또는 tool call로 강제.
-- [ ] 2.6 안전망 모듈 신설 — `agent_core/safeguards.py`에 `enforce_team_redirect_limit`, `enforce_dispatch_limit`, `reject_invalid_goto`, `retry_once_on_parse_failure` 등 순수 함수. supervisor 노드가 이를 사용. 안전망 발동을 SSE/trace로 노출.
-- [ ] 2.7 supervisor / team-supervisor 프롬프트 강화 — `packages/prompt-kit/src/prompt_kit/prompts.py`에 §4.0.6 항목 반영. Phase 4.5(프롬프트 fragment 추출)와 충돌 없도록 사전 합의(공통 routing 지침은 fragment로 정의).
-- [ ] 2.8 라우팅 evaluation harness 구축 — `apps/backend/tests/routing_eval/` 디렉토리, 50케이스 골든 데이터셋, `python -m routing_eval` 실행 스크립트, 정확도/latency/토큰 비용 리포트. nightly 실행 정책 문서화.
-- [ ] 2.9 finalizer/validator 에러 폴백 통일 — 공통 `error_fallback_message()` 헬퍼 + LLM 라우팅 실패·안전망 발동 케이스 추가.
-- [ ] 2.10 `load_memories.py` 독립 테스트 신설 (`test_load_memories.py`).
-- [ ] 2.11 finalizer messages 길이 상한 도입 + 압축 정책 문서화.
-- [ ] 2.12 `make_validator_node` alias 정리.
-- [ ] 2.13 **Phase 2 통합 회귀** — `pytest tests/test_supervisor*.py tests/test_validator*.py tests/test_workflow_graph.py tests/routing_eval/ -v`, S2/S4/S5 스모크, evaluation harness 정확도 ≥ 95% 확인. 라우팅 latency·토큰 비용 baseline 기록.
+- [x] 2.0 §4.0 정책을 `_workspace/llm_routing_policy.md`에 고정. 룰베이스 인벤토리(file:line)·safeguard 카테고리·evaluation 후속 일정 포함.
+- [x] 2.1 `packages/agent-core/src/agent_core/config.py` 신설 — `SAFEGUARDS` dataclass에 4개 안전망 상수(head_team_redirect_limit, validator_remaining_steps, max_team_dispatches, structured_output_retry_count) + finalizer_recent_messages_limit. 기존 동작과 byte-identical 유지(아직 supervisor에 적용 전).
+- [ ] 2.2 **휴리스틱 제거 Phase A — 정규식·`_should_force_*` 함수 삭제**. supervisor.py에서 23개 정규식 + 모든 `_should_force_*` 함수를 제거하고, 호출자(supervisor 본체)에서도 사용을 정리. trace/로그용 키워드 추출이 정말 필요한 경우만 `agent_core/text_keywords.py`로 격리(라우팅 결정과 분리). **본 세션 외(후속) — supervisor.py 989 LOC 재작성 위험으로 RouterDecision/safeguards 인프라(2.5/2.6) 위에서 점진 진행 필요**.
+- [ ] 2.3 **휴리스틱 제거 Phase B — 팀별 강제 순서 머신 삭제**. supervisor.py의 coding/data_science/research 팀 강제 순서 블록을 삭제. team supervisor가 `dispatched_workers` state를 읽고 LLM이 결정하도록 위임. **본 세션 외(후속)**.
+- [ ] 2.4 `supervisor_node()` 단순화 — head/team 모두 LLM 라우팅 + safeguards 호출 + structured output 파싱만 수행. 책임 분리: `agent_core/supervisors/head_supervisor.py`, `agent_core/supervisors/team_supervisor.py`(공통 라우터 본체). 팀별 모듈은 **프롬프트 차이만** 가짐(코드 중복 ≤ 1회). **본 세션 외(후속) — 2.2/2.3 직후 진행**.
+- [x] 2.5 `agent_core/router_schema.py` 신설 — `RouterDecision`(next/reason/request_review/team_finished) + `RouterDecisionRecord`(상태 영속). LLM `with_structured_output` 사용 준비.
+- [x] 2.6 `agent_core/safeguards.py` 신설 — `reject_invalid_goto`, `enforce_team_redirect_limit`, `enforce_dispatch_limit`, `fallback_decision_on_parse_failure` 순수 함수. `SafeguardOutcome` 결과 타입(status: accepted/rejected_invalid_goto/parse_failed/fallback_finish). **plan §4.0 P3 강제 — 결정 자체를 바꾸지 않고 차단·재요청만**. 단위 테스트 11 cases(`test_router_safeguards.py`).
+- [ ] 2.7 supervisor / team-supervisor 프롬프트 강화 — `packages/prompt-kit/src/prompt_kit/prompts.py`에 §4.0.6 항목 반영. Phase 4.5(프롬프트 fragment 추출)와 충돌 없도록 사전 합의(공통 routing 지침은 fragment로 정의). **본 세션 외 — Phase 2.4 LLMRouter 적용과 동시 진행 권장**.
+- [ ] 2.8 라우팅 evaluation harness 구축 — `apps/backend/tests/routing_eval/` 디렉토리, 50케이스 골든 데이터셋, `python -m routing_eval` 실행 스크립트, 정확도/latency/토큰 비용 리포트. nightly 실행 정책 문서화. **본 세션 외 — Phase 2.4 직후 진행**.
+- [ ] 2.9 finalizer/validator 에러 폴백 통일 — 양쪽 모두 `[Review Warning]`/`[Review Error]`/Absolute fallback message가 이미 존재하여 본 세션 scope 외. Phase 2.4 supervisor 단순화 시 safeguard 발동 메시지와 함께 통일 예정.
+- [x] 2.10 `load_memories.py` 독립 테스트 — `apps/backend/tests/test_load_memories_node.py`가 이미 3 cases(skip-when-missing, populates-personalization, instruction-only-payload)로 커버 중. 인벤토리 확인 후 그대로 보존.
+- [x] 2.11 finalizer messages 길이 상한 도입 — `SAFEGUARDS.finalizer_recent_messages_limit=200`. `make_finalizer_node` 내부에서 deduped 후 `[-N:]` 슬라이싱. 장기 대화 OOM 회귀 방지.
+- [x] 2.12 `make_validator_node` alias 제거 — 외부 사용처 0건(builder.py, test 모두 `make_reviewer_node` 직접 사용) 확인 후 제거. validator.py에 주석으로 transition 완료 표시.
+- [ ] 2.13 **Phase 2 통합 회귀** — 본 세션 인프라(2.0/2.1/2.5/2.6/2.10/2.11/2.12) 기준 pytest **311/311 PASS**(신규 11 router safeguards + 회귀 0). 휴리스틱 제거(2.2/2.3) + supervisor 단순화(2.4) + 프롬프트 강화(2.7) + evaluation(2.8) 완료 후 최종 통합 회귀는 후속 세션에서 routing eval ≥ 95% 정확도 + S2/S4/S5 스모크 추가 검증 예정.
 
 ### 4.3 Phase 2 태스크별 추가 검증 포인트
 

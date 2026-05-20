@@ -90,5 +90,5 @@ def make_reviewer_node(
     return reviewer_node
 
 
-# Maintain alias for backward compatibility during transition
-make_validator_node = make_reviewer_node
+# Phase 2.12 — backward-compat ``make_validator_node`` alias removed.
+# All callers (builder.py, tests) use ``make_reviewer_node`` directly.

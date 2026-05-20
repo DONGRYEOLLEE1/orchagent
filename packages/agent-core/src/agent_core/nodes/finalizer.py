@@ -117,9 +117,14 @@ def make_finalizer_node(llm: BaseChatModel) -> Callable:
             )
 
         system_prompt_plus = f"{system_prompt}{build_personalization_prompt_block(shared_context)}"
-        messages = [{"role": "system", "content": system_prompt_plus}] + _dedupe_consecutive_ai_messages(
-            state.get("messages", [])
-        )
+        from agent_core.config import SAFEGUARDS
+
+        deduped = _dedupe_consecutive_ai_messages(state.get("messages", []))
+        # Phase 2.11 — cap finalizer input to the most-recent N messages so
+        # extremely long conversations don't blow up the prompt window.
+        if len(deduped) > SAFEGUARDS.finalizer_recent_messages_limit:
+            deduped = deduped[-SAFEGUARDS.finalizer_recent_messages_limit :]
+        messages = [{"role": "system", "content": system_prompt_plus}] + deduped
 
         try:
             from typing import cast
