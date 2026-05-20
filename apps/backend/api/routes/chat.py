@@ -18,12 +18,13 @@ from langchain_core.messages import HumanMessage
 from langgraph.types import Command
 from langgraph.errors import GraphInterrupt
 
-from agent_core.supervisor import (
-    requires_coding_team_for_text,
-    requires_human_approval_for_text,
-)
 from schemas.chat import ChatRequest, ResumeRequest
-from workflow.main_graph import DEFAULT_LLM_MODEL, get_orchagent_graph
+from services.orchestration_service import (
+    DEFAULT_LLM_MODEL,
+    OrchestrationService,
+    ToolAttachment,
+    ToolRuntimeContext,
+)
 from core.database import AsyncSessionLocal, get_db  # noqa: F401 — kept for tests that monkeypatch this symbol (Phase 1.3 lift)
 from core.config import settings
 from services.security_service import get_current_user, require_csrf
@@ -46,14 +47,6 @@ from services.repository_binding_service import RepositoryBindingService
 from services.repository_workspace_service import RepositoryWorkspaceService
 from services.storage_service import StorageService
 from services.upload_service import UploadService
-from agent_tools.runtime import (
-    ToolAttachment,
-    ToolRuntimeContext,
-    collect_runtime_artifacts,
-    get_tool_runtime_context,
-    reset_tool_runtime_context,
-    set_tool_runtime_context,
-)
 from services.streaming import (
     BufferedFinalTextRun,
     FALLBACK_STREAM_DELAY_SECONDS,
@@ -554,7 +547,7 @@ async def chat_stream(
     )
     repo_binding_payload = _build_repo_binding_payload(repo_binding)
     repo_binding_id = str(getattr(repo_binding, "id", "")) if repo_binding is not None else None
-    coding_requested = bool(repo_binding) and requires_coding_team_for_text(
+    coding_requested = bool(repo_binding) and OrchestrationService.requires_coding_team(
         request.message
     )
 
@@ -641,7 +634,7 @@ async def chat_stream(
     )
 
     async def event_generator():
-        approval_requested = requires_human_approval_for_text(request.message)
+        approval_requested = OrchestrationService.requires_human_approval(request.message)
 
         # Construct multimodal message if images are present
         if request.images or uploaded_image_payloads:
@@ -772,7 +765,7 @@ async def chat_stream(
                             thread_id=request.thread_id,
                             turn_id=str(trace_context.turn_id),
                         )
-                    runtime_token = set_tool_runtime_context(
+                    runtime_token = OrchestrationService.set_runtime_context(
                         ToolRuntimeContext(
                             thread_id=request.thread_id,
                             user_id=user_id,
@@ -782,7 +775,7 @@ async def chat_stream(
                             log_dir=log_dir,
                         )
                     )
-                builder = get_orchagent_graph()
+                builder = OrchestrationService.get_graph()
                 graph = builder.compile(checkpointer=checkpointer)
 
                 async for event in graph.astream_events(inputs, config, version="v2"):
@@ -1016,7 +1009,7 @@ async def chat_stream(
 
                 final_answer = collector.final_answer()
                 if runtime_token is not None:
-                    collected_artifacts = collect_runtime_artifacts()
+                    collected_artifacts = OrchestrationService.collect_runtime_artifacts()
                 if final_answer and not requires_user_action:
                     assistant_attachments = await _persist_generated_artifact_uploads(
                         db,
@@ -1129,13 +1122,13 @@ async def chat_stream(
                     turn_id=trace_context.turn_id,
                 ):
                     try:
-                        workspace_root = get_tool_runtime_context().workspace_dir
+                        workspace_root = OrchestrationService.get_runtime_context().workspace_dir
                         workspace_summary = await RepositoryWorkspaceService.summarize_workspace(
                             workspace_root
                         )
                     except Exception:
                         workspace_summary = None
-                reset_tool_runtime_context(runtime_token)
+                OrchestrationService.reset_runtime_context(runtime_token)
             _append_summary_trace_events(
                 trace_context,
                 trace_events,
@@ -1300,7 +1293,7 @@ async def chat_resume_stream(
         )
         if not has_tasks:
             try:
-                builder = get_orchagent_graph()
+                builder = OrchestrationService.get_graph()
                 graph = builder.compile(checkpointer=checkpointer)
                 snapshot = await graph.aget_state(check_config, subgraphs=True)
             except TypeError:
@@ -1448,7 +1441,7 @@ async def chat_resume_stream(
                         binding=repo_binding,
                         turn_id=trace_context.turn_id,
                     )
-                    runtime_token = set_tool_runtime_context(
+                    runtime_token = OrchestrationService.set_runtime_context(
                         ToolRuntimeContext(
                             thread_id=request.thread_id,
                             user_id=user_id,
@@ -1459,7 +1452,7 @@ async def chat_resume_stream(
                         )
                     )
                     workspace_job_id = workspace_bundle.job.id
-                builder = get_orchagent_graph()
+                builder = OrchestrationService.get_graph()
                 graph = builder.compile(checkpointer=checkpointer)
 
                 async for event in graph.astream_events(command, config, version="v2"):
@@ -1795,20 +1788,20 @@ async def chat_resume_stream(
             )
         finally:
             if runtime_token is not None:
-                collected_artifacts = collect_runtime_artifacts()
+                collected_artifacts = OrchestrationService.collect_runtime_artifacts()
                 if _needs_coding_workspace(
                     repo_binding,
                     coding_requested=True,
                     turn_id=trace_context.turn_id,
                 ):
                     try:
-                        workspace_root = get_tool_runtime_context().workspace_dir
+                        workspace_root = OrchestrationService.get_runtime_context().workspace_dir
                         workspace_summary = await RepositoryWorkspaceService.summarize_workspace(
                             workspace_root
                         )
                     except Exception:
                         workspace_summary = None
-                reset_tool_runtime_context(runtime_token)
+                OrchestrationService.reset_runtime_context(runtime_token)
             _append_summary_trace_events(
                 trace_context,
                 trace_events,

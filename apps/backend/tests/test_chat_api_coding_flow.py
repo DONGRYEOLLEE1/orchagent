@@ -125,7 +125,7 @@ def test_chat_stream_creates_repo_workspace_for_coding_request(monkeypatch, tmp_
             return Snapshot()
 
     monkeypatch.setattr(
-        "api.routes.chat.get_orchagent_graph",
+        "services.orchestration_service.OrchestrationService.get_graph",
         lambda: type("Builder", (), {"compile": lambda self, checkpointer: MockGraph()})(),
     )
 

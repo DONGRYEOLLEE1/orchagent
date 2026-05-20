@@ -118,7 +118,7 @@ def test_chat_stream_persists_usage_from_model_end(monkeypatch):
             return Snapshot()
 
     monkeypatch.setattr(
-        "api.routes.chat.get_orchagent_graph",
+        "services.orchestration_service.OrchestrationService.get_graph",
         lambda: type("B", (), {"compile": lambda self, checkpointer: MockGraph()})(),
     )
 

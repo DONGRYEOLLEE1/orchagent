@@ -86,7 +86,7 @@ def test_chat_stream_records_completed_turn_lifecycle(monkeypatch):
             return Snapshot()
 
     monkeypatch.setattr(
-        "api.routes.chat.get_orchagent_graph",
+        "services.orchestration_service.OrchestrationService.get_graph",
         lambda: type("B", (), {"compile": lambda self, checkpointer: MockGraph()})(),
     )
     async def mock_persist_traces(*args, **kwargs):
@@ -162,7 +162,7 @@ def test_chat_stream_records_interrupted_turn_lifecycle(monkeypatch):
             return Snapshot()
 
     monkeypatch.setattr(
-        "api.routes.chat.get_orchagent_graph",
+        "services.orchestration_service.OrchestrationService.get_graph",
         lambda: type("B", (), {"compile": lambda self, checkpointer: MockGraph()})(),
     )
     async def mock_persist_traces(*args, **kwargs):
@@ -209,7 +209,7 @@ def test_chat_stream_records_errored_turn_lifecycle(monkeypatch):
             raise AssertionError("aget_state should not be called")
 
     monkeypatch.setattr(
-        "api.routes.chat.get_orchagent_graph",
+        "services.orchestration_service.OrchestrationService.get_graph",
         lambda: type("B", (), {"compile": lambda self, checkpointer: MockGraph()})(),
     )
     async def mock_persist_traces(*args, **kwargs):
@@ -283,7 +283,7 @@ def test_chat_resume_records_resume_turn_kind(monkeypatch):
             return Snapshot()
 
     monkeypatch.setattr(
-        "api.routes.chat.get_orchagent_graph",
+        "services.orchestration_service.OrchestrationService.get_graph",
         lambda: type("B", (), {"compile": lambda self, checkpointer: MockGraph()})(),
     )
 

@@ -241,7 +241,7 @@ async def test_rope_algorithm_query_simulation(monkeypatch):
             return snapshot
 
     monkeypatch.setattr(
-        "api.routes.chat.get_orchagent_graph",
+        "services.orchestration_service.OrchestrationService.get_graph",
         lambda: type(
             "B", (), {"compile": lambda self, checkpointer: MockRopeGraph()}
         )(),

@@ -153,7 +153,7 @@ def test_resume_allows_paused_checkpoint_without_pending_tasks(monkeypatch):
             return Snapshot()
 
     monkeypatch.setattr(
-        "api.routes.chat.get_orchagent_graph",
+        "services.orchestration_service.OrchestrationService.get_graph",
         lambda: type("B", (), {"compile": lambda self, checkpointer: ResumeGraph()})(),
     )
 

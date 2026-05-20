@@ -54,7 +54,7 @@ def test_chat_stream_client_disconnect_saves_traces(monkeypatch):
             )()
 
     monkeypatch.setattr(
-        "api.routes.chat.get_orchagent_graph",
+        "services.orchestration_service.OrchestrationService.get_graph",
         lambda: type(
             "B", (), {"compile": lambda self, checkpointer: DisconnectGraph()}
         )(),
@@ -141,7 +141,7 @@ def test_chat_stream_client_disconnect_closes_fresh_sessions(monkeypatch):
             )()
 
     monkeypatch.setattr(
-        "api.routes.chat.get_orchagent_graph",
+        "services.orchestration_service.OrchestrationService.get_graph",
         lambda: type(
             "B", (), {"compile": lambda self, checkpointer: DisconnectGraph()}
         )(),

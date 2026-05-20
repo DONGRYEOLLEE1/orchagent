@@ -22,7 +22,7 @@ def test_chat_stream_error_fallback(monkeypatch):
             yield  # To qualify as an async generator
 
     monkeypatch.setattr(
-        "api.routes.chat.get_orchagent_graph",
+        "services.orchestration_service.OrchestrationService.get_graph",
         lambda: type("B", (), {"compile": lambda self, checkpointer: CrashGraph()})(),
     )
 
