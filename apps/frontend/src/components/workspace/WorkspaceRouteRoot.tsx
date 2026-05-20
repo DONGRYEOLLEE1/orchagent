@@ -2367,11 +2367,7 @@ function WorkspaceApp({
                     <HITLPanel
                       onAction={handleResume}
                       loading={streamSessionState.loading}
-                      reason={
-                        streamSessionState.streamError ||
-                        streamSessionState.currentNode ||
-                        null
-                      }
+                      reason={streamSessionState.currentNode || null}
                     />
                   </div>
                 </div>
