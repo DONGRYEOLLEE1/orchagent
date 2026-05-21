@@ -4,7 +4,6 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langgraph.types import Command
 from langchain_core.messages import AIMessage
 from prompt_kit.prompts import PLANNER_PROMPT
-from agent_core.supervisor import requires_coding_team_for_text
 
 from agent_core.state import BaseAgentState
 
@@ -86,19 +85,6 @@ def _build_simple_research_plan(user_text: str) -> str | None:
     )
 
 
-def _build_simple_coding_plan(user_text: str, shared_context: dict | None) -> str | None:
-    repo_binding = (shared_context or {}).get("repo_binding")
-    if not isinstance(repo_binding, dict) or not repo_binding.get("id"):
-        return None
-    if not requires_coding_team_for_text(user_text):
-        return None
-
-    return (
-        "1. [coding_team] 바인딩된 저장소를 탐색하고 필요한 코드 수정과 최소 검증을 수행한다.\n"
-        "2. 검증 결과를 포함해 최종 답변을 완성한다."
-    )
-
-
 def make_planner_node(llm: BaseChatModel) -> Callable:
     """
     Creates a planner node that executes immediately after user input.
@@ -116,22 +102,6 @@ def make_planner_node(llm: BaseChatModel) -> Callable:
             return Command(goto="head_supervisor")
 
         latest_user_text = _extract_latest_user_text(state.get("messages", []))
-        simple_coding_plan = _build_simple_coding_plan(
-            latest_user_text, state.get("shared_context", {})
-        )
-        if simple_coding_plan:
-            print(
-                f"[Planner] Using coding plan:\n{simple_coding_plan}", flush=True
-            )
-            plan_message = AIMessage(
-                content=f"**[Planner] Proposed Execution Plan:**\n{simple_coding_plan}",
-                name="planner",
-            )
-            return Command(
-                update={"task_plan": simple_coding_plan, "messages": [plan_message]},
-                goto="head_supervisor",
-            )
-
         simple_research_plan = _build_simple_research_plan(latest_user_text)
         if simple_research_plan:
             print(

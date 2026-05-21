@@ -1,4 +1,3 @@
-import re
 from typing import Literal, List, Callable, Any
 from typing_extensions import TypedDict
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -15,79 +14,6 @@ from agent_core.state import (
 from agent_core.config import SAFEGUARDS
 from agent_core.personalization import build_personalization_prompt_block
 from prompt_kit.prompts import SYSTEM_SUPERVISOR_PROMPT, TEAM_SUPERVISOR_PROMPT
-
-
-_APPROVAL_PATTERNS = [
-    re.compile(
-        r"\b(edit|modify|write|create|delete|remove|rename|overwrite|save|update)\b.*\b(file|files|filesystem|repo|repository|workspace|directory)\b",
-        re.IGNORECASE,
-    ),
-    re.compile(
-        r"\b(run|execute)\b.*\b(code|script|command|shell|bash|python)\b",
-        re.IGNORECASE,
-    ),
-    re.compile(
-        r"\b(shell command|bash command|python script|sql script|rm\s+-rf|chmod|chown|drop database|wipe)\b",
-        re.IGNORECASE,
-    ),
-]
-
-_DATA_ANALYSIS_PATTERNS = [
-    re.compile(
-        r"\b(analy[sz]e|analysis|trend|chart|plot|graph|visuali[sz]e|table|statistics?|aggregate|group by|pivot|forecast|outlier|dataset|csv|xlsx|json|pdf|docx)\b",
-        re.IGNORECASE,
-    ),
-    re.compile(
-        r"(분석|통계|시각화|차트|그래프|추세|집계|피벗|이상치|데이터셋|스프레드시트|엑셀|표)",
-        re.IGNORECASE,
-    ),
-]
-
-_CODING_PATTERNS = [
-    re.compile(
-        r"\b(fix|debug|refactor|implement|code|coding|bug|test|tests|build|lint|compile|repo|repository|function|component|module|file|files)\b",
-        re.IGNORECASE,
-    ),
-    re.compile(
-        r"(고쳐|수정|디버그|리팩터|구현|코드|버그|테스트|빌드|린트|레포|저장소|파일|함수|컴포넌트|모듈)",
-        re.IGNORECASE,
-    ),
-]
-
-_RUNTIME_VERIFY_PATTERNS = [
-    re.compile(
-        r"\b(ui|browser|page|runtime|playwright|e2e|screen|render|rendering|local page)\b",
-        re.IGNORECASE,
-    ),
-    re.compile(r"(화면|브라우저|렌더링|실행 확인|페이지|플레이라이트|e2e|ui)", re.IGNORECASE),
-]
-
-# Requests that actually intend to MUTATE the repository. Absent these signals we keep the
-# coding_team flow on the explorer-only (read-only) path and skip implementation_engineer entirely.
-_CODING_EDIT_INTENT_PATTERNS = [
-    re.compile(
-        r"\b(fix|debug|refactor|implement|modify|edit|apply|patch|write|add|create|delete|"
-        r"remove|rename|rewrite|bump|upgrade|install|replace|update|change|save)\b",
-        re.IGNORECASE,
-    ),
-    re.compile(
-        r"(고쳐|수정|편집|구현|추가|삭제|제거|변경|리팩터|리팩토링|작성|생성|만들|저장|"
-        r"교체|업데이트|업그레이드|패치|리네임|이름\s*바꿔)"
-    ),
-]
-
-
-def requires_human_approval_for_text(text: str) -> bool:
-    return any(pattern.search(text) for pattern in _APPROVAL_PATTERNS)
-
-
-def requires_coding_team_for_text(text: str) -> bool:
-    return any(pattern.search(text or "") for pattern in _CODING_PATTERNS)
-
-
-def requires_coding_edit_for_text(text: str) -> bool:
-    """Return True when the latest user message expresses intent to modify the repo."""
-    return any(pattern.search(text or "") for pattern in _CODING_EDIT_INTENT_PATTERNS)
 
 
 def _extract_message_text(content: Any) -> str:
@@ -152,77 +78,6 @@ def _orchagent_identity_response(user_text: str) -> str | None:
         return "저는 여러 전문 팀을 오케스트레이션하는 OrchAgent입니다."
 
     return None
-
-
-def _content_contains_image(content: Any) -> bool:
-    if isinstance(content, list):
-        for item in content:
-            if isinstance(item, dict) and item.get("type") == "image_url":
-                return True
-
-    return False
-
-
-def _latest_user_request_has_image(messages: list[Any]) -> bool:
-    for message in reversed(messages):
-        if getattr(message, "type", "") in {"human", "user"}:
-            return _content_contains_image(getattr(message, "content", ""))
-
-        if (
-            isinstance(message, tuple)
-            and len(message) == 2
-            and str(message[0]).lower() == "user"
-        ):
-            return _content_contains_image(message[1])
-
-        if isinstance(message, dict) and message.get("role") == "user":
-            return _content_contains_image(message.get("content", ""))
-
-    return False
-
-
-def _should_force_approval(messages: list[Any]) -> bool:
-    latest_user_text = _latest_user_request_text(messages)
-    if not latest_user_text:
-        return False
-
-    return requires_human_approval_for_text(latest_user_text)
-
-
-def _shared_context_has_data_attachments(shared_context: dict[str, Any]) -> bool:
-    attachments = shared_context.get("attachments") or []
-    return any(
-        isinstance(attachment, dict)
-        and str(attachment.get("kind") or "") in {"pdf", "spreadsheet", "csv", "json", "docx"}
-        for attachment in attachments
-    )
-
-
-def _should_force_data_science_team(
-    messages: list[Any], shared_context: dict[str, Any]
-) -> bool:
-    if not _shared_context_has_data_attachments(shared_context):
-        return False
-
-    latest_user_text = _latest_user_request_text(messages)
-    if not latest_user_text:
-        return True
-
-    return any(pattern.search(latest_user_text) for pattern in _DATA_ANALYSIS_PATTERNS)
-
-
-def _shared_context_has_repo_binding(shared_context: dict[str, Any]) -> bool:
-    binding = shared_context.get("repo_binding")
-    return isinstance(binding, dict) and bool(binding.get("id"))
-
-
-def _should_force_coding_team(
-    messages: list[Any], shared_context: dict[str, Any]
-) -> bool:
-    if not _shared_context_has_repo_binding(shared_context):
-        return False
-    latest_user_text = _latest_user_request_text(messages)
-    return requires_coding_team_for_text(latest_user_text)
 
 
 def make_supervisor_node(
@@ -345,21 +200,9 @@ def make_supervisor_node(
             shared_context.get("force_requires_approval", False)
         )
         llm_requires_approval = response.get("requires_approval", False)
-        heuristic_requires_approval = layer == "head" and _should_force_approval(
-            state["messages"]
-        )
-        requires_approval = (
-            llm_requires_approval
-            or state_requires_approval
-            or heuristic_requires_approval
-        )
+        requires_approval = llm_requires_approval or state_requires_approval
 
         discarded_content = ""
-        if (state_requires_approval or heuristic_requires_approval) and not llm_requires_approval:
-            print(
-                "[Supervisor] Heuristic approval guard forced interrupt for a risky user request.",
-                flush=True,
-            )
 
         if requires_approval and layer == "head":
             print(
