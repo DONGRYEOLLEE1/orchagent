@@ -400,11 +400,36 @@ _original_figure_savefig = _Figure.savefig
 
 def _safe_pyplot_savefig(fname=None, *args, _original=_original_pyplot_savefig, _artifact_dir_value=_artifact_dir, **kwargs):
     rewritten = None if fname is None else os.path.join(_artifact_dir_value, os.path.basename(str(fname)))
-    return _original(rewritten, *args, **kwargs)
+    if rewritten and 'bbox_inches' not in kwargs:
+        # ``bbox_inches='tight'`` keeps text labels (especially CJK) inside
+        # the canvas. Without it, a tight_layout call combined with a CJK
+        # font fallback can silently produce a zero-byte PNG on the Agg
+        # backend. We always set it when the caller did not.
+        kwargs['bbox_inches'] = 'tight'
+    result = _original(rewritten, *args, **kwargs)
+    # Confirm the file actually materialised on disk; matplotlib has been
+    # observed to silently no-op when a stale figure is reused across
+    # turns. Retry once on a fresh figure manager when nothing landed.
+    if rewritten and not os.path.exists(rewritten):
+        try:
+            _plt.gcf().canvas.draw()
+            _original(rewritten, *args, **kwargs)
+        except Exception:
+            pass
+    return result
 
 def _safe_figure_savefig(self, fname=None, *args, _original=_original_figure_savefig, _artifact_dir_value=_artifact_dir, **kwargs):
     rewritten = None if fname is None else os.path.join(_artifact_dir_value, os.path.basename(str(fname)))
-    return _original(self, rewritten, *args, **kwargs)
+    if rewritten and 'bbox_inches' not in kwargs:
+        kwargs['bbox_inches'] = 'tight'
+    result = _original(self, rewritten, *args, **kwargs)
+    if rewritten and not os.path.exists(rewritten):
+        try:
+            self.canvas.draw()
+            _original(self, rewritten, *args, **kwargs)
+        except Exception:
+            pass
+    return result
 
 _plt.savefig = _safe_pyplot_savefig
 _Figure.savefig = _safe_figure_savefig
