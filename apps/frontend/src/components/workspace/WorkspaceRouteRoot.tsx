@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import NextImage from 'next/image';
-import { ChatAttachment, ChatMessage, StreamEvent, ToolExecution } from '@/types/agent';
+import { ChatAttachment, ChatMessage, StreamEvent } from '@/types/agent';
 import type { AuthUser } from '@/types/auth';
 import type { ActionSpaceState, ActiveThreadState, StreamSessionState, ThreadCollectionState } from '@/types/thread';
 import ReactMarkdown from 'react-markdown';
@@ -42,7 +42,8 @@ import {
   type UploadBatchError,
   uploadChatAttachments,
 } from '@/lib/api';
-import { appendAssistantText, parseSseBlock, pushUniqueHistory, splitSseBlocks } from '@/lib/chat-stream';
+import { appendAssistantText, parseSseBlock, splitSseBlocks } from '@/lib/chat-stream';
+import { reduceStreamEvent, type StreamReducerState } from '@/lib/sse-reducer';
 import { preprocessMarkdown } from '@/lib/markdown';
 import {
   applyThreadSummaryToActiveThread,
@@ -75,40 +76,6 @@ import {
 import { CodingAsideTabs } from '@/components/workspace/CodingAsideTabs';
 import { RepoTreePanel } from '@/components/workspace/RepoTreePanel';
 import { WorkspaceTopNav } from '@/components/workspace/WorkspaceTopNav';
-
-function appendReasoningEntry(
-  entries: ActionSpaceState['reasoningEntries'],
-  payload: {
-    node?: string | null;
-    display_name?: string | null;
-    content: string;
-    timestamp: string;
-    run_id?: string;
-  }
-): ActionSpaceState['reasoningEntries'] {
-  const nextEntries = [...entries];
-  const mergeTargetId = payload.run_id || `${payload.node || 'reasoning'}:${payload.timestamp}`;
-  const lastEntry = nextEntries[nextEntries.length - 1];
-
-  if (lastEntry && payload.run_id && lastEntry.runId === payload.run_id) {
-    nextEntries[nextEntries.length - 1] = {
-      ...lastEntry,
-      content: lastEntry.content + payload.content,
-      timestamp: payload.timestamp || lastEntry.timestamp,
-    };
-    return nextEntries;
-  }
-
-  nextEntries.push({
-    id: mergeTargetId,
-    node: payload.node,
-    displayName: payload.display_name,
-    content: payload.content,
-    timestamp: payload.timestamp,
-    runId: payload.run_id,
-  });
-  return nextEntries;
-}
 
 function deriveRouteThreadId(pathname: string): string | null {
   const match = pathname.match(/^\/c\/([^/?#]+)/);
@@ -737,6 +704,17 @@ function WorkspaceApp({
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
   }, [input]);
   const toolIdCounterRef = useRef(0);
+  // Mirror of the four workspace slices + tool-id counter, kept in sync via
+  // the effect below. The SSE reducer consumes this snapshot synchronously
+  // so a burst of events within a single async tick sees the most recent
+  // state (functional setStates alone cannot expose a merged 4-slice view).
+  const reducerStateRef = useRef<StreamReducerState>({
+    threadCollection: threadCollectionState,
+    activeThread: activeThreadState,
+    streamSession: streamSessionState,
+    actionSpace: actionSpaceState,
+    nextToolId: toolIdCounterRef.current,
+  });
   const pendingTitleRequestIdsRef = useRef<Record<string, string>>({});
   const pendingTelemetryRequestIdsRef = useRef<Record<string, string>>({});
   const pendingSuggestionRequestIdsRef = useRef<Record<string, string>>({});
@@ -752,6 +730,25 @@ function WorkspaceApp({
   useEffect(() => {
     activeThreadIdRef.current = activeThreadState.threadId;
   }, [activeThreadState.threadId]);
+
+  // Keep the reducer ref aligned with React state every time any slice
+  // changes. Within a single event-loop tick, handleStreamEvent itself
+  // also advances reducerStateRef.current synchronously after each event
+  // so successive events in a burst observe the latest merged state.
+  useEffect(() => {
+    reducerStateRef.current = {
+      threadCollection: threadCollectionState,
+      activeThread: activeThreadState,
+      streamSession: streamSessionState,
+      actionSpace: actionSpaceState,
+      nextToolId: reducerStateRef.current.nextToolId,
+    };
+  }, [
+    threadCollectionState,
+    activeThreadState,
+    streamSessionState,
+    actionSpaceState,
+  ]);
 
   const lastAutoTabThreadRef = useRef<string | null>(null);
   useEffect(() => {
@@ -1407,254 +1404,32 @@ function WorkspaceApp({
     assistantMsgId: string,
     threadId: string
   ) => {
-    // Collect all events for debug panel
-    setActionSpaceState(prev => ({ ...prev, rawTraces: [...prev.rawTraces, payload] }));
-    if (payload.event_type === 'status') {
-      setThreadCollectionState(prev => ({
-        ...prev,
-        threads: patchThreadSummary(prev.threads, threadId, {
-          latest_status: payload.status,
-          last_activity_at: payload.timestamp,
-        }),
-      }));
+    // Pure reducer call: state in -> next state out, no side effects.
+    const previous = reducerStateRef.current;
+    const next = reduceStreamEvent(previous, payload, {
+      assistantMsgId,
+      threadId,
+      now: Date.now(),
+    });
 
-      setStreamSessionState(prev => {
-        const nextState: StreamSessionState = {
-          ...prev,
-          loading: payload.status === 'running',
-        };
+    // Sync the snapshot synchronously so a burst of events within a single
+    // tick (e.g. multiple SSE blocks parsed in one for-loop iteration) all
+    // observe the latest merged state via reducerStateRef.current.
+    reducerStateRef.current = next;
+    toolIdCounterRef.current = next.nextToolId;
 
-        if (payload.status === 'completed') {
-          return {
-            ...nextState,
-            currentNode: 'Completed',
-            isInterrupted: false,
-          };
-        }
-
-        if (payload.status === 'errored') {
-          return {
-            ...nextState,
-            currentNode: 'Errored',
-            isInterrupted: false,
-            streamError: payload.message || prev.streamError,
-          };
-        }
-
-        if (payload.status === 'interrupted') {
-          return {
-            ...nextState,
-            currentNode: 'Requires User Action',
-            isInterrupted: true,
-            loading: false,
-          };
-        }
-
-        if (payload.display_name) {
-          return {
-            ...nextState,
-            currentNode: payload.display_name,
-            isInterrupted: false,
-          };
-        }
-
-        return nextState;
-      });
-      setActiveThreadState((prev) => ({
-        ...prev,
-        latestStatus: payload.status,
-        lastActivityAt: payload.timestamp,
-      }));
-      return;
+    // Fan out per-slice setStates — React batches these into one render.
+    if (previous.threadCollection !== next.threadCollection) {
+      setThreadCollectionState(next.threadCollection);
     }
-
-    if (payload.event_type === 'route') {
-      const nextDisplay = payload.display_name || payload.target || '';
-      if (nextDisplay && payload.target !== 'FINISH') {
-        setStreamSessionState(prev => ({
-          ...prev,
-          currentNode: nextDisplay,
-          history: pushUniqueHistory(prev.history, nextDisplay),
-        }));
-      }
-      return;
+    if (previous.activeThread !== next.activeThread) {
+      setActiveThreadState(next.activeThread);
     }
-
-    if (payload.event_type === 'tool_start') {
-      const newTool: ToolExecution = {
-        id: `tool_${toolIdCounterRef.current++}`,
-        runId: payload.run_id,
-        name: payload.display_name || payload.tool_name || payload.node || 'Tool',
-        toolName: payload.tool_name || payload.node || undefined,
-        status: 'running',
-        input: payload.input,
-        startTime: Date.now(),
-      };
-      setActionSpaceState(prev => ({
-        ...prev,
-        toolExecutions: [...prev.toolExecutions, newTool],
-      }));
-      return;
+    if (previous.streamSession !== next.streamSession) {
+      setStreamSessionState(next.streamSession);
     }
-
-    if (payload.event_type === 'tool_end') {
-      const targetName = payload.display_name || payload.tool_name || payload.node || 'Tool';
-      setActionSpaceState(prev => {
-        const next = [...prev.toolExecutions];
-        let targetIndex = -1;
-
-        if (payload.run_id) {
-          for (let i = next.length - 1; i >= 0; i -= 1) {
-            if (next[i].runId === payload.run_id && next[i].status === 'running') {
-              targetIndex = i;
-              break;
-            }
-          }
-        }
-
-        if (targetIndex === -1) {
-          for (let i = next.length - 1; i >= 0; i -= 1) {
-            if (next[i].name === targetName && next[i].status === 'running') {
-              targetIndex = i;
-              break;
-            }
-          }
-        }
-
-        if (targetIndex !== -1) {
-          next[targetIndex] = {
-            ...next[targetIndex],
-            status: 'success',
-            output: payload.output,
-            endTime: Date.now(),
-          };
-        }
-
-        return {
-          ...prev,
-          toolExecutions: next,
-        };
-      });
-      return;
-    }
-
-    if (payload.event_type === 'tool_error') {
-      const targetName = payload.display_name || payload.tool_name || payload.node || 'Tool';
-      setActionSpaceState(prev => {
-        const next = [...prev.toolExecutions];
-        let targetIndex = -1;
-
-        if (payload.run_id) {
-          for (let i = next.length - 1; i >= 0; i -= 1) {
-            if (next[i].runId === payload.run_id && next[i].status === 'running') {
-              targetIndex = i;
-              break;
-            }
-          }
-        }
-
-        if (targetIndex === -1) {
-          for (let i = next.length - 1; i >= 0; i -= 1) {
-            if (next[i].name === targetName && next[i].status === 'running') {
-              targetIndex = i;
-              break;
-            }
-          }
-        }
-
-        if (targetIndex !== -1) {
-          next[targetIndex] = {
-            ...next[targetIndex],
-            status: 'error',
-            output: payload.error,
-            endTime: Date.now(),
-          };
-        }
-
-        return {
-          ...prev,
-          toolExecutions: next,
-        };
-      });
-      return;
-    }
-
-    if (payload.event_type === 'reasoning') {
-      setActionSpaceState(prev => ({
-        ...prev,
-        reasoning: prev.reasoning + payload.content,
-        reasoningEntries: appendReasoningEntry(prev.reasoningEntries, payload),
-      }));
-      return;
-    }
-
-    if (payload.event_type === 'text') {
-      setThreadCollectionState(prev => ({
-        ...prev,
-        threads: patchThreadSummary(prev.threads, threadId, {
-          preview: payload.content.trim() || undefined,
-          last_activity_at: payload.timestamp,
-        }),
-      }));
-      setActiveThreadState(prev => ({
-        ...prev,
-        messages: appendAssistantText(prev.messages, assistantMsgId, payload.content),
-        lastActivityAt: payload.timestamp,
-      }));
-      return;
-    }
-
-    if (payload.event_type === 'attachments') {
-      setActiveThreadState(prev => {
-        const nextMessages = [...prev.messages];
-        for (let i = nextMessages.length - 1; i >= 0; i -= 1) {
-          if (nextMessages[i].role === payload.role) {
-            nextMessages[i] = {
-              ...nextMessages[i],
-              attachments: payload.attachments,
-            };
-            break;
-          }
-        }
-
-        return {
-          ...prev,
-          messages: nextMessages,
-        };
-      });
-      return;
-    }
-
-    if (payload.event_type === 'checkpoint') {
-      setThreadCollectionState(prev => ({
-        ...prev,
-        threads: patchThreadSummary(prev.threads, threadId, {
-          checkpoint_id: payload.checkpoint_id || null,
-        }),
-      }));
-      setActiveThreadState(prev => ({
-        ...prev,
-        checkpointId: payload.checkpoint_id || '',
-      }));
-      return;
-    }
-
-    if (payload.event_type === 'error') {
-      setStreamSessionState(prev => ({
-        ...prev,
-        loading: false,
-        currentNode: 'Errored',
-        streamError: payload.message,
-      }));
-      setActiveThreadState(prev => ({
-        ...prev,
-        messages: appendAssistantText(
-          prev.messages,
-          `${assistantMsgId}_error`,
-          `Error: ${payload.message}`
-        ),
-        latestStatus: 'errored',
-      }));
+    if (previous.actionSpace !== next.actionSpace) {
+      setActionSpaceState(next.actionSpace);
     }
   };
 

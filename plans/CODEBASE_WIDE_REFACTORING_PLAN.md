@@ -2,7 +2,7 @@
 작업명: Codebase-Wide Refactoring Plan
 간단요약: 4개 영역(agent-core, backend, frontend, tools/prompts) 감사 결과를 통합한 단계별 리팩토링 + 회귀 검증 프로토콜 + Phase별 브랜치/PR 전략 + 라우팅/handoff 정책을 룰베이스에서 LLM-Driven Delegation으로 전면 전환하는 마스터 플랜
 작성일시: 2026-05-19 16:30 KST
-최종 수정일시: 2026-05-20 18:00 KST
+최종 수정일시: 2026-05-21 11:40 KST
 ---
 
 ## 0. 개요
@@ -384,7 +384,7 @@ revert 후 _workspace의 audit/baseline 파일을 그대로 두고 원인 분석
 
 ### 5.2 Phase 3 태스크
 
-- [ ] 3.1 `handleStreamEvent`의 상태 업데이트 로직을 순수 reducer로 추출 → `lib/sse-reducer.ts` + 단위 테스트 (각 event_type별 5~10 케이스, FINAL_RESPONSE_STREAM_OWNERSHIP 명시적 검증 추가)
+- [x] 3.1 `handleStreamEvent`의 상태 업데이트 로직을 순수 reducer로 추출 → `apps/frontend/src/lib/sse-reducer.ts` + 단위 테스트 (`sse-reducer.test.ts`, 17 케이스: status×3 / route×2 / tool×3 / reasoning×1 / text×3(FINAL_RESPONSE_STREAM_OWNERSHIP 명시 — `ctx.assistantMsgId` 단일 owner 부착, owner 전환 시 새 bubble) / attachments×1 / checkpoint×1 / error×1 / purity×2). `WorkspaceRouteRoot.tsx` 2,626→2,401 LOC(-225). 모든 side effect(toolIdCounter ref 증분, Date.now)는 caller가 `StreamReducerContext`로 주입. reducer 자체에는 `Date.now/Math.random/fetch/DOM/console` 없음. 검증: lint 0E/0W, vitest 70/70(기존 53 + 신규 17), node --test 3/3, `npm run build` PASS.
 - [ ] 3.2 커스텀 훅 추출 — `hooks/useThreadCollection.ts`, `useActiveThread.ts`, `useStreamSession.ts`, `useActionSpace.ts`
 - [ ] 3.3 WorkspaceRouteRoot 분할 — `components/workspace/StreamConsumer.tsx`, `MessageThreadView.tsx`, `ComposerPanel.tsx`, `WorkspaceSidebar.tsx`
 - [x] 3.4 `lib/api.ts` 도메인 분할 (light-touch) — 공통 HTTP 플러밍을 `apps/frontend/src/lib/api/_client.ts`로 추출(API_BASE_URL, CSRF_COOKIE_NAME, CSRF_HEADER_NAME, UnauthorizedError, notifyUnauthorized, readCsrfToken, readErrorMessage, requestJson + RequestJsonOptions). 기존 `lib/api.ts`는 `_client`에서 재export — 도메인별 모듈(threads/chat/auth/memory/uploads/repositories/dashboard)로의 점진 마이그레이션은 후속(WorkspaceRouteRoot 분할 시점 동기). lint 0 errors, vitest 53/53, build PASS.
