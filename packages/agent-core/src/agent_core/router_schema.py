@@ -18,6 +18,13 @@ Field semantics:
 - ``team_finished``: team supervisor asserts the team has nothing more
   to do this turn; head supervisor uses this to decide between another
   team dispatch and a finalizer call.
+- ``content``: optional user-facing answer text. Populated only when the
+  head supervisor decides ``next == "FINISH"`` for a simple turn it can
+  answer itself (greetings, identity, general common-sense). Empty
+  string when the LLM is delegating to a team — downstream workers /
+  finalizer own the visible response in that case. Without this field,
+  direct-FINISH turns would emit an empty AI message (regression seen
+  after the head/team split in Phase 2.4).
 
 This schema lives in agent_core so that both supervisor.py (today's
 rule-based logic) and the upcoming ``LLMRouter`` class can share it.
@@ -54,6 +61,16 @@ class RouterDecision(BaseModel):
         description=(
             "Team supervisor asserts that the team is done this turn. "
             "Head supervisor uses this to decide whether to call finalizer."
+        ),
+    )
+    content: str = Field(
+        default="",
+        description=(
+            "User-facing answer text. Populate only when next=='FINISH' and "
+            "the head supervisor wants to answer the turn itself (simple "
+            "greetings, identity, general common-sense). Leave empty when "
+            "delegating to a team; downstream workers / finalizer own the "
+            "visible response in that case."
         ),
     )
 
