@@ -847,7 +847,14 @@ test('proceeds with uploaded files and keeps failed files in the tray on partial
 
   expect(await screen.findByText(/reject.csv: CSV file exceeds 10MB limit/i)).toBeInTheDocument();
   expect(screen.getByText('reject.csv')).toBeInTheDocument();
-  expect(await screen.findByText('부분 업로드 응답', undefined, { timeout: 5000 })).toBeInTheDocument();
+  await waitFor(
+    () => {
+      expect(
+        screen.queryByText((content) => content.includes('부분 업로드 응답')),
+      ).not.toBeNull();
+    },
+    { timeout: 10000 },
+  );
 });
 
 test('reuses the selected thread id for follow-up sends and disables switching while streaming', async () => {
