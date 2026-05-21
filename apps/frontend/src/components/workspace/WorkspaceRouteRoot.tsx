@@ -17,7 +17,6 @@ import { cn } from '@/lib/cn';
 import NextImage from 'next/image';
 import { ChatAttachment, ChatMessage, StreamEvent } from '@/types/agent';
 import type { AuthUser } from '@/types/auth';
-import type { ActionSpaceState, ActiveThreadState, StreamSessionState, ThreadCollectionState } from '@/types/thread';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -32,7 +31,6 @@ import {
   deleteThread,
   fetchThreadDetail,
   fetchThreadTelemetry,
-  fetchThreads,
   generateAiThreadTitle,
   generateSuggestedQueries,
   materializeRepository,
@@ -48,16 +46,19 @@ import { preprocessMarkdown } from '@/lib/markdown';
 import {
   applyThreadSummaryToActiveThread,
   createActiveThreadStateFromDetail,
+  createHistoricalStreamSessionState,
   createInitialActionSpaceState,
   createInitialActiveThreadState,
-  createHistoricalStreamSessionState,
   createOptimisticThreadSummary,
   patchThreadSummary,
   createInitialStreamSessionState,
-  createInitialThreadCollectionState,
   sortThreadSummaries,
   upsertThreadSummary,
 } from '@/lib/workspace-state';
+import { useThreadCollection } from '@/hooks/useThreadCollection';
+import { useActiveThread } from '@/hooks/useActiveThread';
+import { useStreamSession } from '@/hooks/useStreamSession';
+import { useActionSpace } from '@/hooks/useActionSpace';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { AuthScaffold } from '@/components/auth/AuthScaffold';
 import { HITLPanel } from '@/components/HITLPanel';
@@ -689,10 +690,26 @@ function WorkspaceApp({
   const [lightboxAttachment, setLightboxAttachment] = useState<ChatAttachment | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [accountPanelOpen, setAccountPanelOpen] = useState(false);
-  const [threadCollectionState, setThreadCollectionState] = useState<ThreadCollectionState>(() => createInitialThreadCollectionState());
-  const [activeThreadState, setActiveThreadState] = useState<ActiveThreadState>(() => createInitialActiveThreadState());
-  const [streamSessionState, setStreamSessionState] = useState<StreamSessionState>(() => createInitialStreamSessionState());
-  const [actionSpaceState, setActionSpaceState] = useState<ActionSpaceState>(() => createInitialActionSpaceState());
+  // Workspace state slices are owned by dedicated hooks (Phase 3.2). Each
+  // hook returns its slice + a raw setState plus high-level actions; we keep
+  // the raw setState aliases in scope so the merged-snapshot SSE reducer
+  // (`handleStreamEvent` below) can fan out per-slice patches synchronously
+  // through `reducerStateRef`. Phase 3.3 will lift these reducer refs into a
+  // `StreamConsumer` component once `WorkspaceRouteRoot` is split.
+  const threadCollection = useThreadCollection();
+  const activeThread = useActiveThread();
+  const streamSessionHook = useStreamSession();
+  const actionSpaceHook = useActionSpace();
+
+  const threadCollectionState = threadCollection.threadCollection;
+  const setThreadCollectionState = threadCollection.setThreadCollection;
+  const activeThreadState = activeThread.activeThread;
+  const setActiveThreadState = activeThread.setActiveThread;
+  const streamSessionState = streamSessionHook.streamSession;
+  const setStreamSessionState = streamSessionHook.setStreamSession;
+  const actionSpaceState = actionSpaceHook.actionSpace;
+  const setActionSpaceState = actionSpaceHook.setActionSpace;
+  const activeThreadIdRef = activeThread.activeThreadIdRef;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const composerFormRef = useRef<HTMLFormElement>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -718,7 +735,9 @@ function WorkspaceApp({
   const pendingTitleRequestIdsRef = useRef<Record<string, string>>({});
   const pendingTelemetryRequestIdsRef = useRef<Record<string, string>>({});
   const pendingSuggestionRequestIdsRef = useRef<Record<string, string>>({});
-  const activeThreadIdRef = useRef('');
+  // NOTE: activeThreadIdRef is now owned by useActiveThread() and aliased
+  // above so the rest of this component continues to read it through the
+  // same identifier.
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const actionSpaceRef = useRef<HTMLDivElement>(null);
@@ -726,10 +745,6 @@ function WorkspaceApp({
     streamSessionState.loading ||
     streamSessionState.isInterrupted;
   const isHistoricalView = activeThreadState.viewMode === 'historical';
-
-  useEffect(() => {
-    activeThreadIdRef.current = activeThreadState.threadId;
-  }, [activeThreadState.threadId]);
 
   // Keep the reducer ref aligned with React state every time any slice
   // changes. Within a single event-loop tick, handleStreamEvent itself
@@ -771,6 +786,7 @@ function WorkspaceApp({
     activeThreadState.detailLoadState,
     activeThreadState.repoBinding,
     activeThreadState.codingSummary,
+    setActionSpaceState,
   ]);
 
   useEffect(() => {
@@ -785,46 +801,7 @@ function WorkspaceApp({
     }
   }, [actionSpaceState.toolExecutions, actionSpaceState.reasoning]);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadThreads = async () => {
-      setThreadCollectionState(prev => ({
-        ...prev,
-        loadState: 'loading',
-        error: '',
-      }));
-
-      try {
-        const threads = await fetchThreads();
-        if (cancelled) {
-          return;
-        }
-
-        setThreadCollectionState({
-          threads,
-          loadState: 'success',
-          error: '',
-        });
-      } catch (error) {
-        if (cancelled) {
-          return;
-        }
-
-        setThreadCollectionState(prev => ({
-          ...prev,
-          loadState: 'error',
-          error: error instanceof Error ? error.message : 'Unknown error',
-        }));
-      }
-    };
-
-    void loadThreads();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // Initial thread list fetch is owned by useThreadCollection() (Phase 3.2).
 
   useEffect(() => {
     if (!isInteractionLocked) {
@@ -1009,26 +986,15 @@ function WorkspaceApp({
   };
 
   const refreshThreadsSilently = async () => {
-    try {
-      const threads = await fetchThreads();
-      setThreadCollectionState({
-        threads,
-        loadState: 'success',
-        error: '',
-      });
-      setActiveThreadState((prev) => {
-        const summary = threads.find((thread) => thread.thread_id === prev.threadId);
-        if (!summary) {
-          return prev;
-        }
-
-        return applyThreadSummaryToActiveThread(prev, summary);
-      });
-    } catch (error) {
-      setThreadCollectionState(prev => ({
-        ...prev,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      }));
+    const threads = await threadCollection.refreshThreadsSilently();
+    if (!threads) {
+      return;
+    }
+    const summary = threads.find(
+      (thread) => thread.thread_id === activeThread.activeThread.threadId
+    );
+    if (summary) {
+      activeThread.applySummary(summary);
     }
   };
 
