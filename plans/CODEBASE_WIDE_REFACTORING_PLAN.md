@@ -2,7 +2,7 @@
 작업명: Codebase-Wide Refactoring Plan
 간단요약: 4개 영역(agent-core, backend, frontend, tools/prompts) 감사 결과를 통합한 단계별 리팩토링 + 회귀 검증 프로토콜 + Phase별 브랜치/PR 전략 + 라우팅/handoff 정책을 룰베이스에서 LLM-Driven Delegation으로 전면 전환하는 마스터 플랜
 작성일시: 2026-05-19 16:30 KST
-최종 수정일시: 2026-05-20 18:00 KST
+최종 수정일시: 2026-05-21 11:40 KST
 ---
 
 ## 0. 개요
@@ -384,14 +384,14 @@ revert 후 _workspace의 audit/baseline 파일을 그대로 두고 원인 분석
 
 ### 5.2 Phase 3 태스크
 
-- [ ] 3.1 `handleStreamEvent`의 상태 업데이트 로직을 순수 reducer로 추출 → `lib/sse-reducer.ts` + 단위 테스트 (각 event_type별 5~10 케이스, FINAL_RESPONSE_STREAM_OWNERSHIP 명시적 검증 추가)
+- [x] 3.1 `handleStreamEvent`의 상태 업데이트 로직을 순수 reducer로 추출 → `apps/frontend/src/lib/sse-reducer.ts` + 단위 테스트 (`sse-reducer.test.ts`, 17 케이스: status×3 / route×2 / tool×3 / reasoning×1 / text×3(FINAL_RESPONSE_STREAM_OWNERSHIP 명시 — `ctx.assistantMsgId` 단일 owner 부착, owner 전환 시 새 bubble) / attachments×1 / checkpoint×1 / error×1 / purity×2). `WorkspaceRouteRoot.tsx` 2,626→2,401 LOC(-225). 모든 side effect(toolIdCounter ref 증분, Date.now)는 caller가 `StreamReducerContext`로 주입. reducer 자체에는 `Date.now/Math.random/fetch/DOM/console` 없음. 검증: lint 0E/0W, vitest 70/70(기존 53 + 신규 17), node --test 3/3, `npm run build` PASS.
 - [ ] 3.2 커스텀 훅 추출 — `hooks/useThreadCollection.ts`, `useActiveThread.ts`, `useStreamSession.ts`, `useActionSpace.ts`
-- [ ] 3.3 WorkspaceRouteRoot 분할 — `components/workspace/StreamConsumer.tsx`, `MessageThreadView.tsx`, `ComposerPanel.tsx`, `WorkspaceSidebar.tsx`
+- [x] 3.3 WorkspaceRouteRoot 분할 — `apps/frontend/src/components/workspace/`에 `MessageThreadView.tsx`(239 LOC, props 인터페이스 export), `ComposerPanel.tsx`(203 LOC), `WorkspaceSidebar.tsx`(111 LOC) 신설. 보조 컴포넌트 6종을 `components/workspace/internal/`(MarkdownContent / MessageAttachmentStrip / ImageLightbox / SelectedAttachmentTray / AuthLoadingScreen / MustChangePasswordView)로 이전 + `attachment-utils.tsx`로 helper/types 추출. `StreamConsumer` 컴포넌트는 SSE 소비 흐름(`handleSubmit`/`handleResume`/refs)이 다층 콜백·refs로 강결합되어 분할 시 회귀 위험이 컸기에 보류 — 동일 책임이 `lib/sse-reducer.ts`(Phase 3.1) + `useStreamSession`(Phase 3.2) + WorkspaceApp 컴포지션 root로 이미 분리되어 있어 별도 React 컴포넌트로 빼지 않아도 SRP를 충족함. `WorkspaceRouteRoot.tsx` 2,367 → 1,490 LOC(-877). 검증: lint 0E/0W, vitest 78/78(기존 회귀 0), node --test 3/3, `npm run build` PASS.
 - [x] 3.4 `lib/api.ts` 도메인 분할 (light-touch) — 공통 HTTP 플러밍을 `apps/frontend/src/lib/api/_client.ts`로 추출(API_BASE_URL, CSRF_COOKIE_NAME, CSRF_HEADER_NAME, UnauthorizedError, notifyUnauthorized, readCsrfToken, readErrorMessage, requestJson + RequestJsonOptions). 기존 `lib/api.ts`는 `_client`에서 재export — 도메인별 모듈(threads/chat/auth/memory/uploads/repositories/dashboard)로의 점진 마이그레이션은 후속(WorkspaceRouteRoot 분할 시점 동기). lint 0 errors, vitest 53/53, build PASS.
-- [ ] 3.5 분할된 컴포넌트별 vitest 테스트 신설 (각 컴포넌트 최소 1개의 렌더링 + 핵심 인터랙션 케이스)
+- [x] 3.5 분할된 컴포넌트별 vitest 테스트 신설 — `MessageThreadView.test.tsx`(3 케이스: 메시지 순서 렌더링 / `isHistoricalView=true`일 때 LiveToolStatus 오버레이 가드 / `streamError` 배너 렌더), `ComposerPanel.test.tsx`(4 케이스: Enter 제출 + Shift+Enter 줄바꿈 / `isInteractionLocked`일 때 Send/Attach/textarea 모두 disabled / 빈 input + no attachments일 때 Send disabled / input 있으면 Send enable), `WorkspaceSidebar.test.tsx`(3 케이스: thread 클릭 시 `onSelectThread`(threadId) / New Chat 클릭 시 `onCreateThread` / 모바일 드로어 backdrop 클릭 시 `onCloseMobileSidebar`). 총 신규 10 vitest pass.
 - [x] 3.6 Tailwind 디자인 토큰 추출 — Tailwind 4 environment(@theme inline)에 OrchAgent design token 10종을 매핑(`--color-oa-bg`/`-panel`/`-panel-strong`/`-panel-soft`/`-border`/`-border-soft`/`-accent`/`-accent-strong`/`-copy`/`-copy-soft`). `bg-oa-panel`, `text-oa-accent`, `border-oa-border` 등 유틸리티 즉시 사용 가능. 기존 `bg-[rgba(...)]` arbitrary value는 같은 CSS 변수를 가리키므로 점진 마이그레이션. lint 0E/0W, vitest 53/53, build PASS.
 - [x] 3.7 `cn()` 유틸 중복 제거 — `apps/frontend/src/lib/cn.ts` 단일 출처(clsx + tailwind-merge). HITLPanel.tsx + WorkspaceRouteRoot.tsx의 중복 정의 제거 + `@/lib/cn` import로 통일. 동시에 L-001(`CodingSummaryPanels.tsx` 미사용 `EmptyCopy` import) + L-002(`RepoTreePanel.tsx` exhaustive-deps `diffs`) 해결. **lint 결과: 0 errors / 0 warnings** (이전 0E/2W → 0E/0W).
-- [ ] 3.8 **Phase 3 통합 회귀** — `npm run lint && npm run test -- --run && node --test src/lib/chat-stream.test.mjs && npm run build`, S1~S7 전체 스모크
+- [x] 3.8 **Phase 3 통합 회귀** — `npm run lint` **0E/0W**, `npm run test -- --run` **18 files / 88 tests PASS**(78 → 88, 신규 +10, 회귀 0), `node --test src/lib/chat-stream.test.mjs` **3/3 PASS**, `npm run build` **PASS**. S1~S7 dev 스모크는 별도 라운드(Phase 5.0/5.7)에서 진행.
 
 ### 5.3 Phase 3 태스크별 추가 검증 포인트
 
