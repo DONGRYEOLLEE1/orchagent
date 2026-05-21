@@ -54,6 +54,47 @@ OrchAgent(LangGraph 계층형 멀티 에이전트 + FastAPI + Next.js) 프로젝
 
 ---
 
+## 🧭 Supervisor → Sub-agent Handoff 정책 (LLM-Driven, 룰 베이스 금지)
+
+OrchAgent 런타임의 head/team supervisor가 사용자 질의를 파악해 sub-agent(`research_team` / `coding_team` / `data_science_team` / `vision_team` / `writing_team`) 및 worker(`data_engineer`/`data_analyst`/`codebase_explorer`/`implementation_engineer`/`runtime_verifier`/`search`/`web_scraper`/...)로 위임할 때 따르는 단일 정책. **모든 분기 결정은 LLM이 `RouterDecision` structured output으로 내린다. 정규식 매칭·`_should_force_*` 함수·키워드 사전 같은 룰 베이스는 절대 추가 금지** (plan §4.0 P1).
+
+### P1. 모든 라우팅·handoff는 LLM 결정
+- head supervisor의 팀 선택, team supervisor의 worker 선택, FINISH / `request_review` / `team_finished` 판단은 모두 `RouterDecision`(`agent_core/router_schema.py`) JSON 응답으로 결정.
+- 코드에서 사용자 텍스트를 정규식·키워드로 검사해 "강제 라우팅"하는 패턴은 만들지 말 것. 기존 `_APPROVAL_PATTERNS` / `_should_force_coding_team` 등은 Phase 2.2 라운드에서 모두 제거됨 — **부활시키지 말 것**.
+- 새 분기 의도가 생기면 `packages/prompt-kit/src/prompt_kit/prompts.py`의 supervisor / worker 프롬프트에 한 줄 가이드만 추가해서 LLM이 스스로 그 결정을 내리도록 유도.
+
+### P2. 프롬프트가 단일 출처
+- 라우팅 의도(이미지 → `vision_team`, 첨부 데이터 → `data_science_team` 등)는 `SYSTEM_SUPERVISOR_PROMPT` (`# TEAM SELECTION HINTS`)에만 정의.
+- worker 책임 분담(data_engineer는 1패스 검사, data_analyst는 차트 생성)은 해당 worker prompt에만 정의.
+- handoff 시점 가이드(예: "data_engineer 다음은 항상 data_analyst")는 `TEAM_SUPERVISOR_PROMPT`의 `# DATA SCIENCE TEAM HANDOFF` 같은 블록에 명시.
+- 같은 의도를 코드(`supervisor.py`)·프롬프트 양쪽에 중복 작성 금지. prompt-kit이 진실.
+
+### P3. 안전망(safeguard)은 차단/재요청만, 결정 변경 금지
+- `agent_core/safeguards.py`의 4개 함수만 사용:
+  - `reject_invalid_goto` — LLM이 그래프에 없는 노드 지정 시 FINISH로 강제 (재요청 1회 후)
+  - `enforce_team_redirect_limit` — head가 같은 팀으로 N회 반복 redirect 시 FINISH
+  - `enforce_dispatch_limit` — team supervisor가 worker dispatch 한도 초과 시 FINISH
+  - `fallback_decision_on_parse_failure` — structured output 파싱 실패 시 FINISH
+- safeguard는 LLM의 valid 결정을 **다른 결정으로 바꾸지 않는다**. 차단(FINISH) 또는 재요청(retry)만.
+- 새 safeguard 추가 시도는 일반적으로 거부 — 먼저 prompt 수정으로 LLM이 그 상황을 직접 처리하도록 시도하고, 그래도 못 막을 때만 P3 safeguard로 추가.
+
+### P4. 결정은 사용자/UI에 가시화
+- 모든 supervisor 결정은 `route_history` 항목으로 누적되어 SSE `route` 이벤트로 emit, 프론트 `Inner Monologue` 패널에 reason 노출.
+- safeguard 발동 시 reason 문자열이 `safeguard: …` 접두어를 가져야 사용자가 안전망 작동임을 식별 가능.
+
+### P5. 회귀는 evaluation harness로 측정
+- 라우팅 정확도 회귀는 `apps/backend/tests/routing_eval/`의 골든 데이터셋 + scorer로 측정.
+- 새 의도 카테고리를 추가하면 `golden_dataset.json`에 케이스를 함께 추가하고, top-1 정확도 ≥ 95% 유지를 목표.
+- 휴리스틱 추가 충동이 생기면 P5의 evaluation 결과로 먼저 정량 입증할 것.
+
+### Handoff 점검 체크리스트 (PR 작성 전)
+- [ ] 라우팅 의도가 prompt-kit 외부(`supervisor.py`/`planner.py`/`chat.py`)에 인코딩되어 있지 않은가?
+- [ ] 새 정규식·`_should_force_*`·키워드 패턴이 도입되지 않았는가? (`grep -rn "_should_force_\|_APPROVAL_PATTERNS" packages/agent-core` 결과 0건 유지)
+- [ ] safeguard 4종 외 새 룰이 supervisor 본체에 추가되었다면, 동등한 prompt 가이드로 대체할 수 있는가?
+- [ ] `routing_eval` 골든셋에 새 의도가 반영됐는가?
+
+---
+
 ## 📁 디렉토리 구조
 
 ```

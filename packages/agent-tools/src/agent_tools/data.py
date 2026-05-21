@@ -331,6 +331,22 @@ def python_repl_data_tool(
     ``numpy``, ``duckdb``. The current working directory is the per-turn
     artifact directory so saved files end up in the right place.
 
+    File access — IMPORTANT:
+    - Every attached file is **automatically symlinked into the working
+      directory under its original `file_name`** (e.g. ``trend.csv``,
+      ``products.json``, ``multi_sheet.xlsx``). Read attachments via the
+      short ``file_name``, e.g. ``pd.read_csv("trend.csv")`` or
+      ``pd.read_excel("multi_sheet.xlsx", sheet_name="sales")``.
+    - **Do NOT paste absolute storage paths** like
+      ``/app/apps/backend/data/uploads/csv/<uuid>.csv``. UUIDs visible in
+      earlier turns may be stale; the only stable handle is the short
+      ``file_name`` (or ``attachment_path("<attachment_id>")`` helper).
+
+    Chart saving:
+    - Save with a short relative name (``plt.savefig("revenue.png")``) or
+      with the ``artifact_path("name.png")`` helper. The collector picks up
+      every new file in the workspace and registers it automatically.
+
     Restrictions:
     - Network access (``socket``, ``urllib.request``, ``requests``) is
       monkey-patched to raise immediately — this REPL is for local analysis,
@@ -340,16 +356,16 @@ def python_repl_data_tool(
       workspace are reported back to the agent.
 
     Returns:
-    - JSON-serialised dict with ``stdout``, ``new_files``, and any registered
-      ``artifacts`` since the previous invocation.
+    - JSON-serialised dict with ``stdout``, ``generated_files``, and any
+      ``registered_artifacts`` since the previous invocation.
 
     Example::
 
         python_repl_data_tool(code='''
             import pandas as pd
-            df = pd.read_csv("attached.csv")
-            df["amount"].plot.bar()
-            _plt.savefig("amount.png")
+            df = pd.read_csv("trend.csv")    # short name, not absolute path
+            df.groupby("month")["revenue"].sum().plot.bar()
+            _plt.savefig("revenue_by_month.png")
         ''')
     """
     context = get_tool_runtime_context()
@@ -392,6 +408,15 @@ def _safe_figure_savefig(self, fname=None, *args, _original=_original_figure_sav
 
 _plt.savefig = _safe_pyplot_savefig
 _Figure.savefig = _safe_figure_savefig
+
+# Reset any matplotlib figure state left over from a previous turn in the
+# same backend process. Without this, accumulated figures can interact in
+# subtle ways (silent savefig no-op, double-rendered axes) when the python
+# REPL is invoked back-to-back across different threads.
+try:
+    _plt.close('all')
+except Exception:
+    pass
 
 _preferred_fonts = [
     'Noto Sans CJK KR',
