@@ -34,10 +34,15 @@ CONSTRAINTS
 
 # Phase 2.7 — routing guidance block. Supervisor / team-supervisor prompts
 # compose this on top of their domain-specific instructions.
+#
+# IMPORTANT: this string is *embedded* into other prompt templates that are
+# later interpolated with ``str.format(members=...)``. To survive ``format``
+# any literal ``{`` / ``}`` must be doubled (``{{`` / ``}}``). The actual
+# rendered text the LLM sees still contains single braces.
 ROUTER_DECISION_GUIDANCE = """
 ROUTING DECISION CONTRACT
 - Emit a JSON object that matches RouterDecision exactly:
-  {"next": "<node_name or 'FINISH'>", "reason": "...", "request_review": false, "team_finished": false}
+  {{"next": "<node_name or 'FINISH'>", "reason": "...", "request_review": false, "team_finished": false}}
 - Use `request_review: true` only when human approval is necessary before continuing.
 - Use `team_finished: true` to tell the head supervisor the current team is done.
 - Re-dispatching the same worker that just ran needs a one-sentence justification in `reason`.
