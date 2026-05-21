@@ -170,11 +170,20 @@ def make_head_supervisor_node(
             )
             next_node = "FINISH"
 
-        # ---- Identity override for direct FINISH answers. ---------------
+        # ---- Direct-FINISH answer content. ------------------------------
+        # Priority:
+        #   1. Deterministic identity override (so the model never invents a
+        #      name for "who are you" style turns).
+        #   2. LLM-emitted ``RouterDecision.content`` for simple turns the
+        #      head supervisor decided to answer itself (regression fix:
+        #      after the Phase 2.4 head/team split, FINISH was emitting an
+        #      empty AI message because content was no longer in scope).
         content: str | None = None
         if next_node == "FINISH":
             latest_user_text = _latest_user_request_text(state["messages"])
             content = _orchagent_identity_response(latest_user_text)
+            if not content and decision.content and decision.content.strip():
+                content = decision.content
 
         # ---- Decide whether to invoke the finalizer instead of raw END. --
         should_use_finalizer = (

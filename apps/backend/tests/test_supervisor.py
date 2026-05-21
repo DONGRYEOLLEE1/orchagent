@@ -249,6 +249,47 @@ async def test_head_supervisor_keeps_direct_finish_when_content_exists_even_with
 
 
 @pytest.mark.asyncio
+async def test_head_supervisor_finish_emits_llm_content_when_no_identity_override():
+    """Regression: Phase 2.4 head/team split + LLMRouter introduced a
+    ``RouterDecision`` schema without a ``content`` field. Simple turns
+    that don't match the deterministic identity override (e.g. "한 문장
+    자기소개", greetings, general common-sense) ended up with an empty
+    AI message because the head supervisor had no text to attach. The
+    LLM-emitted ``decision.content`` must be promoted to
+    ``AIMessage(content=..., name="supervisor")`` and the response mode
+    must stay ``direct`` so the SSE layer doesn't fall back to the
+    finalizer (which sees an empty plan / route_history and produces
+    nothing).
+    """
+    direct_llm = DirectFinishLLM()  # content = "저는 OrchAgent입니다."
+    supervisor_func = make_supervisor_node(
+        direct_llm,  # type: ignore
+        ["research_team", "writing_team", "vision_team", "data_science_team"],
+        layer="head",
+        final_node_name="finalizer",
+    )
+
+    # "한 문장으로 자기소개 해주세요." does NOT match any identity pattern
+    # in _orchagent_identity_response, so the LLM content path is taken.
+    state = cast(
+        BaseAgentState,
+        {
+            "messages": [HumanMessage(content="한 문장으로 자기소개 해주세요.")],
+            "next": "",
+        },
+    )
+
+    command = await supervisor_func(state)
+
+    assert command.goto == "__end__"
+    assert command.update["response_mode"] == "direct"
+    assert command.update["streaming_status"] == "completed"
+    # LLM-supplied content is what the user actually sees.
+    assert command.update["messages"][0].content == "저는 OrchAgent입니다."
+    assert command.update["messages"][0].name == "supervisor"
+
+
+@pytest.mark.asyncio
 async def test_head_supervisor_overrides_identity_answer_to_orchagent():
     direct_llm = DirectFinishLLM()
     supervisor_func = make_supervisor_node(
