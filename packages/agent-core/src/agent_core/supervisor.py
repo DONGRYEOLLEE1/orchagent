@@ -12,6 +12,7 @@ from agent_core.state import (
     build_route_entry,
     normalize_team_name,
 )
+from agent_core.config import SAFEGUARDS
 from agent_core.personalization import build_personalization_prompt_block
 from prompt_kit.prompts import SYSTEM_SUPERVISOR_PROMPT, TEAM_SUPERVISOR_PROMPT
 
@@ -180,52 +181,6 @@ def _latest_user_request_has_image(messages: list[Any]) -> bool:
     return False
 
 
-def _messages_contain_chart_artifact_evidence(messages: list[Any]) -> bool:
-    patterns = (
-        ".png",
-        "registered_artifacts",
-        "generated_files",
-        "CHART_PATH=",
-        "artifact_count",
-    )
-    for message in messages:
-        text = _extract_message_text(getattr(message, "content", message))
-        if not text:
-            continue
-        if any(pattern in text for pattern in patterns):
-            return True
-    return False
-
-
-def _latest_message_signals_review_passed(messages: list[Any]) -> bool:
-    for message in reversed(messages):
-        content = _extract_message_text(getattr(message, "content", message)).strip()
-        if content:
-            return content.startswith("[Review Passed]")
-    return False
-
-
-def _latest_message_signals_review_failed(messages: list[Any]) -> bool:
-    for message in reversed(messages):
-        content = _extract_message_text(getattr(message, "content", message)).strip()
-        if content:
-            return content.startswith("[Review Failed]")
-    return False
-
-
-def _latest_user_requested_visualization(messages: list[Any]) -> bool:
-    latest_user_text = _latest_user_request_text(messages)
-    if not latest_user_text:
-        return False
-    return any(
-        pattern.search(latest_user_text)
-        for pattern in (
-            re.compile(r"\b(chart|plot|graph|visuali[sz]e|bar chart|line chart)\b", re.IGNORECASE),
-            re.compile(r"(차트|그래프|시각화)", re.IGNORECASE),
-        )
-    )
-
-
 def _should_force_approval(messages: list[Any]) -> bool:
     latest_user_text = _latest_user_request_text(messages)
     if not latest_user_text:
@@ -268,94 +223,6 @@ def _should_force_coding_team(
         return False
     latest_user_text = _latest_user_request_text(messages)
     return requires_coding_team_for_text(latest_user_text)
-
-
-def _latest_user_requested_runtime_verification(messages: list[Any]) -> bool:
-    latest_user_text = _latest_user_request_text(messages)
-    if not latest_user_text:
-        return False
-    return any(pattern.search(latest_user_text) for pattern in _RUNTIME_VERIFY_PATTERNS)
-
-
-def _latest_user_requests_coding_edit(messages: list[Any]) -> bool:
-    """Return True iff the latest user message expresses intent to mutate the repo."""
-    latest_user_text = _latest_user_request_text(messages)
-    if not latest_user_text:
-        return False
-    return requires_coding_edit_for_text(latest_user_text)
-
-
-def _dispatched_team_workers(route_history: list[Any], team_name: str) -> list[str]:
-    workers: list[str] = []
-    for entry in route_history:
-        if entry.get("layer") != "team":
-            continue
-        if entry.get("team") != team_name:
-            continue
-        worker = entry.get("worker")
-        if worker:
-            workers.append(worker)
-    return workers
-
-
-def _extract_team_stage_sequence(task_plan: str | None) -> list[str]:
-    if not task_plan:
-        return []
-
-    # More robust regex: handle optional spaces, case-insensitive, and various formats
-    # Matches [research_team], [Research Team], [research team] etc.
-    stages = re.findall(
-        r"\[\s*([a-zA-Z0-9_\s]+(?:_team|team))\s*\]", task_plan, re.IGNORECASE
-    )
-    compressed: list[str] = []
-    for stage in stages:
-        normalized = normalize_team_name(stage)
-        if not normalized:
-            continue
-        full_name = f"{normalized}_team"
-        if not compressed or compressed[-1] != full_name:
-            compressed.append(full_name)
-    return compressed
-
-
-def _extract_completed_team_sequence(route_history: list[Any]) -> list[str]:
-    completed: list[str] = []
-    for entry in route_history:
-        if entry.get("layer") != "team":
-            continue
-        # Check if the team supervisor returned FINISH
-        if entry.get("next") != "FINISH":
-            continue
-        team = entry.get("team")
-        if not team:
-            continue
-        # Use normalized name to ensure consistency
-        normalized = normalize_team_name(team)
-        if normalized:
-            full_name = f"{normalized}_team"
-            if not completed or completed[-1] != full_name:
-                completed.append(full_name)
-    return completed
-
-
-def _next_pending_team_stage(
-    task_plan: str | None, route_history: list[Any]
-) -> str | None:
-    planned = _extract_team_stage_sequence(task_plan)
-    if not planned:
-        return None
-
-    completed = _extract_completed_team_sequence(route_history)
-
-    # Simple sequence tracking: skip already completed stages in order
-    completed_index = 0
-    for stage in planned:
-        if completed_index < len(completed) and completed[completed_index] == stage:
-            completed_index += 1
-            continue
-        return stage
-
-    return None
 
 
 def make_supervisor_node(
@@ -556,68 +423,11 @@ def make_supervisor_node(
                 next_node = "FINISH"
                 content = ""
 
-        # Helper: how many times has the head supervisor already routed into a given team this turn?
-        def _head_redirects_for(team_full_name: str) -> int:
-            normalized = normalize_team_name(team_full_name)
-            return sum(
-                1
-                for entry in route_history
-                if entry.get("layer") == "head" and entry.get("team") == normalized
-            )
-
-        HEAD_TEAM_REDIRECT_LIMIT = 2
-
-        if layer == "head" and task_plan and task_plan != "NO_PLAN":
-            next_planned_stage = _next_pending_team_stage(task_plan, route_history)
-
-            # Patch B (inside plan): coding_team's repo-bound tools are useless without
-            # a bound repository. If the plan still wants coding_team but no repo is bound,
-            # treat the stage as unreachable so the override falls through to FINISH.
-            if (
-                next_planned_stage == "coding_team"
-                and not shared_context.get("repo_binding")
-            ):
-                print(
-                    "[Supervisor] Plan stage coding_team skipped: thread has no bound repository.",
-                    flush=True,
-                )
-                next_planned_stage = None
-
-            # Patch A (inside plan): if head has already cycled into the same team
-            # HEAD_TEAM_REDIRECT_LIMIT times, treat that stage as exhausted so the plan
-            # cannot keep ping-ponging us back into it.
-            if next_planned_stage and next_planned_stage.endswith("_team"):
-                head_redirects = _head_redirects_for(next_planned_stage)
-                if head_redirects >= HEAD_TEAM_REDIRECT_LIMIT:
-                    print(
-                        f"[Supervisor] Plan stage {next_planned_stage} skipped: head already redirected {head_redirects} times this turn.",
-                        flush=True,
-                    )
-                    next_planned_stage = None
-
-            if next_planned_stage:
-                if next_node != next_planned_stage:
-                    print(
-                        f"[Supervisor] Overriding head route {next_node} -> {next_planned_stage} based on task plan progress.",
-                        flush=True,
-                    )
-                if content:
-                    discarded_content = content
-                next_node = next_planned_stage
-                content = ""
-            else:
-                if next_node != "FINISH":
-                    print(
-                        f"[Supervisor] Overriding head route {next_node} -> FINISH because all planned stages are complete.",
-                        flush=True,
-                    )
-                if content:
-                    discarded_content = content
-                next_node = "FINISH"
-                content = ""  # Explicitly clear content when plan is complete to avoid mixing with finalizer
-
-        # Patch B (final guard): catch any path that left next_node == "coding_team"
-        # without a bound repository (e.g. when there is no task_plan to override).
+        # Safeguard: coding_team's tools are repo-bound and useless without a
+        # bound repository. If the LLM still picks coding_team, force FINISH so
+        # the head supervisor (or finalizer) can answer directly. This is a
+        # final-line guard on top of LLM routing (plan §4.0 P3 — block only,
+        # never re-decide the topic).
         if (
             layer == "head"
             and next_node == "coding_team"
@@ -630,139 +440,21 @@ def make_supervisor_node(
             next_node = "FINISH"
             content = ""
 
-        # Patch A (final guard): last-line cap on head→same-team cycles, regardless of
-        # whether the plan or the LLM's raw decision picked the team.
+        # Safeguard: cap head → same-team redirect streak to avoid ping-pong
+        # loops if the LLM keeps re-selecting the same team. Uses the shared
+        # `SAFEGUARDS.head_team_redirect_limit` (plan §4.0 P3 — pure safety net).
         if layer == "head" and next_node.endswith("_team"):
-            head_redirects_to_team = _head_redirects_for(next_node)
-            if head_redirects_to_team >= HEAD_TEAM_REDIRECT_LIMIT:
+            target_team = normalize_team_name(next_node)
+            same_team_streak = sum(
+                1
+                for entry in route_history
+                if entry.get("layer") == "head" and entry.get("team") == target_team
+            )
+            if same_team_streak >= SAFEGUARDS.head_team_redirect_limit:
                 print(
-                    f"[Supervisor] Head supervisor halting after {head_redirects_to_team} consecutive {next_node} redirects; routing to FINISH.",
+                    f"[Supervisor] Head supervisor halting after {same_team_streak} consecutive {next_node} redirects; routing to FINISH.",
                     flush=True,
                 )
-                next_node = "FINISH"
-                content = ""
-
-        if layer == "team" and normalized_team == "data_science":
-            dispatched_workers = _dispatched_team_workers(route_history, normalized_team)
-            if "data_engineer" not in dispatched_workers and next_node != "data_engineer":
-                next_node = "data_engineer"
-                content = ""
-            elif (
-                "data_engineer" in dispatched_workers
-                and "data_analyst" not in dispatched_workers
-                and next_node != "data_analyst"
-            ):
-                next_node = "data_analyst"
-                content = ""
-            elif (
-                "data_analyst" in dispatched_workers
-                and _latest_message_signals_review_passed(state["messages"])
-            ):
-                next_node = "FINISH"
-                content = ""
-            elif (
-                "data_analyst" in dispatched_workers
-                and _latest_user_requested_visualization(state["messages"])
-                and _messages_contain_chart_artifact_evidence(state["messages"])
-            ):
-                next_node = "FINISH"
-                content = ""
-
-        if (
-            layer == "team"
-            and normalized_team == "research"
-            and {"search", "web_scraper"}.issubset(set(members))
-        ):
-            dispatched_workers = _dispatched_team_workers(route_history, normalized_team)
-            if "search" not in dispatched_workers and next_node != "search":
-                next_node = "search"
-                content = ""
-            elif (
-                "search" in dispatched_workers
-                and "web_scraper" not in dispatched_workers
-                and _latest_message_signals_review_failed(state["messages"])
-                and next_node != "web_scraper"
-            ):
-                next_node = "web_scraper"
-                content = ""
-            elif (
-                "web_scraper" in dispatched_workers
-                and _latest_message_signals_review_passed(state["messages"])
-            ):
-                next_node = "FINISH"
-                content = ""
-            elif (
-                "web_scraper" in dispatched_workers
-                and _latest_message_signals_review_failed(state["messages"])
-            ):
-                next_node = "FINISH"
-                content = ""
-
-        if (
-            layer == "team"
-            and normalized_team == "coding"
-            and {"codebase_explorer", "implementation_engineer"}.issubset(set(members))
-        ):
-            dispatched_workers = _dispatched_team_workers(route_history, normalized_team)
-            runtime_requested = _latest_user_requested_runtime_verification(
-                state["messages"]
-            )
-            edit_requested = _latest_user_requests_coding_edit(state["messages"])
-            review_passed = _latest_message_signals_review_passed(state["messages"])
-            review_failed = _latest_message_signals_review_failed(state["messages"])
-
-            if "codebase_explorer" not in dispatched_workers and next_node != "codebase_explorer":
-                next_node = "codebase_explorer"
-                content = ""
-            elif (
-                # Read-only turn: after the explorer produces an answer we wrap up immediately
-                # instead of invoking implementation_engineer. This cuts "explain this repo"
-                # style queries from 6+ dispatches down to a single explorer run.
-                not edit_requested
-                and "codebase_explorer" in dispatched_workers
-                and (review_passed or review_failed)
-            ):
-                next_node = "FINISH"
-                content = ""
-            elif (
-                edit_requested
-                and "codebase_explorer" in dispatched_workers
-                and "implementation_engineer" not in dispatched_workers
-                and next_node != "implementation_engineer"
-            ):
-                next_node = "implementation_engineer"
-                content = ""
-            elif (
-                edit_requested
-                and review_failed
-                and "implementation_engineer" in members
-                and next_node != "implementation_engineer"
-            ):
-                next_node = "implementation_engineer"
-                content = ""
-            elif (
-                edit_requested
-                and "implementation_engineer" in dispatched_workers
-                and runtime_requested
-                and "runtime_verifier" in members
-                and "runtime_verifier" not in dispatched_workers
-                and review_passed
-            ):
-                next_node = "runtime_verifier"
-                content = ""
-            elif (
-                edit_requested
-                and "runtime_verifier" in dispatched_workers
-                and review_passed
-            ):
-                next_node = "FINISH"
-                content = ""
-            elif (
-                edit_requested
-                and "implementation_engineer" in dispatched_workers
-                and not runtime_requested
-                and review_passed
-            ):
                 next_node = "FINISH"
                 content = ""
 
