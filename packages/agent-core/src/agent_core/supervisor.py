@@ -486,8 +486,6 @@ def make_supervisor_node(
             or state_requires_approval
             or heuristic_requires_approval
         )
-        if layer == "head" and _should_force_coding_team(state["messages"], shared_context):
-            requires_approval = False
 
         discarded_content = ""
         if (state_requires_approval or heuristic_requires_approval) and not llm_requires_approval:
@@ -768,79 +766,6 @@ def make_supervisor_node(
                 next_node = "FINISH"
                 content = ""
 
-        latest_user_has_image = _latest_user_request_has_image(state["messages"])
-        coding_already_routed = bool(
-            shared_context.get("coding_routed_for_current_turn", False)
-        )
-        if (
-            layer == "head"
-            and "coding_team" in members
-            and not coding_already_routed
-            and _should_force_coding_team(state["messages"], shared_context)
-        ):
-            if not reasoning:
-                reasoning = "A repository is bound to this thread and the user is requesting repository-local coding work, so the request is routed to coding_team."
-            if next_node != "coding_team":
-                print(
-                    f"[Supervisor] Forcing head route {next_node} -> coding_team for repository-bound coding turn.",
-                    flush=True,
-                )
-            if content:
-                discarded_content = content
-            next_node = "coding_team"
-            content = ""
-
-        data_science_already_routed = bool(
-            shared_context.get("data_science_routed_for_current_turn", False)
-        )
-        if (
-            layer == "head"
-            and "data_science_team" in members
-            and not data_science_already_routed
-            and _should_force_data_science_team(state["messages"], shared_context)
-        ):
-            if not reasoning:
-                reasoning = "Attached structured files were detected, so the request is routed to data_science_team for analysis."
-            if next_node != "data_science_team":
-                print(
-                    f"[Supervisor] Forcing head route {next_node} -> data_science_team for file analysis turn.",
-                    flush=True,
-                )
-            if content:
-                discarded_content = content
-            next_node = "data_science_team"
-            content = ""
-
-        if (
-            layer == "head"
-            and next_node in {"research_team", "writing_team"}
-            and data_science_already_routed
-            and _shared_context_has_data_attachments(shared_context)
-        ):
-            next_node = "FINISH"
-            content = ""
-
-        vision_already_routed = bool(
-            shared_context.get("vision_routed_for_current_turn", False)
-        )
-        if (
-            layer == "head"
-            and "vision_team" in members
-            and latest_user_has_image
-            and not vision_already_routed
-        ):
-            if not reasoning:
-                reasoning = "An image is attached in the latest user turn, so the request is routed to vision_team first."
-            if next_node != "vision_team":
-                print(
-                    f"[Supervisor] Forcing head route {next_node} -> vision_team for image-bearing user turn.",
-                    flush=True,
-                )
-            if content:
-                discarded_content = content
-            next_node = "vision_team"
-            content = ""
-
         allowed_next_nodes = {"FINISH", *members}
         if next_node not in allowed_next_nodes:
             print(
@@ -932,24 +857,6 @@ def make_supervisor_node(
                     ],
                 }
             )
-            if next_team == "vision" and latest_user_has_image:
-                existing_context = update_data.get("shared_context", {})
-                update_data["shared_context"] = {
-                    **existing_context,
-                    "vision_routed_for_current_turn": True,
-                }
-            if next_team == "data_science":
-                existing_context = update_data.get("shared_context", {})
-                update_data["shared_context"] = {
-                    **existing_context,
-                    "data_science_routed_for_current_turn": True,
-                }
-            if next_team == "coding":
-                existing_context = update_data.get("shared_context", {})
-                update_data["shared_context"] = {
-                    **existing_context,
-                    "coding_routed_for_current_turn": True,
-                }
         else:
             next_worker = None if next_node == "FINISH" else next_node
             update_data.update(

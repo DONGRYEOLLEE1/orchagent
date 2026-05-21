@@ -18,37 +18,6 @@ class FakeRouterLLM:
 
 
 @pytest.mark.asyncio
-async def test_head_supervisor_routes_repo_bound_coding_request_to_coding_team():
-    supervisor = make_supervisor_node(
-        FakeRouterLLM("research_team"),  # type: ignore[arg-type]
-        ["research_team", "coding_team"],
-        layer="head",
-        final_node_name="finalizer",
-    )
-
-    state = cast(
-        BaseAgentState,
-        {
-            "messages": [HumanMessage(content="이 저장소에서 failing test를 고쳐줘")],
-            "shared_context": {
-                "repo_binding": {
-                    "id": "binding-1",
-                    "source_type": "github_url",
-                    "display_name": "sample-repo",
-                }
-            },
-            "next": "",
-        },
-    )
-
-    command = await supervisor(state)
-
-    assert command.goto == "coding_team"
-    assert command.update["active_team"] == "coding"
-    assert command.update["response_mode"] == "delegated"
-
-
-@pytest.mark.asyncio
 async def test_coding_team_supervisor_starts_with_codebase_explorer():
     supervisor = make_supervisor_node(
         FakeRouterLLM("FINISH"),  # type: ignore[arg-type]
