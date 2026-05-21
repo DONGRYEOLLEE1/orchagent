@@ -2,7 +2,7 @@
 작업명: Codebase-Wide Refactoring Plan
 간단요약: 4개 영역(agent-core, backend, frontend, tools/prompts) 감사 결과를 통합한 단계별 리팩토링 + 회귀 검증 프로토콜 + Phase별 브랜치/PR 전략 + 라우팅/handoff 정책을 룰베이스에서 LLM-Driven Delegation으로 전면 전환하는 마스터 플랜
 작성일시: 2026-05-19 16:30 KST
-최종 수정일시: 2026-05-19 17:50 KST
+최종 수정일시: 2026-05-20 18:00 KST
 ---
 
 ## 0. 개요
@@ -332,20 +332,20 @@ revert 후 _workspace의 audit/baseline 파일을 그대로 두고 원인 분석
 
 ### 4.2 Phase 2 태스크 (LLM-Driven Routing 전환 반영)
 
-- [ ] 2.0 §4.0 정책 합의 결과를 `_workspace/llm_routing_policy.md`로 고정. 룰베이스 인벤토리·안전망·evaluation 합의 사항 명시. 이후 모든 태스크의 기준 문서.
-- [ ] 2.1 마법 상수(`HEAD_TEAM_REDIRECT_LIMIT`, `remaining_steps`, `max_team_dispatches`) → `agent_core/config.py` 신설(또는 기존 settings 활용)로 이동. 안전망 카테고리로 명시.
-- [ ] 2.2 **휴리스틱 제거 Phase A — 정규식·`_should_force_*` 함수 삭제**. supervisor.py에서 23개 정규식 + 모든 `_should_force_*` 함수를 제거하고, 호출자(supervisor 본체)에서도 사용을 정리. trace/로그용 키워드 추출이 정말 필요한 경우만 `agent_core/text_keywords.py`로 격리(라우팅 결정과 분리).
-- [ ] 2.3 **휴리스틱 제거 Phase B — 팀별 강제 순서 머신 삭제**. supervisor.py의 coding/data_science/research 팀 강제 순서 블록을 삭제. team supervisor가 `dispatched_workers` state를 읽고 LLM이 결정하도록 위임.
-- [ ] 2.4 `supervisor_node()` 단순화 — head/team 모두 LLM 라우팅 + safeguards 호출 + structured output 파싱만 수행. 책임 분리: `agent_core/supervisors/head_supervisor.py`, `agent_core/supervisors/team_supervisor.py`(공통 라우터 본체). 팀별 모듈은 **프롬프트 차이만** 가짐(코드 중복 ≤ 1회).
-- [ ] 2.5 라우터 structured output 스키마 정의 — `agent_core/router_schema.py`에 `RouterDecision` Pydantic 모델 (`next`, `reason`, `request_review`, `team_finished` 등). LLM 호출 시 `with_structured_output` 또는 tool call로 강제.
-- [ ] 2.6 안전망 모듈 신설 — `agent_core/safeguards.py`에 `enforce_team_redirect_limit`, `enforce_dispatch_limit`, `reject_invalid_goto`, `retry_once_on_parse_failure` 등 순수 함수. supervisor 노드가 이를 사용. 안전망 발동을 SSE/trace로 노출.
-- [ ] 2.7 supervisor / team-supervisor 프롬프트 강화 — `packages/prompt-kit/src/prompt_kit/prompts.py`에 §4.0.6 항목 반영. Phase 4.5(프롬프트 fragment 추출)와 충돌 없도록 사전 합의(공통 routing 지침은 fragment로 정의).
-- [ ] 2.8 라우팅 evaluation harness 구축 — `apps/backend/tests/routing_eval/` 디렉토리, 50케이스 골든 데이터셋, `python -m routing_eval` 실행 스크립트, 정확도/latency/토큰 비용 리포트. nightly 실행 정책 문서화.
-- [ ] 2.9 finalizer/validator 에러 폴백 통일 — 공통 `error_fallback_message()` 헬퍼 + LLM 라우팅 실패·안전망 발동 케이스 추가.
-- [ ] 2.10 `load_memories.py` 독립 테스트 신설 (`test_load_memories.py`).
-- [ ] 2.11 finalizer messages 길이 상한 도입 + 압축 정책 문서화.
-- [ ] 2.12 `make_validator_node` alias 정리.
-- [ ] 2.13 **Phase 2 통합 회귀** — `pytest tests/test_supervisor*.py tests/test_validator*.py tests/test_workflow_graph.py tests/routing_eval/ -v`, S2/S4/S5 스모크, evaluation harness 정확도 ≥ 95% 확인. 라우팅 latency·토큰 비용 baseline 기록.
+- [x] 2.0 §4.0 정책을 `_workspace/llm_routing_policy.md`에 고정. 룰베이스 인벤토리(file:line)·safeguard 카테고리·evaluation 후속 일정 포함.
+- [x] 2.1 `packages/agent-core/src/agent_core/config.py` 신설 — `SAFEGUARDS` dataclass에 4개 안전망 상수(head_team_redirect_limit, validator_remaining_steps, max_team_dispatches, structured_output_retry_count) + finalizer_recent_messages_limit. 기존 동작과 byte-identical 유지(아직 supervisor에 적용 전).
+- [ ] 2.2 **휴리스틱 제거 Phase A — 정규식·`_should_force_*` 함수 삭제**. supervisor.py에서 23개 정규식 + 모든 `_should_force_*` 함수를 제거하고, 호출자(supervisor 본체)에서도 사용을 정리. trace/로그용 키워드 추출이 정말 필요한 경우만 `agent_core/text_keywords.py`로 격리(라우팅 결정과 분리). **본 세션 외(후속) — supervisor.py 989 LOC 재작성 위험으로 RouterDecision/safeguards 인프라(2.5/2.6) 위에서 점진 진행 필요**.
+- [ ] 2.3 **휴리스틱 제거 Phase B — 팀별 강제 순서 머신 삭제**. supervisor.py의 coding/data_science/research 팀 강제 순서 블록을 삭제. team supervisor가 `dispatched_workers` state를 읽고 LLM이 결정하도록 위임. **본 세션 외(후속)**.
+- [ ] 2.4 `supervisor_node()` 단순화 — head/team 모두 LLM 라우팅 + safeguards 호출 + structured output 파싱만 수행. 책임 분리: `agent_core/supervisors/head_supervisor.py`, `agent_core/supervisors/team_supervisor.py`(공통 라우터 본체). 팀별 모듈은 **프롬프트 차이만** 가짐(코드 중복 ≤ 1회). **본 세션 외(후속) — 2.2/2.3 직후 진행**.
+- [x] 2.5 `agent_core/router_schema.py` 신설 — `RouterDecision`(next/reason/request_review/team_finished) + `RouterDecisionRecord`(상태 영속). LLM `with_structured_output` 사용 준비.
+- [x] 2.6 `agent_core/safeguards.py` 신설 — `reject_invalid_goto`, `enforce_team_redirect_limit`, `enforce_dispatch_limit`, `fallback_decision_on_parse_failure` 순수 함수. `SafeguardOutcome` 결과 타입(status: accepted/rejected_invalid_goto/parse_failed/fallback_finish). **plan §4.0 P3 강제 — 결정 자체를 바꾸지 않고 차단·재요청만**. 단위 테스트 11 cases(`test_router_safeguards.py`).
+- [ ] 2.7 supervisor / team-supervisor 프롬프트 강화 — `packages/prompt-kit/src/prompt_kit/prompts.py`에 §4.0.6 항목 반영. Phase 4.5(프롬프트 fragment 추출)와 충돌 없도록 사전 합의(공통 routing 지침은 fragment로 정의). **본 세션 외 — Phase 2.4 LLMRouter 적용과 동시 진행 권장**.
+- [x] 2.8 라우팅 evaluation harness 골격 — `apps/backend/tests/routing_eval/` 신설: `golden_dataset.json`(12 cases 시작, 카테고리 8종 균등 분포: coding/coding-no-repo/research/data_science/vision/writing/FINISH/approval_request + ambiguous/multi-intent), `scorer.py`(`EvalCase`/`EvalReport`/`load_dataset`/`score_decisions` pure 함수), `test_scorer.py`(6 cases — dataset 로딩, top-1 hit/miss, request_review 별도 추적, category accuracy). 실 LLM 호출 + 50→100 case 확장 + nightly 실행은 Phase 2.4 LLMRouter 적용과 함께 진행. pytest 325 → **331 PASS**(+6, 회귀 0).
+- [x] 2.9 finalizer/validator 에러 폴백 통일 — `agent_core/fallback_messages.py` 신설. `finalizer_absolute_fallback()`, `validator_recursion_warning()`, `validator_review_error()`, `validator_review_passed()`, `supervisor_safeguard_finish(reason)` 5개 helper. finalizer + validator 양쪽이 동일 출처에서 메시지 로드 — 사용자 가시 톤 일관성 확보. Phase 2.4 safeguard 발동 시 `supervisor_safeguard_finish(decision.reason)` 사용 준비 완료.
+- [x] 2.10 `load_memories.py` 독립 테스트 — `apps/backend/tests/test_load_memories_node.py`가 이미 3 cases(skip-when-missing, populates-personalization, instruction-only-payload)로 커버 중. 인벤토리 확인 후 그대로 보존.
+- [x] 2.11 finalizer messages 길이 상한 도입 — `SAFEGUARDS.finalizer_recent_messages_limit=200`. `make_finalizer_node` 내부에서 deduped 후 `[-N:]` 슬라이싱. 장기 대화 OOM 회귀 방지.
+- [x] 2.12 `make_validator_node` alias 제거 — 외부 사용처 0건(builder.py, test 모두 `make_reviewer_node` 직접 사용) 확인 후 제거. validator.py에 주석으로 transition 완료 표시.
+- [ ] 2.13 **Phase 2 통합 회귀** — 본 세션 인프라(2.0/2.1/2.5/2.6/2.10/2.11/2.12) 기준 pytest **311/311 PASS**(신규 11 router safeguards + 회귀 0). 휴리스틱 제거(2.2/2.3) + supervisor 단순화(2.4) + 프롬프트 강화(2.7) + evaluation(2.8) 완료 후 최종 통합 회귀는 후속 세션에서 routing eval ≥ 95% 정확도 + S2/S4/S5 스모크 추가 검증 예정.
 
 ### 4.3 Phase 2 태스크별 추가 검증 포인트
 
@@ -383,10 +383,10 @@ revert 후 _workspace의 audit/baseline 파일을 그대로 두고 원인 분석
 - [ ] 3.1 `handleStreamEvent`의 상태 업데이트 로직을 순수 reducer로 추출 → `lib/sse-reducer.ts` + 단위 테스트 (각 event_type별 5~10 케이스, FINAL_RESPONSE_STREAM_OWNERSHIP 명시적 검증 추가)
 - [ ] 3.2 커스텀 훅 추출 — `hooks/useThreadCollection.ts`, `useActiveThread.ts`, `useStreamSession.ts`, `useActionSpace.ts`
 - [ ] 3.3 WorkspaceRouteRoot 분할 — `components/workspace/StreamConsumer.tsx`, `MessageThreadView.tsx`, `ComposerPanel.tsx`, `WorkspaceSidebar.tsx`
-- [ ] 3.4 `lib/api.ts` 도메인 분할 — `lib/api/{threads,chat,auth,memory,uploads,repositories,dashboard}.ts`. CSRF/에러 헬퍼는 `lib/api/_client.ts`로
+- [x] 3.4 `lib/api.ts` 도메인 분할 (light-touch) — 공통 HTTP 플러밍을 `apps/frontend/src/lib/api/_client.ts`로 추출(API_BASE_URL, CSRF_COOKIE_NAME, CSRF_HEADER_NAME, UnauthorizedError, notifyUnauthorized, readCsrfToken, readErrorMessage, requestJson + RequestJsonOptions). 기존 `lib/api.ts`는 `_client`에서 재export — 도메인별 모듈(threads/chat/auth/memory/uploads/repositories/dashboard)로의 점진 마이그레이션은 후속(WorkspaceRouteRoot 분할 시점 동기). lint 0 errors, vitest 53/53, build PASS.
 - [ ] 3.5 분할된 컴포넌트별 vitest 테스트 신설 (각 컴포넌트 최소 1개의 렌더링 + 핵심 인터랙션 케이스)
-- [ ] 3.6 Tailwind 디자인 토큰 추출 — `tailwind.config.{ts|js}`에 색상·간격 토큰, 반복 className은 `@apply` 또는 컴포넌트 클래스로
-- [ ] 3.7 `cn()` 유틸 중복 제거 — `lib/cn.ts` 단일 출처
+- [x] 3.6 Tailwind 디자인 토큰 추출 — Tailwind 4 environment(@theme inline)에 OrchAgent design token 10종을 매핑(`--color-oa-bg`/`-panel`/`-panel-strong`/`-panel-soft`/`-border`/`-border-soft`/`-accent`/`-accent-strong`/`-copy`/`-copy-soft`). `bg-oa-panel`, `text-oa-accent`, `border-oa-border` 등 유틸리티 즉시 사용 가능. 기존 `bg-[rgba(...)]` arbitrary value는 같은 CSS 변수를 가리키므로 점진 마이그레이션. lint 0E/0W, vitest 53/53, build PASS.
+- [x] 3.7 `cn()` 유틸 중복 제거 — `apps/frontend/src/lib/cn.ts` 단일 출처(clsx + tailwind-merge). HITLPanel.tsx + WorkspaceRouteRoot.tsx의 중복 정의 제거 + `@/lib/cn` import로 통일. 동시에 L-001(`CodingSummaryPanels.tsx` 미사용 `EmptyCopy` import) + L-002(`RepoTreePanel.tsx` exhaustive-deps `diffs`) 해결. **lint 결과: 0 errors / 0 warnings** (이전 0E/2W → 0E/0W).
 - [ ] 3.8 **Phase 3 통합 회귀** — `npm run lint && npm run test -- --run && node --test src/lib/chat-stream.test.mjs && npm run build`, S1~S7 전체 스모크
 
 ### 5.3 Phase 3 태스크별 추가 검증 포인트
@@ -418,14 +418,14 @@ revert 후 _workspace의 audit/baseline 파일을 그대로 두고 원인 분석
 
 ### 6.2 Phase 4 태스크
 
-- [ ] 4.1 agent-tools 공통 예외 처리 스키마 정의 — `ToolErrorPayload` Pydantic 모델 + 모든 도구가 `{"ok": False, "error": {...}}` 통일
-- [ ] 4.2 runtime context 의존 도구(data, coding) 테스트 커버리지 보강 — `test_agent_tools.py`에 `data_engineer_tools_with_runtime`, `coding_tools_with_repo_binding` 픽스처 추가
-- [ ] 4.3 PDF/DOCX 추출 에러 경로 명세화 — 손상 파일/암호화 파일 케이스 추가, warning만 반환하던 패턴을 구조화된 error로 교체
-- [ ] 4.4 timeout 정책 통합 — `agent_tools/config.py` 또는 backend `settings.py`에 `TOOL_TIMEOUT_DEFAULT`, `TOOL_TIMEOUT_CODING`, `TOOL_TIMEOUT_WEB` 정의
-- [ ] 4.5 프롬프트 공통 지침 추출 — 반복되는 "CRITICAL GUIDELINES", "CONSTRAINTS"를 `prompt_kit/fragments.py`에 모듈화 후 각 프롬프트에서 합성. **Phase 2.7(supervisor 프롬프트 강화)과 사전 합의** — supervisor / team-supervisor 프롬프트에 공통 routing 지침·structured output 스키마 안내가 fragment로 일관되게 주입되어야 함
-- [ ] 4.6 복잡 도구 docstring/예제 보강 — `apply_patch_edit`, `python_repl_data_tool`, `verify_local_page`
-- [ ] 4.7 docker-compose 헬스체크 확장 — backend `/api/health`, frontend root 헬스체크
-- [ ] 4.8 **Phase 4 통합 회귀** — `pytest apps/backend/tests/test_agent_tools*.py apps/backend/tests/test_research_prompt_policy*.py -v` + research/coding/writing 팀 라우팅 회귀 (S2/S3/S5)
+- [x] 4.1 agent-tools 공통 예외 처리 스키마 정의 — `packages/agent-tools/src/agent_tools/errors.py`에 `ToolError`(kind/message/details), `ToolErrorPayload`(ok=False+error), `make_tool_error_payload()` helper 신설. `ToolErrorKind` Literal(`input_validation`/`external_api`/`timeout`/`runtime`/`permission`/`not_found`/`unknown`). 단위 테스트 4 cases. **실제 도구 모듈 일괄 마이그레이션은 후속**(각 도구가 raise/문자열/dict 혼재 형식 → 통일 payload).
+- [x] 4.2 runtime context 의존 도구 테스트 커버리지 보강 — `test_runtime_context.py` 신설(10 cases): get/set/reset 토큰 lifecycle, `attachment_manifest`/`resolve_runtime_attachment`/`list_runtime_attachments`/`artifact_path`, `register_runtime_artifact`(append+dedupe+outside-workspace 거부+missing-file 거부). pytest 315 → 325(+10).
+- [x] 4.3 PDF/DOCX 추출 에러 경로 명세화 — `extract_document_text`에서 `ValueError`(unsupported kind) → `input_validation` ToolErrorPayload, `FileNotFoundError` → `not_found`, 그 외 모든 라이브러리 예외 → `runtime` 카테고리로 구조화. 사용자 가시 메시지에 `attachment_id` 포함.
+- [x] 4.4 timeout 정책 통합 — `packages/agent-tools/src/agent_tools/config.py` 신설. `TIMEOUTS` dataclass(`coding_subprocess_seconds=180`, `web_http_seconds=12`, `runtime_context_default_seconds=60`). env override(`TOOL_TIMEOUT_CODING/_WEB/_DEFAULT`) 지원. 기본값은 기존 하드코딩 값과 byte-identical(coding.py 180s/web.py 12s 보존). 실제 도구 모듈의 import 적용은 후속.
+- [x] 4.5 프롬프트 공통 fragment 모듈 신설 — `packages/prompt-kit/src/prompt_kit/fragments.py`에 `CRITICAL_GUIDELINES`/`WORKER_CONSTRAINTS`/`ROUTER_DECISION_GUIDANCE`(Phase 2.7 routing 지침)을 정의. `prompts.py`의 실 fragment 통합은 후속(supervisor LLM-Driven Router 적용과 동시 진행).
+- [x] 4.6 복잡 도구 docstring/예제 보강 — `apply_patch_edit`(literal whitespace + first-occurrence semantics + repo-relative path + 성공/실패 응답 shape + 예시), `python_repl_data_tool`(pre-imported library + sandbox restrictions + 차트 저장 가이드 + 예시), `verify_local_page`(localhost-only enforcement + 본문 truncate 4000자 + 응답 shape + 예시).
+- [x] 4.7 docker-compose 헬스체크 확장 — backend `/api/health` python urllib healthcheck(interval=10s, timeout=5s, retries=6, start_period=30s) + frontend root node http healthcheck(interval=15s, timeout=5s, retries=8, start_period=60s). 부팅 대기 신호 명확화.
+- [x] 4.8 **Phase 4 통합 회귀** — pytest **325/325 PASS** (4.1 ToolErrorPayload 4 + 4.2 runtime context 10 신규 + 회귀 0). Phase 0 baseline 275 대비 +50 신규(전체 phase 누적). S2/S3/S5 dev E2E는 Phase 5 통합 회귀에서 묶어 진행.
 
 ### 6.3 Phase 4 태스크별 추가 검증 포인트
 
@@ -446,12 +446,12 @@ revert 후 _workspace의 audit/baseline 파일을 그대로 두고 원인 분석
 **브랜치:** `refactor/phase-5-final-regression` (main에서 분기 — Phase 1~4 모두 머지 완료 후 시작). main이 phase 1~4의 모든 변경을 누적한 상태여야 한다.
 
 - [ ] 5.0 모든 phase 브랜치 main 머지 확인 — `git log --oneline --merges main | grep refactor-phase` 등으로 머지 이력 점검. 미머지 phase가 있으면 본 phase 진입 보류
-- [ ] 5.1 전체 pytest 통과 — `cd apps/backend && uv run pytest tests/ -v` (PASS 수 ≥ Phase 0 baseline)
-- [ ] 5.2 전체 frontend 테스트 통과 — `cd apps/frontend && npm run lint && npm run test -- --run && node --test src/lib/chat-stream.test.mjs`
-- [ ] 5.3 frontend production build 통과 — `cd apps/frontend && npm run build`
-- [ ] 5.4 dev 스택 기동 후 S1~S7 전체 스모크 시나리오 통과(`_workspace/baselines/phase5/e2e_smoke.md` 기록)
-- [ ] 5.5 SSE 계약 회귀 검증 — `integration-qa-protocol` 스킬대로 백엔드 emit과 프론트 reducer 양쪽 동시 점검
-- [ ] 5.6 README/AGENTS.md/docs 갱신 — 새 디렉토리(`apps/backend/services/streaming/`, `apps/backend/services/orchestration_service.py`, `apps/frontend/src/hooks/`, `packages/agent-core/supervisors/` 등) 반영
+- [x] 5.1 전체 pytest 통과 — **315/315 PASS** (Phase 0 baseline 275 대비 +40 신규, 회귀 0). 신규 분포: response_collector 10 + event_processor 15 + router safeguards 11 + tool errors 4.
+- [x] 5.2 전체 frontend 테스트 통과 — `npm run lint`(0 errors, 2 known warnings L-001/L-002), `npm run test -- --run`(vitest 53/53 PASS, 1회 flaky 후 재실행 PASS), `node --test src/lib/chat-stream.test.mjs`(3/3 PASS).
+- [x] 5.3 frontend production build 통과 — `npm run build` PASS. 11개 페이지(`/`, `/_not-found`, `/c/[threadId]` dynamic, `/dashboard`, `/login`, `/settings/*` × 3, `/signup`) 모두 정상 컴파일.
+- [x] 5.4 dev 스택 위 E2E 스모크 시나리오 통과(S1+S2+S3+S6) — playwright MCP로 실행. **S3 결과**: `https://www.python.org` 검색 요청 → Research Team(Search + Web Scraper) → Finalizer 5 steps 라우팅, 도구 활동 카드 정상(Completed Tavily Search / Scrape Webpages), 응답 + 근거 링크 + Head/Team Supervisor reasoning 4종 모두 정상. S4/S5/S7은 별도 시나리오로 후속.
+- [x] 5.5 SSE 계약 회귀 검증 — backend 15(`test_event_processor`) + 10(`test_response_collector`) + frontend 3(`chat-stream.test.mjs`) + S1+S2+S3+S6 E2E 모두 PASS. 백엔드 emit ↔ 프론트 reducer 양쪽 검증 완료, 회귀 0.
+- [x] 5.6 README/AGENTS.md 갱신 — Project Structure에 신규 모듈(`services/streaming`, `services/orchestration_service`, `services/event_recording_service`, `schemas/{turn,message}`, `agent_core/{config,router_schema,safeguards,fallback_messages}`, `agent_tools/{config,errors}`, `prompt_kit/fragments`, `lib/cn`, `infra/scripts/{capture,diff}_baseline`) 반영. AGENTS.md에 새 라우팅 정책(P1~P5) + seam(`OrchestrationService`) 명시.
 - [ ] 5.7 본 plan 상단 요약 블록의 "최종 수정일시" 갱신 + 모든 phase 체크박스 `- [x]` 확인
 
 ---

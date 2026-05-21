@@ -1,0 +1,114 @@
+{
+  "version": 1,
+  "description": "Phase 2.8 golden dataset for the LLM router. Each case pins a single user message to the routing decision a correct supervisor should produce.",
+  "cases": [
+    {
+      "id": "coding-001",
+      "category": "coding",
+      "user_message": "이 repo의 src/server.py에서 timeout 값을 30초로 바꿔줘.",
+      "repo_bound": true,
+      "expected_next": "coding_team",
+      "expected_request_review": true,
+      "rationale": "repo가 바인딩된 상태에서 코드 수정 요청."
+    },
+    {
+      "id": "coding-002-no-repo",
+      "category": "coding-no-repo",
+      "user_message": "FastAPI에서 SSE 스트리밍 예제 코드 보여줘.",
+      "repo_bound": false,
+      "expected_next": "FINISH",
+      "expected_request_review": false,
+      "rationale": "repo 미바인딩 + 코드 표시 요청 → 직접 답변 또는 finalizer."
+    },
+    {
+      "id": "research-001",
+      "category": "research",
+      "user_message": "최근 LangGraph 0.7 변경점 정리해줘.",
+      "repo_bound": false,
+      "expected_next": "research_team",
+      "expected_request_review": false,
+      "rationale": "최신 정보 필요."
+    },
+    {
+      "id": "research-002-url",
+      "category": "research",
+      "user_message": "https://www.python.org 첫 페이지 제목을 알려줘.",
+      "repo_bound": false,
+      "expected_next": "research_team",
+      "expected_request_review": false,
+      "rationale": "특정 URL 검증, search→scrape 워크플로."
+    },
+    {
+      "id": "data-001",
+      "category": "data_science",
+      "user_message": "첨부한 sales.csv에서 월별 매출 추이를 시각화해줘.",
+      "repo_bound": false,
+      "expected_next": "data_science_team",
+      "expected_request_review": false,
+      "rationale": "데이터 파일 분석 + 차트 요청."
+    },
+    {
+      "id": "vision-001",
+      "category": "vision",
+      "user_message": "이 이미지의 메타데이터를 확인하고 크기를 절반으로 줄여줘.",
+      "repo_bound": false,
+      "expected_next": "vision_team",
+      "expected_request_review": false,
+      "rationale": "이미지 첨부 + 메타/리사이즈."
+    },
+    {
+      "id": "writing-001",
+      "category": "writing",
+      "user_message": "이 주제로 발표용 슬라이드 초안 노트를 작성해줘.",
+      "repo_bound": false,
+      "expected_next": "writing_team",
+      "expected_request_review": false,
+      "rationale": "명시적 문서/슬라이드 작성 요청."
+    },
+    {
+      "id": "finish-001",
+      "category": "FINISH",
+      "user_message": "안녕하세요.",
+      "repo_bound": false,
+      "expected_next": "FINISH",
+      "expected_request_review": false,
+      "rationale": "단순 인사."
+    },
+    {
+      "id": "finish-002",
+      "category": "FINISH",
+      "user_message": "1 더하기 1은 뭐야?",
+      "repo_bound": false,
+      "expected_next": "FINISH",
+      "expected_request_review": false,
+      "rationale": "직접 답변 가능한 단순 질문."
+    },
+    {
+      "id": "approval-001",
+      "category": "approval_request",
+      "user_message": "이 PR을 main에 push해줘. 중요한 작업이라 사람 승인 후 진행해줘.",
+      "repo_bound": true,
+      "expected_next": "coding_team",
+      "expected_request_review": true,
+      "rationale": "side-effect 발생 + 명시적 승인 요청."
+    },
+    {
+      "id": "ambiguous-001",
+      "category": "ambiguous",
+      "user_message": "오늘 내가 뭐 해야 할지 알려줘.",
+      "repo_bound": false,
+      "expected_next": "FINISH",
+      "expected_request_review": false,
+      "rationale": "컨텍스트 부족, 도구 호출보다 명확화 응답 우선."
+    },
+    {
+      "id": "multi-intent-001",
+      "category": "multi-intent",
+      "user_message": "최신 React 19 변경점 알려주고 그 내용으로 보고서 초안도 작성해줘.",
+      "repo_bound": false,
+      "expected_next": "research_team",
+      "expected_request_review": false,
+      "rationale": "research 먼저, writing은 후속. head supervisor는 첫 단계만 결정."
+    }
+  ]
+}

@@ -12,14 +12,6 @@ function statusTone(status: VerificationStatus): string {
   return STATUS_TONE[status] || STATUS_TONE.unverified;
 }
 
-function EmptyCopy({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="rounded-[8px] border border-dashed border-[rgba(255,255,255,0.06)] bg-[rgba(29,31,40,0.3)] px-4 py-3 text-[12px] leading-6 text-[rgba(170,170,179,0.78)]">
-      {children}
-    </div>
-  );
-}
-
 function CardShell({
   icon,
   title,

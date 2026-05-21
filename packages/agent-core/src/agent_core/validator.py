@@ -5,6 +5,11 @@ from langgraph.types import Command
 from langchain_core.messages import AIMessage
 from prompt_kit.prompts import REVIEWER_PROMPT
 
+from agent_core.fallback_messages import (
+    validator_recursion_warning,
+    validator_review_error,
+    validator_review_passed,
+)
 from agent_core.state import BaseAgentState
 
 
@@ -46,7 +51,7 @@ def make_reviewer_node(
                 flush=True,
             )
             fallback_message = AIMessage(
-                content="[Review Warning] Maximum correction steps reached. Output might be incomplete.",
+                content=validator_recursion_warning(),
                 name=f"{team_name}_reviewer",
             )
             return Command(goto="supervisor", update={"messages": [fallback_message]})
@@ -63,7 +68,7 @@ def make_reviewer_node(
                 flush=True,
             )
             fallback_message = AIMessage(
-                content="[Review Error] System encountered an error during review. Proceeding safely.",
+                content=validator_review_error(),
                 name=f"{team_name}_reviewer",
             )
             return Command(goto="supervisor", update={"messages": [fallback_message]})
@@ -75,7 +80,7 @@ def make_reviewer_node(
 
         if result.is_valid:
             passed_message = AIMessage(
-                content="[Review Passed] Output materially satisfies the request.",
+                content=validator_review_passed(),
                 name=f"{team_name}_reviewer",
             )
             return Command(goto="supervisor", update={"messages": [passed_message]})
@@ -90,5 +95,5 @@ def make_reviewer_node(
     return reviewer_node
 
 
-# Maintain alias for backward compatibility during transition
-make_validator_node = make_reviewer_node
+# Phase 2.12 — backward-compat ``make_validator_node`` alias removed.
+# All callers (builder.py, tests) use ``make_reviewer_node`` directly.

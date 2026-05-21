@@ -101,10 +101,19 @@ graph TD
 | Path | Description |
 | :--- | :--- |
 | **`apps/backend`** | FastAPI server for LangGraph execution, SSE streaming, resume endpoints, trace persistence, and session logging |
+| **`apps/backend/services/streaming/`** | Ownership-aware SSE collector + payload builders (`response_collector.py`, `event_processor.py`, `event_utils.py`) |
+| **`apps/backend/services/orchestration_service.py`** | Single seam between the chat route and `agent_core`/`workflow`/`agent_tools` |
+| **`apps/backend/services/event_recording_service.py`** | Façade over JSONL session logs |
+| **`apps/backend/schemas/{turn,message}.py`** | Pydantic response shapes for ChatTurn and chat-message rows |
 | **`apps/frontend`** | Next.js 16 agent workspace UI with chat, tool activity, reasoning, timeline, and HITL controls |
-| **`packages/agent-core`** | Shared orchestration primitives: state schema, supervisor logic, team builder, and validator nodes |
+| **`apps/frontend/src/lib/cn.ts`** | Shared `cn(...)` class-name helper (clsx + tailwind-merge) |
+| **`packages/agent-core`** | Shared orchestration primitives: state schema, supervisor logic, team builder, validator nodes |
+| **`packages/agent-core/src/agent_core/{config,router_schema,safeguards,fallback_messages}.py`** | LLM-Driven Routing infra: `SAFEGUARDS` constants, `RouterDecision` schema, safeguard helpers, centralised user-facing fallback strings |
 | **`packages/agent-tools`** | Shared worker tools for web research, document I/O, Python execution, and image utilities |
+| **`packages/agent-tools/src/agent_tools/{config,errors}.py`** | Unified tool timeouts (`TIMEOUTS`) + `ToolErrorPayload` envelope |
 | **`packages/prompt-kit`** | Prompt templates for worker personas and team behavior |
+| **`packages/prompt-kit/src/prompt_kit/fragments.py`** | Reusable prompt fragments (CRITICAL_GUIDELINES, WORKER_CONSTRAINTS, ROUTER_DECISION_GUIDANCE) |
+| **`infra/scripts/{capture,diff}_baseline.sh`** | Refactor verification scripts (plan §1.2/§1.5) |
 | **`docs/`** | Architectural recommendations and research reports |
 | **`plans/`** | Project roadmap and detailed feature implementation plans |
 

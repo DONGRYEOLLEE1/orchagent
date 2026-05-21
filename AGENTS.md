@@ -56,6 +56,20 @@ npm run test
 - LLM 초기화: `apps/backend/workflow/main_graph.py`
 - worker agent 생성: `packages/agent-core/src/agent_core/builder.py`
 - 프롬프트 정의: `packages/prompt-kit/src/prompt_kit/prompts.py`
+- 프롬프트 fragment: `packages/prompt-kit/src/prompt_kit/fragments.py` (CRITICAL_GUIDELINES, WORKER_CONSTRAINTS, ROUTER_DECISION_GUIDANCE)
+- 라우터 LLM 결정 schema: `packages/agent-core/src/agent_core/router_schema.py` (`RouterDecision`)
+- 라우터 safeguard: `packages/agent-core/src/agent_core/safeguards.py` (LLM 결정을 차단/재요청만; 변경 금지)
+- 안전망 상수: `packages/agent-core/src/agent_core/config.py` (`SAFEGUARDS`)
+- 사용자 가시 fallback 메시지: `packages/agent-core/src/agent_core/fallback_messages.py`
+- SSE 페이로드/콜렉터: `apps/backend/services/streaming/`
+- 라우터-오케스트레이션 seam: `apps/backend/services/orchestration_service.py` (라우터가 `agent_core`/`workflow`/`agent_tools`을 직접 import 금지 — 이 seam만 호출)
+
+### 새 라우팅/handoff 정책 (Phase 2 이후)
+
+- 라우팅·handoff·승인·완료 판단은 **LLM에 위임**한다 (`RouterDecision` schema 강제).
+- 룰베이스 휴리스틱은 **안전망(safeguards.py)으로만 존재** — 결정을 바꾸지 않고 차단·재요청만 한다.
+- 프롬프트가 라우팅 규칙·예시·금지 사항의 **단일 출처**다. 코드에 라우팅 의도 텍스트를 두지 않는다.
+- 변경 시 `plans/CODEBASE_WIDE_REFACTORING_PLAN.md` §4.0 정책을 따른다.
 
 ## plans 폴더 운영 규칙
 
