@@ -2,31 +2,11 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import {
-  Send,
-  Loader2,
-  Bot,
-  Image as ImageIcon,
-  Paperclip,
-  FileText,
-  FileSpreadsheet,
-  FileJson,
-  X,
-} from 'lucide-react';
-import { cn } from '@/lib/cn';
-import NextImage from 'next/image';
 import { ChatAttachment, ChatMessage, StreamEvent } from '@/types/agent';
 import type { AuthUser } from '@/types/auth';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import {
   bindRepository,
   bindRepositoryZip,
-  changePasswordUser,
   deleteRepositoryBinding,
   deleteThread,
   fetchThreadDetail,
@@ -37,12 +17,10 @@ import {
   patchThread,
   resumeChatStream,
   sendChatStream,
-  type UploadBatchError,
   uploadChatAttachments,
 } from '@/lib/api';
 import { appendAssistantText, parseSseBlock, splitSseBlocks } from '@/lib/chat-stream';
 import { reduceStreamEvent, type StreamReducerState } from '@/lib/sse-reducer';
-import { preprocessMarkdown } from '@/lib/markdown';
 import {
   applyThreadSummaryToActiveThread,
   createActiveThreadStateFromDetail,
@@ -60,11 +38,7 @@ import { useActiveThread } from '@/hooks/useActiveThread';
 import { useStreamSession } from '@/hooks/useStreamSession';
 import { useActionSpace } from '@/hooks/useActionSpace';
 import { useAuth } from '@/components/auth/AuthProvider';
-import { AuthScaffold } from '@/components/auth/AuthScaffold';
-import { HITLPanel } from '@/components/HITLPanel';
 import { AgentTimeline } from '@/components/sidebar/AgentTimeline';
-import { ThreadListSidebar } from '@/components/sidebar/ThreadListSidebar';
-import { LiveToolStatusStrip } from '@/components/workspace/LiveToolStatusStrip';
 import { ReasoningSummaryPanel } from '@/components/workspace/ReasoningSummaryPanel';
 import { SuggestedQueriesPanel } from '@/components/workspace/SuggestedQueriesPanel';
 import { AccountDrawer } from '@/components/workspace/AccountDrawer';
@@ -77,6 +51,19 @@ import {
 import { CodingAsideTabs } from '@/components/workspace/CodingAsideTabs';
 import { RepoTreePanel } from '@/components/workspace/RepoTreePanel';
 import { WorkspaceTopNav } from '@/components/workspace/WorkspaceTopNav';
+import { MessageThreadView } from '@/components/workspace/MessageThreadView';
+import { ComposerPanel } from '@/components/workspace/ComposerPanel';
+import { WorkspaceSidebar } from '@/components/workspace/WorkspaceSidebar';
+import { AuthLoadingScreen } from '@/components/workspace/internal/AuthLoadingScreen';
+import { MustChangePasswordView } from '@/components/workspace/internal/MustChangePasswordView';
+import { ImageLightbox } from '@/components/workspace/internal/ImageLightbox';
+import {
+  buildOptimisticAttachments,
+  summarizeUploadErrors,
+  validateIncomingDraftFiles,
+  type DraftAttachmentItem,
+  type DraftAttachmentStatusMap,
+} from '@/components/workspace/internal/attachment-utils';
 
 function deriveRouteThreadId(pathname: string): string | null {
   const match = pathname.match(/^\/c\/([^/?#]+)/);
@@ -93,577 +80,6 @@ function deriveRouteThreadId(pathname: string): string | null {
 
 function buildThreadPath(threadId: string): string {
   return `/c/${encodeURIComponent(threadId)}`;
-}
-// --- Markdown Renderer ---
-const MarkdownContent = ({ content }: { content: string }) => {
-  return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkMath]}
-      rehypePlugins={[rehypeKatex]}
-      components={{
-        code({ inline, className, children, ...props }: { inline?: boolean; className?: string; children?: React.ReactNode }) {
-          const match = /language-(\w+)/.exec(className || '');
-          return !inline && match ? (
-            <SyntaxHighlighter
-              style={atomDark}
-              language={match[1]}
-              PreTag="div"
-              className="rounded-lg !my-4 !bg-black/40 border border-white/5"
-              {...props}
-            >
-              {String(children).replace(/\n$/, '')}
-            </SyntaxHighlighter>
-          ) : (
-            <code className={cn("bg-black/40 px-1.5 py-0.5 rounded text-blue-300 font-mono text-[0.9em]", className)} {...props}>
-              {children}
-            </code>
-          );
-        },
-        table: ({ children }) => (
-          <div className="overflow-x-auto my-4 rounded-lg border border-slate-800">
-            <table className="w-full text-left text-xs border-collapse bg-slate-900/50">
-              {children}
-            </table>
-          </div>
-        ),
-        th: ({ children }) => <th className="p-2 border-b border-slate-800 bg-slate-800/50 font-bold">{children}</th>,
-        td: ({ children }) => <td className="p-2 border-b border-slate-800">{children}</td>,
-        p: ({ children }) => <p className="mb-4 last:mb-0">{children}</p>,
-        ul: ({ children }) => <ul className="list-disc pl-6 mb-4 space-y-1">{children}</ul>,
-        ol: ({ children }) => <ol className="list-decimal pl-6 mb-4 space-y-1">{children}</ol>,
-        a: ({ href, children }) => (
-          <a
-            href={href}
-            target="_blank"
-            rel="noreferrer"
-            className="cursor-pointer break-all text-[#8ff5ff] underline decoration-[rgba(143,245,255,0.4)] underline-offset-3 transition hover:text-[#c7fbff] hover:decoration-[rgba(199,251,255,0.9)]"
-          >
-            {children}
-          </a>
-        ),
-      }}
-    >
-      {preprocessMarkdown(content)}
-    </ReactMarkdown>
-  );
-};
-
-// --- Helper Functions ---
-const SUPPORTED_ATTACHMENT_LABEL = '이미지, PDF, XLSX, CSV, JSON, DOCX만 지원합니다.';
-const ATTACHMENT_MAX_FILES = 5;
-const ATTACHMENT_MAX_TOTAL_BYTES = 30 * 1024 * 1024;
-const ATTACHMENT_MAX_BYTES_BY_KIND: Record<Exclude<ChatAttachment['kind'], 'artifact'>, number> = {
-  image: 10 * 1024 * 1024,
-  pdf: 20 * 1024 * 1024,
-  spreadsheet: 20 * 1024 * 1024,
-  csv: 10 * 1024 * 1024,
-  json: 20 * 1024 * 1024,
-  docx: 20 * 1024 * 1024,
-};
-
-type DraftAttachmentStatus = 'ready' | 'uploading' | 'failed';
-
-type DraftAttachmentItem = {
-  file: File;
-  localKey: string;
-};
-
-type DraftAttachmentStatusMap = Record<
-  string,
-  {
-    status: DraftAttachmentStatus;
-    error?: string;
-  }
->;
-
-function inferDraftAttachmentKind(file: File): ChatAttachment['kind'] | null {
-  const extension = file.name.split('.').pop()?.toLowerCase();
-  if (file.type.startsWith('image/')) return 'image';
-  if (file.type === 'application/pdf' || extension === 'pdf') return 'pdf';
-  if (
-    file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
-    extension === 'xlsx'
-  ) {
-    return 'spreadsheet';
-  }
-  if (file.type === 'text/csv' || extension === 'csv') return 'csv';
-  if (file.type === 'application/json' || extension === 'json') return 'json';
-  if (
-    file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-    extension === 'docx'
-  ) {
-    return 'docx';
-  }
-  return null;
-}
-
-function draftAttachmentKey(file: File): string {
-  return `${file.name}:${file.size}:${file.lastModified}`;
-}
-
-function formatAttachmentBytes(sizeBytes?: number | null): string {
-  if (!sizeBytes || sizeBytes <= 0) return '';
-  if (sizeBytes < 1024) return `${sizeBytes}B`;
-  if (sizeBytes < 1024 * 1024) return `${(sizeBytes / 1024).toFixed(1)}KB`;
-  return `${(sizeBytes / (1024 * 1024)).toFixed(1)}MB`;
-}
-
-function maxBytesForDraftKind(kind: Exclude<ChatAttachment['kind'], 'artifact'>): number {
-  return ATTACHMENT_MAX_BYTES_BY_KIND[kind];
-}
-
-function summarizeUploadErrors(errors: UploadBatchError[]): string {
-  return errors.map((error) => `${error.file_name}: ${error.detail}`).join('\n');
-}
-
-function validateIncomingDraftFiles(params: {
-  existingFiles: DraftAttachmentItem[];
-  existingStatuses: DraftAttachmentStatusMap;
-  incomingFiles: File[];
-}): {
-  accepted: DraftAttachmentItem[];
-  nextStatusPatch: DraftAttachmentStatusMap;
-  message: string;
-} {
-  const { existingFiles, existingStatuses, incomingFiles } = params;
-  const accepted: DraftAttachmentItem[] = [];
-  const nextStatusPatch: DraftAttachmentStatusMap = {};
-  const errors: string[] = [];
-
-  const existingReadyFiles = existingFiles.filter(
-    (item) => existingStatuses[item.localKey]?.status !== 'failed'
-  );
-  let acceptedCount = existingReadyFiles.length;
-  let acceptedBytes = existingReadyFiles.reduce((sum, item) => sum + item.file.size, 0);
-
-  for (const file of incomingFiles) {
-    const kind = inferDraftAttachmentKind(file);
-    if (!kind || kind === 'artifact') {
-      errors.push(`${file.name}: ${SUPPORTED_ATTACHMENT_LABEL}`);
-      continue;
-    }
-
-    if (acceptedCount >= ATTACHMENT_MAX_FILES) {
-      errors.push(`${file.name}: 한 번에 최대 ${ATTACHMENT_MAX_FILES}개 파일만 첨부할 수 있습니다.`);
-      continue;
-    }
-
-    const maxBytes = maxBytesForDraftKind(kind);
-    if (file.size > maxBytes) {
-      errors.push(
-        `${file.name}: ${kind.toUpperCase()} 파일은 ${formatAttachmentBytes(maxBytes)}까지 첨부할 수 있습니다.`
-      );
-      continue;
-    }
-
-    if (acceptedBytes + file.size > ATTACHMENT_MAX_TOTAL_BYTES) {
-      errors.push(
-        `${file.name}: 첨부 파일 총합은 ${formatAttachmentBytes(ATTACHMENT_MAX_TOTAL_BYTES)}를 넘을 수 없습니다.`
-      );
-      continue;
-    }
-
-    const localKey = draftAttachmentKey(file);
-    accepted.push({ file, localKey });
-    nextStatusPatch[localKey] = { status: 'ready' };
-    acceptedCount += 1;
-    acceptedBytes += file.size;
-  }
-
-  return {
-    accepted,
-    nextStatusPatch,
-    message: errors.join('\n'),
-  };
-}
-
-function attachmentIcon(attachment: ChatAttachment) {
-  switch (attachment.kind) {
-    case 'spreadsheet':
-    case 'csv':
-      return <FileSpreadsheet size={15} />;
-    case 'json':
-      return <FileJson size={15} />;
-    case 'image':
-      return <ImageIcon size={15} />;
-    default:
-      return <FileText size={15} />;
-  }
-}
-
-const buildOptimisticAttachments = (files: File[]): ChatAttachment[] =>
-  files.map((file, index) => {
-    const kind = inferDraftAttachmentKind(file) || 'artifact';
-    return {
-      kind,
-      url: kind === 'image' ? URL.createObjectURL(file) : undefined,
-      alt: file.name || `첨부 파일 ${index + 1}`,
-      file_name: file.name,
-      mime_type: file.type || null,
-      size_bytes: file.size,
-    };
-  });
-
-const MessageAttachmentStrip = ({
-  attachments,
-  align = 'end',
-  onImageSelect,
-}: {
-  attachments: ChatAttachment[];
-  align?: 'start' | 'end';
-  onImageSelect?: (attachment: ChatAttachment) => void;
-}) => {
-  const imageAttachments = attachments.filter(
-    (attachment) =>
-      attachment.kind === 'image' || Boolean(attachment.mime_type?.startsWith('image/'))
-  );
-  const fileAttachments = attachments.filter(
-    (attachment) =>
-      attachment.kind !== 'image' && !attachment.mime_type?.startsWith('image/')
-  );
-  if (imageAttachments.length === 0 && fileAttachments.length === 0) {
-    return null;
-  }
-
-  const visibleAttachments = imageAttachments.slice(0, 4);
-  const hiddenCount = imageAttachments.length - visibleAttachments.length;
-  const isSingle = visibleAttachments.length === 1;
-
-  return (
-    <div className={cn('mb-3 w-[244px] space-y-2', align === 'end' ? 'self-end' : 'self-start')}>
-      {visibleAttachments.length > 0 ? (
-        <div className={cn('grid gap-2', isSingle ? 'grid-cols-1' : 'grid-cols-2')}>
-          {visibleAttachments.map((attachment, index) => (
-            <button
-              type="button"
-              key={`${attachment.url || attachment.alt}_${index}`}
-              onClick={() => onImageSelect?.(attachment)}
-              className={cn(
-                'relative overflow-hidden rounded-[22px] border border-[rgba(255,255,255,0.1)] bg-[rgba(35,38,46,0.46)] shadow-[0px_18px_32px_-24px_rgba(0,0,0,0.9)] transition hover:brightness-110 cursor-zoom-in',
-                isSingle ? 'aspect-[4/3]' : 'aspect-square'
-              )}
-              aria-label={`${attachment.alt} 크게 보기`}
-            >
-              {attachment.url ? (
-                <NextImage
-                  src={attachment.url}
-                  alt={attachment.alt}
-                  fill
-                  sizes={isSingle ? '244px' : '118px'}
-                  className="object-cover"
-                  unoptimized
-                />
-              ) : null}
-              {hiddenCount > 0 && index === visibleAttachments.length - 1 ? (
-                <div className="absolute inset-0 flex items-center justify-center bg-[rgba(7,9,13,0.64)] text-[18px] font-semibold text-white">
-                  +{hiddenCount}
-                </div>
-              ) : null}
-            </button>
-          ))}
-        </div>
-      ) : null}
-
-      {fileAttachments.map((attachment, index) => (
-        <div
-          key={`${attachment.file_name || attachment.alt}_${index}`}
-          className="flex items-center gap-3 rounded-[16px] border border-[rgba(255,255,255,0.08)] bg-[rgba(35,38,46,0.52)] px-3 py-3 text-[#e7e7f0]"
-        >
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] bg-[rgba(143,245,255,0.12)] text-[#8ff5ff]">
-            {attachmentIcon(attachment)}
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-[12px] font-semibold leading-5">
-              {attachment.file_name || attachment.alt}
-            </div>
-            <div className="text-[10px] uppercase tracking-[0.16em] text-[rgba(170,170,179,0.72)]">
-              {attachment.kind}
-              {attachment.size_bytes ? ` · ${formatAttachmentBytes(attachment.size_bytes)}` : ''}
-            </div>
-          </div>
-          {attachment.url ? (
-            <a
-              href={attachment.url}
-              target="_blank"
-              rel="noreferrer"
-              className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8ff5ff] transition hover:text-[#c7fbff]"
-            >
-              Open
-            </a>
-          ) : null}
-        </div>
-      ))}
-    </div>
-  );
-};
-
-const ImageLightbox = ({
-  attachment,
-  onClose,
-}: {
-  attachment: ChatAttachment | null;
-  onClose: () => void;
-}) => {
-  useEffect(() => {
-    if (!attachment) {
-      return;
-    }
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        onClose();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [attachment, onClose]);
-
-  if (!attachment?.url) {
-    return null;
-  }
-
-  return (
-    <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-[rgba(7,9,13,0.84)] px-6 py-6 backdrop-blur-md"
-      role="dialog"
-      aria-modal="true"
-      aria-label={`${attachment.alt} 확대 보기`}
-      onClick={onClose}
-    >
-      <div
-        className="relative flex max-h-full w-full max-w-[1200px] items-center justify-center"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close image preview"
-          className="absolute right-0 top-0 z-10 inline-flex h-11 w-11 items-center justify-center rounded-full border border-[rgba(255,255,255,0.12)] bg-[rgba(12,14,20,0.76)] text-[#e7e7f0] transition hover:border-[rgba(143,245,255,0.32)] hover:text-[#8ff5ff]"
-        >
-          <X size={18} />
-        </button>
-        <div className="relative max-h-[88vh] w-full overflow-hidden rounded-[24px] border border-[rgba(255,255,255,0.08)] bg-[rgba(12,14,20,0.94)] p-4 shadow-[0px_30px_80px_rgba(0,0,0,0.55)]">
-          <div className="mb-3 pr-14 text-[12px] font-semibold uppercase tracking-[0.18em] text-[rgba(170,170,179,0.74)]">
-            {attachment.file_name || attachment.alt}
-          </div>
-          <div className="relative flex max-h-[78vh] min-h-[320px] items-center justify-center overflow-hidden rounded-[18px] bg-black/40">
-            <NextImage
-              src={attachment.url}
-              alt={attachment.alt}
-              width={1400}
-              height={1000}
-              className="max-h-[78vh] w-auto max-w-full object-contain"
-              unoptimized
-            />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const SelectedAttachmentTray = ({
-  files,
-  statuses,
-  uploadState,
-  error,
-  onRemove,
-}: {
-  files: DraftAttachmentItem[];
-  statuses: DraftAttachmentStatusMap;
-  uploadState: 'idle' | 'uploading' | 'error';
-  error: string;
-  onRemove: (index: number) => void;
-}) => {
-  if (files.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className="flex flex-wrap gap-2 rounded-[12px] border border-[rgba(255,255,255,0.06)] bg-[rgba(29,31,40,0.4)] p-3">
-      {files.map((item, i) => {
-        const { file, localKey } = item;
-        const kind = inferDraftAttachmentKind(file);
-        const isImage = kind === 'image';
-        const state = statuses[localKey]?.status || 'ready';
-        const stateError = statuses[localKey]?.error;
-        const stateLabel =
-          state === 'uploading' ? 'UPLOADING' : state === 'failed' ? 'FAILED' : 'READY';
-        const stateClassName =
-          state === 'uploading'
-            ? 'text-[#8ff5ff]'
-            : state === 'failed'
-              ? 'text-red-300'
-              : 'text-emerald-300';
-
-        return (
-          <div
-            key={`${localKey}_${i}`}
-            className={cn(
-              'relative overflow-hidden rounded-[12px] border border-[rgba(255,255,255,0.08)] bg-[rgba(7,9,13,0.72)]',
-              isImage ? 'h-16 w-16' : 'flex min-w-[168px] max-w-[240px] items-center gap-3 px-3 py-3'
-            )}
-          >
-            {isImage ? (
-              <NextImage
-                src={URL.createObjectURL(file)}
-                alt={file.name}
-                width={64}
-                height={64}
-                className="h-full w-full object-cover"
-                unoptimized
-              />
-            ) : (
-              <>
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] bg-[rgba(143,245,255,0.12)] text-[#8ff5ff]">
-                  {attachmentIcon({
-                    kind: kind || 'artifact',
-                    alt: file.name,
-                    file_name: file.name,
-                    size_bytes: file.size,
-                  })}
-                </div>
-                <div className="min-w-0 flex-1 pr-6">
-                  <div className="truncate text-[12px] font-semibold text-[#e7e7f0]">
-                    {file.name}
-                  </div>
-                  <div className="text-[10px] uppercase tracking-[0.16em] text-[rgba(170,170,179,0.72)]">
-                    {(kind || 'file').toUpperCase()} · {formatAttachmentBytes(file.size)}
-                  </div>
-                  <div className={cn('mt-1 text-[10px] font-bold uppercase tracking-[0.18em]', stateClassName)}>
-                    {stateLabel}
-                  </div>
-                  {stateError ? (
-                    <div className="mt-1 text-[11px] leading-4 text-red-300">{stateError}</div>
-                  ) : null}
-                </div>
-              </>
-            )}
-            <button
-              type="button"
-              onClick={() => onRemove(i)}
-              className="absolute right-1 top-1 rounded-full bg-[rgba(7,9,13,0.84)] p-1 text-white transition hover:bg-red-500"
-            >
-              <X size={10} />
-            </button>
-          </div>
-        );
-      })}
-      <div className="w-full pt-1 text-[10px] uppercase tracking-[0.16em] text-[rgba(170,170,179,0.72)]">
-        {uploadState === 'uploading' ? 'Uploading files...' : 'Files ready to send'}
-      </div>
-      {error ? <div className="w-full text-[12px] text-red-300">{error}</div> : null}
-    </div>
-  );
-};
-
-// --- Components ---
-
-const AuthLoadingScreen = ({ message }: { message: string }) => (
-  <main className="flex min-h-screen items-center justify-center bg-slate-950 px-6 text-slate-100">
-    <div className="rounded-3xl border border-slate-800 bg-slate-900/70 px-8 py-7 shadow-2xl shadow-black/40 backdrop-blur-xl">
-      <div className="flex items-center gap-3">
-        <Loader2 size={18} className="animate-spin text-blue-400" />
-        <span className="text-sm text-slate-300">{message}</span>
-      </div>
-    </div>
-  </main>
-);
-
-function MustChangePasswordView({
-  currentUser,
-  onPasswordChanged,
-  onLogout,
-}: {
-  currentUser: AuthUser;
-  onPasswordChanged: () => Promise<unknown>;
-  onLogout: () => Promise<void> | void;
-}) {
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState('');
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSubmitting(true);
-    setError('');
-    try {
-      await changePasswordUser({ currentPassword, newPassword });
-      await onPasswordChanged();
-    } catch (passwordError) {
-      setError(passwordError instanceof Error ? passwordError.message : 'Unknown error');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <AuthScaffold
-      title="Change Your Password"
-      subtitle={`The bootstrap admin account is active as ${currentUser.login_id}. Replace the temporary password before using the workspace.`}
-      footer={(
-        <button
-          type="button"
-          onClick={() => void onLogout()}
-          className="font-semibold text-[#8ff5ff] transition hover:text-[#c7fbff]"
-        >
-          Log Out
-        </button>
-      )}
-    >
-      <form className="space-y-5" onSubmit={handleSubmit}>
-          <div>
-            <label className="mb-2 block text-[12px] font-semibold uppercase tracking-[0.2em] text-[rgba(170,170,179,0.82)]" htmlFor="current-password">
-              Current Password
-            </label>
-            <input
-              id="current-password"
-              type="password"
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-              className="w-full rounded-[16px] border border-[rgba(255,255,255,0.08)] bg-black/70 px-4 py-4 text-sm text-[#e7e7f0] outline-none transition placeholder:text-[rgba(170,170,179,0.42)] focus:border-[rgba(143,245,255,0.28)]"
-              placeholder="Enter the current password"
-              disabled={submitting}
-            />
-          </div>
-
-          <div>
-            <label className="mb-2 block text-[12px] font-semibold uppercase tracking-[0.2em] text-[rgba(170,170,179,0.82)]" htmlFor="new-password">
-              New Password
-            </label>
-            <input
-              id="new-password"
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              className="w-full rounded-[16px] border border-[rgba(255,255,255,0.08)] bg-black/70 px-4 py-4 text-sm text-[#e7e7f0] outline-none transition placeholder:text-[rgba(170,170,179,0.42)] focus:border-[rgba(143,245,255,0.28)]"
-              placeholder="Create a new password"
-              disabled={submitting}
-            />
-            <p className="mt-2 text-xs italic leading-5 text-[rgba(170,170,179,0.68)]">
-              Password must be at least 4 characters and include lowercase letters and numbers.
-            </p>
-          </div>
-
-          {error ? (
-            <div className="rounded-[16px] border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-              {error}
-            </div>
-          ) : null}
-
-          <button
-            type="submit"
-            disabled={submitting || !currentPassword || !newPassword}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-[16px] bg-gradient-to-r from-[#8ff5ff] to-[#00deec] px-4 py-4 text-sm font-semibold text-[#005359] transition hover:brightness-105 disabled:bg-slate-800 disabled:text-slate-500"
-          >
-            {submitting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-            <span>Change Password</span>
-          </button>
-      </form>
-    </AuthScaffold>
-  );
 }
 
 // --- Main Page ---
@@ -694,8 +110,7 @@ function WorkspaceApp({
   // hook returns its slice + a raw setState plus high-level actions; we keep
   // the raw setState aliases in scope so the merged-snapshot SSE reducer
   // (`handleStreamEvent` below) can fan out per-slice patches synchronously
-  // through `reducerStateRef`. Phase 3.3 will lift these reducer refs into a
-  // `StreamConsumer` component once `WorkspaceRouteRoot` is split.
+  // through `reducerStateRef`.
   const threadCollection = useThreadCollection();
   const activeThread = useActiveThread();
   const streamSessionHook = useStreamSession();
@@ -710,16 +125,6 @@ function WorkspaceApp({
   const actionSpaceState = actionSpaceHook.actionSpace;
   const setActionSpaceState = actionSpaceHook.setActionSpace;
   const activeThreadIdRef = activeThread.activeThreadIdRef;
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const composerFormRef = useRef<HTMLFormElement>(null);
-  const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    const el = composerTextareaRef.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
-  }, [input]);
   const toolIdCounterRef = useRef(0);
   // Mirror of the four workspace slices + tool-id counter, kept in sync via
   // the effect below. The SSE reducer consumes this snapshot synchronously
@@ -1832,9 +1237,6 @@ function WorkspaceApp({
     }
   };
 
-  const latestThreadMessage = activeThreadState.messages[activeThreadState.messages.length - 1];
-  const latestAssistantMessageId =
-    latestThreadMessage?.role === 'assistant' ? latestThreadMessage.id : undefined;
   const hasSendableAttachments = selectedFiles.some(
     (item) => selectedFileStatuses[item.localKey]?.status !== 'failed'
   );
@@ -1872,27 +1274,6 @@ function WorkspaceApp({
     return '현재 요청을 해석하고 다음 응답 단계를 정리하는 중입니다.';
   })();
 
-  const shouldShowStandaloneToolStrip =
-    streamSessionState.loading &&
-    !isHistoricalView &&
-    !latestAssistantMessageId &&
-    (actionSpaceState.toolExecutions.length > 0 || Boolean(streamSessionState.currentNode));
-
-  const sidebarContent = (
-    <ThreadListSidebar
-      threads={threadCollectionState.threads}
-      loadState={threadCollectionState.loadState}
-      error={threadCollectionState.error}
-      selectedThreadId={activeThreadState.threadId}
-      disabled={isInteractionLocked}
-      onNewChat={handleStartNewChat}
-      onSelectThread={handleSelectThread}
-      onRenameThread={handleRenameThread}
-      onTogglePinnedThread={handleTogglePinnedThread}
-      onDeleteThread={handleDeleteThread}
-    />
-  );
-
   return (
     <main className="relative flex h-screen flex-col overflow-hidden bg-[var(--oa-bg)] text-[var(--oa-copy)]">
       <div className="pointer-events-none absolute inset-0">
@@ -1917,405 +1298,147 @@ function WorkspaceApp({
       />
 
       <div className="relative z-10 flex min-h-0 flex-1 overflow-hidden">
-      <aside className="hidden h-full w-64 shrink-0 border-r border-[rgba(255,255,255,0.05)] bg-[rgba(17,19,26,0.96)] py-6 lg:flex lg:flex-col">
-        {sidebarContent}
-      </aside>
+        <WorkspaceSidebar
+          threads={threadCollectionState.threads}
+          loadState={threadCollectionState.loadState}
+          error={threadCollectionState.error}
+          activeThreadId={activeThreadState.threadId}
+          disabled={isInteractionLocked}
+          mobileSidebarOpen={mobileSidebarOpen}
+          onCloseMobileSidebar={() => setMobileSidebarOpen(false)}
+          onCreateThread={handleStartNewChat}
+          onSelectThread={handleSelectThread}
+          onRenameThread={handleRenameThread}
+          onTogglePinnedThread={handleTogglePinnedThread}
+          onDeleteThread={handleDeleteThread}
+        />
 
-      {mobileSidebarOpen ? (
-        <div className="fixed inset-0 z-30 lg:hidden">
-          <button
-            type="button"
-            aria-label="Close thread sidebar"
-            onClick={() => setMobileSidebarOpen(false)}
-            className="absolute inset-0 bg-[rgba(7,9,13,0.78)] backdrop-blur-sm"
-          />
-
-          <div className="absolute inset-y-0 left-0 flex w-[min(24rem,92vw)] flex-col border-r border-[rgba(255,255,255,0.06)] bg-[rgba(17,19,26,0.98)] py-6 shadow-2xl shadow-black/50">
-            <div className="mb-4 flex items-center justify-between px-6">
-              <div>
-                <div className="font-[var(--font-display)] text-[20px] font-bold text-[#00f0ff]">
-                  OrchAgent
-                </div>
-                <div className="text-[10px] uppercase tracking-[0.22em] text-[rgba(170,170,179,0.7)]">
-                  Chat Workspace
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setMobileSidebarOpen(false)}
-                className="rounded-[12px] border border-[rgba(255,255,255,0.06)] bg-[rgba(35,38,46,0.4)] p-2 text-[rgba(170,170,179,0.82)] transition hover:text-[#e7e7f0]"
-              >
-                <X size={16} />
-              </button>
+        <section className="flex min-w-0 flex-1 flex-col">
+          <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-6 md:px-8">
+            <div className="mx-auto flex w-full max-w-[720px] flex-col gap-8">
+              <MessageThreadView
+                messages={activeThreadState.messages}
+                detailLoadState={activeThreadState.detailLoadState}
+                toolExecutions={actionSpaceState.toolExecutions}
+                isHistoricalView={isHistoricalView}
+                loading={streamSessionState.loading}
+                isInterrupted={streamSessionState.isInterrupted}
+                streamError={streamSessionState.streamError}
+                currentNode={streamSessionState.currentNode}
+                onImageSelect={setLightboxAttachment}
+                onResume={handleResume}
+              />
             </div>
-            {sidebarContent}
           </div>
-        </div>
-      ) : null}
 
-      <section className="flex min-w-0 flex-1 flex-col">
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-6 md:px-8">
-          <div className="mx-auto flex w-full max-w-[720px] flex-col gap-8">
-            {activeThreadState.detailLoadState === 'loading' ? (
-              <div className="flex min-h-[16rem] items-center justify-center">
-                <div className="rounded-[16px] border border-[rgba(255,255,255,0.06)] bg-[rgba(29,31,40,0.5)] px-6 py-5 text-sm text-[rgba(231,231,240,0.88)] shadow-xl">
-                  <div className="flex items-center gap-3">
-                    <Loader2 size={18} className="animate-spin text-[#8ff5ff]" />
-                    <span>Loading thread history...</span>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-
-            {activeThreadState.detailLoadState !== 'loading' && activeThreadState.messages.length === 0 ? (
-              <div className="mx-auto flex min-h-[26rem] max-w-md flex-col items-center justify-center text-center">
-                <div className="mb-8 flex h-20 w-20 items-center justify-center rounded-[20px] border border-[rgba(255,255,255,0.06)] bg-[rgba(29,31,40,0.5)] shadow-xl">
-                  <Bot size={36} className="text-[#8ff5ff]" />
-                </div>
-                <h2 className="font-[var(--font-display)] text-[28px] font-bold text-[#e7e7f0]">
-                  System Ready
-                </h2>
-                <p className="mt-3 text-[14px] leading-7 text-[rgba(170,170,179,0.78)]">
-                  Initiate a hierarchical task. The orchestration workspace will reveal reasoning summaries, tool activity, and follow-up prompts in context.
-                </p>
-              </div>
-            ) : null}
-
-            {activeThreadState.detailLoadState !== 'loading'
-              ? activeThreadState.messages.map((message) => {
-                  const isUser = message.role === 'user';
-                  const showToolStatuses =
-                    !isUser &&
-                    !isHistoricalView &&
-                    message.id === latestAssistantMessageId &&
-                    actionSpaceState.toolExecutions.length > 0;
-
-                  return (
-                    <div
-                      key={message.id}
-                      className={cn(
-                        'animate-in fade-in slide-in-from-bottom-2 duration-300',
-                        isUser ? 'ml-auto flex w-full justify-end' : 'flex w-full justify-start'
-                      )}
-                    >
-                      {isUser ? (
-                        <div className="flex w-full max-w-[520px] flex-col items-end">
-                          <MessageAttachmentStrip
-                            attachments={message.attachments || []}
-                            align="end"
-                            onImageSelect={setLightboxAttachment}
-                          />
-                          {message.content.trim() ? (
-                            <div className="rounded-bl-[14px] rounded-br-[14px] rounded-tl-[14px] border border-[rgba(143,245,255,0.14)] bg-[rgba(35,38,46,0.28)] px-4 py-3 text-[13px] leading-6 text-[#e7e7f0] backdrop-blur-[12px]">
-                              {message.content}
-                            </div>
-                          ) : null}
-                        </div>
-                      ) : (
-                        <div className="flex w-full max-w-[680px] items-start gap-4">
-                          <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] bg-[#7000ff] text-white shadow-[0px_0px_0px_2px_rgba(172,137,255,0.2)]">
-                            <Bot size={14} />
-                          </div>
-                          <div className="flex min-w-0 flex-1 flex-col gap-3">
-                            {showToolStatuses ? (
-                              <LiveToolStatusStrip
-                                toolExecutions={actionSpaceState.toolExecutions}
-                                currentNode={streamSessionState.currentNode}
-                                loading={streamSessionState.loading}
-                              />
-                            ) : null}
-                            <MessageAttachmentStrip
-                              attachments={message.attachments || []}
-                              align="start"
-                              onImageSelect={setLightboxAttachment}
-                            />
-                            <div className="px-1 py-1 text-[14px] leading-7 text-[#e7e7f0]">
-                              <MarkdownContent content={message.content} />
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
-              : null}
-
-            {streamSessionState.loading ? (
-              <div className="flex w-full justify-start">
-                <div className="flex w-full max-w-[680px] items-start gap-4">
-                  <div className="relative mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] bg-[#7000ff] text-white shadow-[0px_0px_0px_2px_rgba(172,137,255,0.2)]">
-                    <span
-                      aria-hidden
-                      className="absolute inset-0 rounded-[12px] ring-2 ring-[rgba(143,245,255,0.55)] animate-ping"
-                    />
-                    <Bot size={14} className="relative" />
-                  </div>
-                  <div className="flex min-w-0 flex-1 flex-col gap-3">
-                    {shouldShowStandaloneToolStrip ? (
-                      <LiveToolStatusStrip
-                        toolExecutions={actionSpaceState.toolExecutions}
-                        currentNode={streamSessionState.currentNode}
-                        loading={streamSessionState.loading}
-                      />
-                    ) : null}
-                    <div
-                      role="status"
-                      aria-live="polite"
-                      className="flex items-center gap-2 px-1 py-1 text-[14px] italic text-[rgba(143,245,255,0.92)]"
-                    >
-                      <span
-                        aria-hidden
-                        className="relative flex h-2 w-2 shrink-0"
-                      >
-                        <span className="absolute inline-flex h-full w-full rounded-full bg-[#8ff5ff] opacity-70 animate-ping" />
-                        <span className="relative inline-flex h-2 w-2 rounded-full bg-[#8ff5ff]" />
-                      </span>
-                      <span className="truncate animate-pulse">
-                        {streamSessionState.currentNode || 'Coordinating team'}
-                      </span>
-                      <span aria-hidden className="inline-flex items-center gap-0.5">
-                        <span
-                          className="h-1 w-1 rounded-full bg-[#8ff5ff] animate-bounce"
-                          style={{ animationDelay: '0ms' }}
-                        />
-                        <span
-                          className="h-1 w-1 rounded-full bg-[#8ff5ff] animate-bounce"
-                          style={{ animationDelay: '160ms' }}
-                        />
-                        <span
-                          className="h-1 w-1 rounded-full bg-[#8ff5ff] animate-bounce"
-                          style={{ animationDelay: '320ms' }}
-                        />
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-
-            {streamSessionState.isInterrupted ? (
-              <div className="flex w-full justify-start">
-                <div className="flex w-full max-w-[680px] items-start gap-4">
-                  <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] bg-[rgba(245,158,11,0.14)] text-amber-300">
-                    <Bot size={14} />
-                  </div>
-                  <div className="w-full">
-                    <HITLPanel
-                      onAction={handleResume}
-                      loading={streamSessionState.loading}
-                      reason={streamSessionState.currentNode || null}
-                    />
-                  </div>
-                </div>
-              </div>
-            ) : null}
-
-            {!!streamSessionState.streamError && !streamSessionState.loading ? (
-              <div className="flex w-full justify-start">
-                <div className="flex w-full max-w-[680px] items-start gap-4">
-                  <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] bg-[rgba(239,68,68,0.14)] text-red-300">
-                    <Bot size={14} />
-                  </div>
-                  <div className="rounded-[16px] border border-red-500/20 bg-red-500/10 px-5 py-4 text-sm text-red-200">
-                    {streamSessionState.streamError}
-                  </div>
-                </div>
-              </div>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="border-t border-[rgba(255,255,255,0.05)] bg-[rgba(29,31,40,0.8)] px-6 py-6 backdrop-blur-xl md:px-8">
-          <form
-            ref={composerFormRef}
+          <ComposerPanel
+            input={input}
+            onInputChange={setInput}
+            selectedFiles={selectedFiles}
+            selectedFileStatuses={selectedFileStatuses}
+            attachmentUploadState={attachmentUploadState}
+            attachmentError={attachmentError}
+            onAttachmentChange={handleAttachmentChange}
+            onRemoveAttachment={removeSelectedFile}
             onSubmit={handleSubmit}
-            className="mx-auto flex w-full max-w-[720px] flex-col gap-3"
-          >
-            <SelectedAttachmentTray
-              files={selectedFiles}
-              statuses={selectedFileStatuses}
-              uploadState={attachmentUploadState}
-              error={attachmentError}
-              onRemove={removeSelectedFile}
+            isInteractionLocked={isInteractionLocked}
+            loading={streamSessionState.loading}
+            hasSendableAttachments={hasSendableAttachments}
+            repoBinding={activeThreadState.repoBinding}
+            repoBindingLoading={repoBindingLoading}
+            repoBindingError={repoBindingError}
+            onBindRepositoryUrl={handleBindRepositoryUrl}
+            onBindRepositoryZip={handleBindRepositoryZip}
+            onDeleteRepositoryBinding={handleDeleteRepositoryBinding}
+            onMaterializeRepository={handleMaterializeRepository}
+          />
+        </section>
+
+        <ImageLightbox
+          attachment={lightboxAttachment}
+          onClose={() => setLightboxAttachment(null)}
+        />
+
+        <aside
+          ref={actionSpaceRef}
+          className="hidden w-[404px] shrink-0 border-l border-[rgba(255,255,255,0.05)] bg-[rgba(12,14,20,0.78)] px-6 py-6 backdrop-blur-xl xl:flex xl:flex-col xl:overflow-y-auto"
+        >
+          <div className="space-y-6">
+            <CodingAsideTabs
+              active={actionSpaceState.activeRightTab}
+              codingCount={
+                (activeThreadState.codingSummary?.changed_files?.length || 0)
+                + (activeThreadState.codingSummary?.verification_results?.length || 0)
+              }
+              onChange={(next) =>
+                setActionSpaceState(prev => ({ ...prev, activeRightTab: next }))
+              }
             />
 
-            <p className="px-1 text-right text-[9px] tracking-[0.18em] text-[rgba(170,170,179,0.45)]">
-              ENTER · SEND &nbsp;·&nbsp; SHIFT + ENTER · NEW LINE
-            </p>
-            <div className="flex items-stretch gap-2">
-              <div className="flex flex-1 items-center rounded-[16px] border border-[rgba(255,255,255,0.1)] bg-black px-2 transition focus-within:border-[rgba(143,245,255,0.35)]">
-                <button
-                  type="button"
-                  aria-label="Add files"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={isInteractionLocked}
-                  className="shrink-0 p-2 text-[rgba(170,170,179,0.72)] transition hover:text-[#8ff5ff] disabled:text-slate-800"
-                >
-                  <Paperclip size={18} />
-                </button>
-                <input
-                  type="file"
-                  multiple
-                  accept="image/*,.pdf,.xlsx,.csv,.json,.docx"
-                  className="hidden"
-                  ref={fileInputRef}
-                  onChange={handleAttachmentChange}
-                />
-                <textarea
-                  ref={composerTextareaRef}
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (
-                      e.key === 'Enter' &&
-                      !e.shiftKey &&
-                      !e.nativeEvent.isComposing &&
-                      !isInteractionLocked
-                    ) {
-                      e.preventDefault();
-                      composerFormRef.current?.requestSubmit();
-                    }
-                  }}
-                  placeholder="Message OrchAgent..."
-                  rows={1}
-                  className="flex-1 resize-none border-0 bg-transparent py-2 leading-6 text-[#e7e7f0] outline-none placeholder:text-[rgba(170,170,179,0.42)]"
-                  style={{ fontSize: '14px', maxHeight: '200px', overflowY: 'auto' }}
-                  disabled={isInteractionLocked}
-                />
-              </div>
-              <button
-                type="submit"
-                aria-label="Send message"
-                disabled={isInteractionLocked || (!input.trim() && !hasSendableAttachments)}
-                className="shrink-0 self-stretch inline-flex items-center justify-center rounded-[12px] bg-[#8ff5ff] px-5 text-[12px] font-bold uppercase tracking-[0.18em] text-[#005d63] shadow-[0px_10px_15px_-3px_rgba(143,245,255,0.2),0px_4px_6px_-4px_rgba(143,245,255,0.2)] transition hover:brightness-105 disabled:bg-slate-800 disabled:text-slate-600"
+            {actionSpaceState.activeRightTab === 'reasoning' ? (
+              <div
+                id="aside-panel-reasoning"
+                role="tabpanel"
+                aria-labelledby="aside-tab-reasoning"
+                className="space-y-6"
               >
-                {streamSessionState.loading ? <Loader2 className="animate-spin" size={16} /> : 'Send'}
-              </button>
-            </div>
+                <AgentTimeline
+                  history={streamSessionState.history}
+                  currentNode={streamSessionState.currentNode}
+                  loading={streamSessionState.loading}
+                  historicalView={isHistoricalView}
+                />
 
-            {activeThreadState.repoBinding || repoBindingError ? (
-              // On xl+ the bound repo context lives in the right aside (Coding tab).
-              // Keep it centrally visible on narrower viewports where the aside is hidden.
-              <div className="xl:hidden">
-                <RepositoryBindingPanel
-                  binding={activeThreadState.repoBinding}
-                  disabled={isInteractionLocked}
-                  loading={repoBindingLoading}
-                  error={repoBindingError}
-                  onBindUrl={handleBindRepositoryUrl}
-                  onBindZip={handleBindRepositoryZip}
-                  onDeleteBinding={handleDeleteRepositoryBinding}
-                  onMaterialize={handleMaterializeRepository}
+                <ReasoningSummaryPanel
+                  content={actionSpaceState.reasoning}
+                  entries={actionSpaceState.reasoningEntries}
+                  isThinking={streamSessionState.loading}
+                  historicalView={isHistoricalView}
+                  fallbackSummary={liveReasoningFallback}
+                />
+
+                <SuggestedQueriesPanel
+                  queries={actionSpaceState.suggestedQueries}
+                  loadState={actionSpaceState.suggestedQueriesState}
+                  onSelectQuery={handleSuggestedQuerySelect}
+                  historicalView={isHistoricalView}
                 />
               </div>
             ) : (
-              <details className="group rounded-[12px] border border-[rgba(255,255,255,0.08)] bg-[rgba(29,31,40,0.55)] px-4 py-2 text-[12px] text-[rgba(170,170,179,0.9)]">
-                <summary className="cursor-pointer select-none list-none text-[10px] font-semibold uppercase tracking-[0.22em] text-[rgba(143,245,255,0.78)] outline-none">
-                  + Attach repository (coding mode)
-                </summary>
-                <div className="mt-3">
-                  <RepositoryBindingPanel
-                    binding={activeThreadState.repoBinding}
-                    disabled={isInteractionLocked}
-                    loading={repoBindingLoading}
-                    error={repoBindingError}
-                    onBindUrl={handleBindRepositoryUrl}
-                    onBindZip={handleBindRepositoryZip}
-                    onDeleteBinding={handleDeleteRepositoryBinding}
-                    onMaterialize={handleMaterializeRepository}
-                  />
-                </div>
-              </details>
+              <div
+                id="aside-panel-coding"
+                role="tabpanel"
+                aria-labelledby="aside-tab-coding"
+                className="space-y-6"
+              >
+                {activeThreadState.repoBinding || hasCodingSignal(activeThreadState.codingSummary) ? (
+                  <>
+                    {activeThreadState.repoBinding ? (
+                      <RepositoryBindingPanel
+                        binding={activeThreadState.repoBinding}
+                        disabled={isInteractionLocked}
+                        loading={repoBindingLoading}
+                        error={repoBindingError}
+                        onBindUrl={handleBindRepositoryUrl}
+                        onBindZip={handleBindRepositoryZip}
+                        onDeleteBinding={handleDeleteRepositoryBinding}
+                        onMaterialize={handleMaterializeRepository}
+                      />
+                    ) : null}
+                    <RepoTreePanel summary={activeThreadState.codingSummary} />
+                    <VerificationStatusCard summary={activeThreadState.codingSummary} />
+                    <ExecutionPolicyCard summary={activeThreadState.codingSummary} />
+                  </>
+                ) : (
+                  <div className="rounded-[12px] border border-dashed border-[rgba(255,255,255,0.06)] bg-[rgba(29,31,40,0.3)] px-4 py-3 text-[12px] leading-6 text-[rgba(170,170,179,0.78)]">
+                    Bind a repository and send a coding request to see changed files, verification
+                    results, and the execution policy of the run here.
+                  </div>
+                )}
+              </div>
             )}
-          </form>
-        </div>
-      </section>
-
-      <ImageLightbox
-        attachment={lightboxAttachment}
-        onClose={() => setLightboxAttachment(null)}
-      />
-
-      <aside
-        ref={actionSpaceRef}
-        className="hidden w-[404px] shrink-0 border-l border-[rgba(255,255,255,0.05)] bg-[rgba(12,14,20,0.78)] px-6 py-6 backdrop-blur-xl xl:flex xl:flex-col xl:overflow-y-auto"
-      >
-        <div className="space-y-6">
-          <CodingAsideTabs
-            active={actionSpaceState.activeRightTab}
-            codingCount={
-              (activeThreadState.codingSummary?.changed_files?.length || 0)
-              + (activeThreadState.codingSummary?.verification_results?.length || 0)
-            }
-            onChange={(next) =>
-              setActionSpaceState(prev => ({ ...prev, activeRightTab: next }))
-            }
-          />
-
-          {actionSpaceState.activeRightTab === 'reasoning' ? (
-            <div
-              id="aside-panel-reasoning"
-              role="tabpanel"
-              aria-labelledby="aside-tab-reasoning"
-              className="space-y-6"
-            >
-              <AgentTimeline
-                history={streamSessionState.history}
-                currentNode={streamSessionState.currentNode}
-                loading={streamSessionState.loading}
-                historicalView={isHistoricalView}
-              />
-
-              <ReasoningSummaryPanel
-                content={actionSpaceState.reasoning}
-                entries={actionSpaceState.reasoningEntries}
-                isThinking={streamSessionState.loading}
-                historicalView={isHistoricalView}
-                fallbackSummary={liveReasoningFallback}
-              />
-
-              <SuggestedQueriesPanel
-                queries={actionSpaceState.suggestedQueries}
-                loadState={actionSpaceState.suggestedQueriesState}
-                onSelectQuery={handleSuggestedQuerySelect}
-                historicalView={isHistoricalView}
-              />
-            </div>
-          ) : (
-            <div
-              id="aside-panel-coding"
-              role="tabpanel"
-              aria-labelledby="aside-tab-coding"
-              className="space-y-6"
-            >
-              {activeThreadState.repoBinding || hasCodingSignal(activeThreadState.codingSummary) ? (
-                <>
-                  {activeThreadState.repoBinding ? (
-                    <RepositoryBindingPanel
-                      binding={activeThreadState.repoBinding}
-                      disabled={isInteractionLocked}
-                      loading={repoBindingLoading}
-                      error={repoBindingError}
-                      onBindUrl={handleBindRepositoryUrl}
-                      onBindZip={handleBindRepositoryZip}
-                      onDeleteBinding={handleDeleteRepositoryBinding}
-                      onMaterialize={handleMaterializeRepository}
-                    />
-                  ) : null}
-                  <RepoTreePanel summary={activeThreadState.codingSummary} />
-                  <VerificationStatusCard summary={activeThreadState.codingSummary} />
-                  <ExecutionPolicyCard summary={activeThreadState.codingSummary} />
-                </>
-              ) : (
-                <div className="rounded-[12px] border border-dashed border-[rgba(255,255,255,0.06)] bg-[rgba(29,31,40,0.3)] px-4 py-3 text-[12px] leading-6 text-[rgba(170,170,179,0.78)]">
-                  Bind a repository and send a coding request to see changed files, verification
-                  results, and the execution policy of the run here.
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </aside>
+          </div>
+        </aside>
       </div>
     </main>
   );
