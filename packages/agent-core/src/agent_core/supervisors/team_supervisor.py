@@ -90,6 +90,16 @@ def make_team_supervisor_node(
             shared_context=shared_context,
         )
 
+        # Surface this-turn worker history to the LLM as a system note so it
+        # never has to recompute it from the raw conversation. The LLM still
+        # makes the routing decision — this is data, not a rule (plan §4.0 P1).
+        route_history = state.get("route_history") or []
+        worker_history_note = _format_worker_history_note(
+            route_history, normalized_team=normalized_team
+        )
+        if worker_history_note:
+            system_prompt = f"{system_prompt}\n\n{worker_history_note}"
+
         decision, status = await decide_route(
             llm,
             system_prompt=system_prompt,
@@ -170,6 +180,50 @@ def _log_decision(decision: Any, goto: str, status: str) -> None:
         print(f"[TeamSupervisor] Reason: {decision.reason}", flush=True)
     if status != "accepted":
         print(f"[TeamSupervisor] Safeguard status: {status}", flush=True)
+
+
+def _format_worker_history_note(
+    route_history: list[dict[str, Any]],
+    *,
+    normalized_team: str | None,
+) -> str | None:
+    """Summarize this team's worker history so the LLM can see prior dispatches.
+
+    Returns ``None`` when there is nothing meaningful to report. The output
+    is intentionally compact so the LLM can integrate it without being
+    distracted from its system prompt rules.
+    """
+    if not normalized_team or not route_history:
+        return None
+
+    workers_called: list[str] = []
+    for entry in route_history:
+        if entry.get("layer") != "team":
+            continue
+        if entry.get("team") != normalized_team:
+            continue
+        worker = entry.get("worker")
+        if isinstance(worker, str) and worker and worker != "FINISH":
+            workers_called.append(worker)
+
+    if not workers_called:
+        return None
+
+    counts: dict[str, int] = {}
+    for worker in workers_called:
+        counts[worker] = counts.get(worker, 0) + 1
+    summary = ", ".join(
+        f"{worker} ({count} call{'s' if count > 1 else ''})"
+        for worker, count in counts.items()
+    )
+    return (
+        "# THIS-TURN WORKER HISTORY\n"
+        f"- Already dispatched in this turn: {summary}.\n"
+        "- A worker that already ran cannot be dispatched again unless the\n"
+        "  Reviewer feedback names a concrete code-level gap only that\n"
+        "  worker can fix. If the brief or analysis is already in the\n"
+        "  conversation, route to the NEXT worker in the workflow."
+    )
 
 
 __all__ = ["make_team_supervisor_node"]
