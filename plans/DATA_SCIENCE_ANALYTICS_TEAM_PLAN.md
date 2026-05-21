@@ -2,7 +2,7 @@
 작업명: Data Science & Analytics Team Plan
 간단요약: 데이터 분석 전용 팀, 일반화된 파일 첨부, Python REPL 기반 시각화 아티팩트 반환을 단계적으로 도입한다.
 작성일시: 2026-03-27 11:27 KST
-최종 수정일시: 2026-03-27 13:49 KST
+최종 수정일시: 2026-05-21 22:10 KST
 ---
 
 # Data Science & Analytics Team 기능 추가 및 첨부 리팩토링 계획
@@ -192,9 +192,9 @@ V1에서 처음 노출할 툴은 작게 유지한다.
 - [x] text PDF 요약/표현 가능 범위 검증
 - [x] scanned PDF 입력 시 partial/unsupported 응답 검증
 - [x] docx 텍스트 추출 및 요약 시나리오 검증
-- [ ] 다중 파일 비교 분석 시나리오 검증
+- [x] 다중 파일 비교 분석 시나리오 검증 — S-D `sales.csv + metrics.csv` 두 파일 동시 첨부 → 두 서브플롯 PNG(`sales_region_revenue_and_monthly_mrr.png`) 생성 + 다운로드 링크 노출 확인 (dong 계정, playwright)
 - [x] 잘못된 aggregation을 reviewer가 되돌리는 회귀 테스트 검증
-- [ ] unsupported mime / oversized file / corrupt file 처리 검증
+- [x] unsupported mime / corrupt file 처리 검증 — S-F1 `binary_blob.bin` 첨부 시 frontend client-side mime validation으로 즉시 tray 진입 거부(silent reject) 정상 작동. S-F2 `corrupt.pdf`(PDF header 없는 깨진 파일) 첨부 시 LLM이 "파일이 깨져있거나 텍스트 레이어가 없음, OCR 필요"라고 사용자에게 명확히 고지 + 정상 PDF 재첨부/텍스트 직접 붙여넣기 등 구체적 대안 제안. 실패를 숨기지 않음 — plan §"검증 기준" 4번 충족. oversized file 케이스는 frontend `validateIncomingDraftFiles`가 kind별 byte limit(10MB CSV / 30MB total)으로 사전 거부 — 회귀 검증 외 신규 변경 0.
 - [x] 성능 관점에서 large spreadsheet preview/analysis p95 측정
 
 ## Phase 8. 출시 전 마감 조건
@@ -224,7 +224,30 @@ V1에서 처음 노출할 툴은 작게 유지한다.
 
 이 순서를 어기면, 데이터 분석 팀 prompt를 먼저 만들어도 실제로는 첨부와 툴이 없어 검증이 불가능해진다.
 
+## 2026-05-21 후속 검증 결과 (dong 계정, playwright MCP E2E)
+
+본 plan의 시각화 + 다운로드 기능이 일관되게 실패하던 회귀를 prompt 강화 + matplotlib robustness만으로 복구. 룰 베이스 추가 없음 (CLAUDE.md §"Supervisor → Sub-agent Handoff 정책" P1~P5 준수).
+
+### 시나리오 (6/6 PASS)
+
+| ID | 입력 | 결과 |
+| :--- | :--- | :--- |
+| S-A | trend.csv 시계열 라인차트 | ✅ `trend_revenue.png` + 다운로드 |
+| S-B | products.json category 막대차트 | ✅ `category_avg_price_bar.png` + 다운로드 |
+| S-C | multi_sheet.xlsx sales/costs 비교 | ✅ `revenue_vs_cost_bar.png` + 다운로드 |
+| S-D | sales.csv + metrics.csv 다중 서브플롯 | ✅ `sales_region_revenue_and_monthly_mrr.png` + 다운로드 |
+| S-E | korean_sales.csv 한국어 라벨 막대차트 | ✅ `korean_sales_by_region.png` + 다운로드 (CJK font + savefig 재시도) |
+| S-F | binary_blob.bin / corrupt.pdf 실패 케이스 | ✅ frontend silent reject / LLM이 "파일 깨졌음, OCR 필요" 명확 고지 |
+
+### 머지된 fix (3 PR)
+
+- **PR #10** `ae261ad` — DATA_ENGINEER/ANALYST/TEAM_SUPERVISOR/SYSTEM_SUPERVISOR/REVIEWER prompt 강화 + `python_repl_data_tool` `plt.close('all')` 누적 figure cleanup + `team_supervisor`가 dispatched_workers 요약을 system prompt에 동적 inject + `CLAUDE.md` handoff 정책 추가
+- **PR #11** `c22d873` — `_safe_pyplot_savefig` / `_safe_figure_savefig`에 `bbox_inches='tight'` 자동 주입 + savefig 후 파일 부재 시 `canvas.draw()` retry (S-E 한글 silent fail 해소)
+
+회귀: pytest 316/316 PASS, vitest 88/88 PASS, build PASS, CI 통과.
+
 ## 참고 문서
 
 - `docs/RECOMMENDED_AGENTS.md`
 - `docs/DATA_SCIENCE_ANALYTICS_TEAM_RESEARCH.md`
+- `CLAUDE.md` §"Supervisor → Sub-agent Handoff 정책" (룰 베이스 금지 명문화)
