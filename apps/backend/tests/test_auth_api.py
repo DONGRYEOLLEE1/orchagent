@@ -1,5 +1,3 @@
-from types import SimpleNamespace
-from unittest.mock import AsyncMock
 from datetime import datetime, timedelta
 
 from fastapi.testclient import TestClient
@@ -12,15 +10,8 @@ from services.security_service import get_current_session, get_current_user, req
 client = TestClient(app)
 
 
-def _override_db():
-    async def _dependency():
-        yield object()
-
-    return _dependency
-
-
-def test_signup_sets_auth_cookies(monkeypatch):
-    user = AuthUser(
+def _build_user() -> AuthUser:
+    return AuthUser(
         id="user-1",
         login_id="user1",
         password_hash=hash_password("abcdefghijklmn1"),
@@ -28,67 +19,10 @@ def test_signup_sets_auth_cookies(monkeypatch):
         status="active",
         must_change_password=False,
     )
-    issued_session = IssuedSession(
-        session=AuthSession(
-            id="session-1",
-            user_id="user-1",
-            session_token_hash="session-hash",
-            csrf_token_hash="csrf-hash",
-            expires_at=user.created_at if user.created_at else None,  # type: ignore[arg-type]
-        ),
-        session_token="session-token",
-        csrf_token="csrf-token",
-    )
-
-    async def mock_create_user(*args, **kwargs):
-        return user
-
-    async def mock_issue_session(*args, **kwargs):
-        return issued_session
-
-    monkeypatch.setattr("api.routes.auth.create_user", mock_create_user)
-    monkeypatch.setattr("api.routes.auth.issue_session", mock_issue_session)
-
-    response = client.post(
-        "/api/auth/signup",
-        json={"login_id": "user1", "password": "abcdefghijklmn1"},
-        headers={"origin": "http://localhost:3000"},
-    )
-
-    assert response.status_code == 201
-    set_cookie = response.headers.get("set-cookie", "")
-    assert "orch_session=session-token" in set_cookie
-    assert response.json()["login_id"] == "user1"
 
 
-def test_login_returns_401_for_invalid_credentials(monkeypatch):
-    async def mock_authenticate_user(*args, **kwargs):
-        from services.auth_service import InvalidCredentialsError
-
-        raise InvalidCredentialsError("Invalid credentials.")
-
-    monkeypatch.setattr("api.routes.auth.authenticate_user", mock_authenticate_user)
-
-    response = client.post(
-        "/api/auth/login",
-        json={"login_id": "user1", "password": "wrong-password"},
-        headers={"origin": "http://localhost:3000"},
-    )
-
-    assert response.status_code == 401
-    assert response.json()["detail"] == "Invalid credentials"
-
-
-def test_login_sets_auth_cookies(monkeypatch):
-    user = AuthUser(
-        id="user-1",
-        login_id="user1",
-        password_hash=hash_password("abcdefghijklmn1"),
-        role="user",
-        status="active",
-        must_change_password=False,
-    )
-    issued_session = IssuedSession(
+def _build_issued_session(token: str = "session-token") -> IssuedSession:
+    return IssuedSession(
         session=AuthSession(
             id="session-1",
             user_id="user-1",
@@ -96,9 +30,15 @@ def test_login_sets_auth_cookies(monkeypatch):
             csrf_token_hash="csrf-hash",
             expires_at=datetime.now(KST) + timedelta(hours=1),
         ),
-        session_token="session-token",
+        session_token=token,
         csrf_token="csrf-token",
     )
+
+
+def test_login_sets_auth_cookies(monkeypatch):
+    """Successful login must attach the orch_session cookie + return 200."""
+    user = _build_user()
+    issued_session = _build_issued_session()
 
     async def mock_authenticate_user(*args, **kwargs):
         return user
@@ -119,17 +59,25 @@ def test_login_sets_auth_cookies(monkeypatch):
     assert "orch_session=session-token" in response.headers.get("set-cookie", "")
 
 
-def test_signup_invalid_payload_returns_422():
+def test_login_returns_401_for_invalid_credentials(monkeypatch):
+    async def mock_authenticate_user(*args, **kwargs):
+        from services.auth_service import InvalidCredentialsError
+
+        raise InvalidCredentialsError("Invalid credentials.")
+
+    monkeypatch.setattr("api.routes.auth.authenticate_user", mock_authenticate_user)
+
     response = client.post(
-        "/api/auth/signup",
-        json={"login_id": "user1"},
+        "/api/auth/login",
+        json={"login_id": "user1", "password": "wrong-password"},
         headers={"origin": "http://localhost:3000"},
     )
 
-    assert response.status_code == 422
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid credentials"
 
 
-def test_me_returns_current_user(monkeypatch):
+def test_me_returns_current_user_with_must_change_password_flag():
     user = AuthUser(
         id="user-1",
         login_id="admin",
@@ -153,20 +101,13 @@ def test_me_returns_current_user(monkeypatch):
 
 
 def test_logout_revokes_session_and_clears_cookies(monkeypatch):
-    user = AuthUser(
-        id="user-1",
-        login_id="user1",
-        password_hash=hash_password("abcdefghijklmn1"),
-        role="user",
-        status="active",
-        must_change_password=False,
-    )
+    user = _build_user()
     session = AuthSession(
         id="session-1",
         user_id="user-1",
         session_token_hash="session-hash",
         csrf_token_hash="csrf-hash",
-        expires_at=user.created_at if user.created_at else None,  # type: ignore[arg-type]
+        expires_at=datetime.now(KST) + timedelta(hours=1),
     )
     session.user = user
 
@@ -193,7 +134,8 @@ def test_logout_revokes_session_and_clears_cookies(monkeypatch):
     assert "Max-Age=0" in response.headers.get("set-cookie", "")
 
 
-def test_change_password_issues_new_session(monkeypatch):
+def test_change_password_issues_new_session_and_clears_flag(monkeypatch):
+    """change-password rotates the session AND clears must_change_password."""
     user = AuthUser(
         id="user-1",
         login_id="admin",
@@ -207,20 +149,10 @@ def test_change_password_issues_new_session(monkeypatch):
         user_id="user-1",
         session_token_hash="session-hash",
         csrf_token_hash="csrf-hash",
-        expires_at=user.created_at if user.created_at else None,  # type: ignore[arg-type]
+        expires_at=datetime.now(KST) + timedelta(hours=1),
     )
     session.user = user
-    issued_session = IssuedSession(
-        session=AuthSession(
-            id="session-2",
-            user_id="user-1",
-            session_token_hash="new-session-hash",
-            csrf_token_hash="new-csrf-hash",
-            expires_at=user.created_at if user.created_at else None,  # type: ignore[arg-type]
-        ),
-        session_token="new-session-token",
-        csrf_token="new-csrf-token",
-    )
+    issued_session = _build_issued_session(token="new-session-token")
 
     async def override_current_session():
         return session

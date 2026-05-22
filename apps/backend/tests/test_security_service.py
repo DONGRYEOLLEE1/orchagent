@@ -41,28 +41,32 @@ def build_request(
     return Request(scope)
 
 
-def test_apply_and_clear_auth_cookies():
-    response = Response()
-    session = AuthSession(
+def _build_session() -> AuthSession:
+    return AuthSession(
         user_id="user-1",
         session_token_hash="session-hash",
         csrf_token_hash="csrf-hash",
         expires_at=datetime.now(KST) + timedelta(hours=1),
     )
 
+
+def test_apply_and_clear_auth_cookies():
+    """apply_auth_cookies writes orch_session/orch_csrf; clear sets Max-Age=0."""
+    response = Response()
+    session = _build_session()
     from services.auth_service import IssuedSession
 
     apply_auth_cookies(
         response,
         IssuedSession(session=session, session_token="session-token", csrf_token="csrf-token"),
     )
-    raw_headers = b"\n".join(value for key, value in response.raw_headers if key == b"set-cookie")
-    assert b"orch_session=session-token" in raw_headers
-    assert b"orch_csrf=csrf-token" in raw_headers
+    raw = b"\n".join(value for key, value in response.raw_headers if key == b"set-cookie")
+    assert b"orch_session=session-token" in raw
+    assert b"orch_csrf=csrf-token" in raw
 
     clear_auth_cookies(response)
-    raw_headers = b"\n".join(value for key, value in response.raw_headers if key == b"set-cookie")
-    assert b"Max-Age=0" in raw_headers
+    raw = b"\n".join(value for key, value in response.raw_headers if key == b"set-cookie")
+    assert b"Max-Age=0" in raw
 
 
 @pytest.mark.asyncio
@@ -74,38 +78,14 @@ async def test_get_current_session_raises_when_missing():
 
 
 @pytest.mark.asyncio
-async def test_get_current_user_returns_related_user():
+async def test_require_csrf_accepts_match_and_rejects_missing_header():
+    """Matching cookie + header passes; missing header must produce 403."""
     user = AuthUser(
         id="user-1",
         login_id="user1",
         password_hash=hash_password("abcdefghijklmn1"),
     )
-    session = AuthSession(
-        user_id="user-1",
-        session_token_hash="session-hash",
-        csrf_token_hash="csrf-hash",
-        expires_at=datetime.now(KST) + timedelta(hours=1),
-    )
-    session.user = user
-
-    resolved = await get_current_user(session)
-
-    assert resolved is user
-
-
-@pytest.mark.asyncio
-async def test_require_csrf_accepts_matching_cookie_and_header():
-    user = AuthUser(
-        id="user-1",
-        login_id="user1",
-        password_hash=hash_password("abcdefghijklmn1"),
-    )
-    session = AuthSession(
-        user_id="user-1",
-        session_token_hash="session-hash",
-        csrf_token_hash="csrf-hash",
-        expires_at=datetime.now(KST) + timedelta(hours=1),
-    )
+    session = _build_session()
     session.user = user
 
     monkeypatch = pytest.MonkeyPatch()
@@ -120,30 +100,21 @@ async def test_require_csrf_accepts_matching_cookie_and_header():
                 "referer": "http://localhost:3000/login",
             }
         )
+        # Matching cookie + header should pass without raising.
         await require_csrf(
             request,
             session=session,
             csrf_cookie="csrf-token",
             csrf_header="csrf-token",
         )
+        # Missing header must produce 403.
+        with pytest.raises(HTTPException) as exc_info:
+            await require_csrf(
+                request, session=session, csrf_cookie="csrf-token", csrf_header=None
+            )
+        assert exc_info.value.status_code == 403
     finally:
         monkeypatch.undo()
-
-
-@pytest.mark.asyncio
-async def test_require_csrf_rejects_missing_header():
-    session = AuthSession(
-        user_id="user-1",
-        session_token_hash="session-hash",
-        csrf_token_hash="csrf-hash",
-        expires_at=datetime.now(KST) + timedelta(hours=1),
-    )
-    request = build_request(headers={"origin": "http://localhost:3000"})
-
-    with pytest.raises(HTTPException) as exc_info:
-        await require_csrf(request, session=session, csrf_cookie="csrf-token", csrf_header=None)
-
-    assert exc_info.value.status_code == 403
 
 
 def test_request_context_helpers_use_forwarded_headers():

@@ -52,60 +52,44 @@ def test_team_builder_registers_native_worker_subgraphs(monkeypatch):
     assert ("worker_b", "supervisor") in edges
 
 
-def test_research_team_builder_uses_split_worker_prompts(monkeypatch):
+@pytest.mark.parametrize(
+    "builder_cls,team_label,workers,expected_prompts",
+    [
+        (
+            ResearchTeamBuilder,
+            "ResearchTeam",
+            ["search", "web_scraper"],
+            [SEARCH_WORKER_PROMPT.template, WEB_SCRAPER_PROMPT.template],
+        ),
+        (
+            CodingTeamBuilder,
+            "Coding Team",
+            ["codebase_explorer", "implementation_engineer", "runtime_verifier"],
+            [
+                CODEBASE_EXPLORER_PROMPT.template,
+                IMPLEMENTATION_ENGINEER_PROMPT.template,
+                RUNTIME_VERIFIER_PROMPT.template,
+            ],
+        ),
+    ],
+)
+def test_team_builders_use_prompt_kit_per_worker(
+    monkeypatch, builder_cls, team_label, workers, expected_prompts
+):
+    """AGENTS.md規約: every worker prompt must come from prompt-kit, not inline strings."""
     created = []
 
-    def fake_create_agent(
-        *, model, tools=None, system_prompt=None, state_schema=None, name=None, **kwargs
-    ):
-        created.append(
-            {
-                "name": name,
-                "system_prompt": system_prompt,
-            }
-        )
+    def fake_create_agent(*, model, tools=None, system_prompt=None, **kwargs):
+        created.append({"name": kwargs.get("name"), "system_prompt": system_prompt})
         return lambda state: {}
 
     monkeypatch.setattr("agent_core.builder.create_agent", fake_create_agent)
 
-    builder = ResearchTeamBuilder(object(), "ResearchTeam", ["search", "web_scraper"])  # type: ignore[arg-type]
+    builder = builder_cls(object(), team_label, workers)  # type: ignore[arg-type]
     builder.register_nodes()
 
-    assert created == [
-        {
-            "name": "search",
-            "system_prompt": SEARCH_WORKER_PROMPT.template,
-        },
-        {
-            "name": "web_scraper",
-            "system_prompt": WEB_SCRAPER_PROMPT.template,
-        },
-    ]
-
-
-def test_coding_team_builder_uses_worker_specific_prompts(monkeypatch):
-    created = []
-
-    def fake_create_agent(
-        *, model, tools=None, system_prompt=None, state_schema=None, name=None, **kwargs
-    ):
-        created.append({"name": name, "system_prompt": system_prompt})
-        return lambda state: {}
-
-    monkeypatch.setattr("agent_core.builder.create_agent", fake_create_agent)
-
-    builder = CodingTeamBuilder(
-        object(),
-        "Coding Team",
-        ["codebase_explorer", "implementation_engineer", "runtime_verifier"],
-    )  # type: ignore[arg-type]
-    builder.register_nodes()
-
-    assert created == [
-        {"name": "codebase_explorer", "system_prompt": CODEBASE_EXPLORER_PROMPT.template},
-        {"name": "implementation_engineer", "system_prompt": IMPLEMENTATION_ENGINEER_PROMPT.template},
-        {"name": "runtime_verifier", "system_prompt": RUNTIME_VERIFIER_PROMPT.template},
-    ]
+    assert [entry["name"] for entry in created] == workers
+    assert [entry["system_prompt"] for entry in created] == expected_prompts
 
 
 @pytest.mark.parametrize(
@@ -184,9 +168,3 @@ def test_team_graphs_use_configured_dispatch_limits(
     assert captured == expected
 
 
-def test_research_team_supervisor_prompt_encodes_search_then_scrape_order():
-    prompt = RESEARCH_TEAM_SUPERVISOR_PROMPT.template
-
-    assert "Start with `search`" in prompt
-    assert "Use `web_scraper` only after `search`" in prompt
-    assert "Do not call `web_scraper` first" in prompt

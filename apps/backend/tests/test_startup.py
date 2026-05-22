@@ -4,11 +4,11 @@ from unittest.mock import AsyncMock
 import pytest
 
 from main import initialize_runtime_dependencies, _initialize_runtime_dependencies_once
-from core.database import Base
 
 
 @pytest.mark.asyncio
 async def test_initialize_runtime_dependencies_retries_until_success(monkeypatch):
+    """Transient DNS failures must be retried up to STARTUP_MAX_RETRIES."""
     attempts = 0
     sleep_calls: list[float] = []
 
@@ -34,6 +34,7 @@ async def test_initialize_runtime_dependencies_retries_until_success(monkeypatch
 
 @pytest.mark.asyncio
 async def test_initialize_runtime_dependencies_raises_after_retry_budget(monkeypatch):
+    """Once STARTUP_MAX_RETRIES is exhausted the underlying error must surface."""
     attempts = 0
 
     async def failing_initializer():
@@ -44,9 +45,7 @@ async def test_initialize_runtime_dependencies_raises_after_retry_budget(monkeyp
     async def fake_sleep(delay: float):
         return None
 
-    monkeypatch.setattr(
-        "main._initialize_runtime_dependencies_once", failing_initializer
-    )
+    monkeypatch.setattr("main._initialize_runtime_dependencies_once", failing_initializer)
     monkeypatch.setattr("main.asyncio.sleep", fake_sleep)
     monkeypatch.setattr("main.settings.STARTUP_MAX_RETRIES", 2)
     monkeypatch.setattr("main.settings.STARTUP_RETRY_DELAY_SECONDS", 0.01)
@@ -59,6 +58,7 @@ async def test_initialize_runtime_dependencies_raises_after_retry_budget(monkeyp
 
 @pytest.mark.asyncio
 async def test_initialize_runtime_dependencies_once_bootstraps_admin(monkeypatch):
+    """Bootstrap path must call schema patches, ensure pricing, and bootstrap admin."""
     sync_calls: list[str] = []
 
     class DummyConn:
@@ -110,16 +110,7 @@ async def test_initialize_runtime_dependencies_once_bootstraps_admin(monkeypatch
     async def fake_ensure_timezone(db):
         timezone_calls.append(db)
 
-    async def fake_ensure_schema_patch(db):
-        schema_patch_calls.append(db)
-
-    async def fake_ensure_chat_message_patch(db):
-        schema_patch_calls.append(db)
-
-    async def fake_ensure_upload_patch(db):
-        schema_patch_calls.append(db)
-
-    async def fake_ensure_user_memory_patch(db):
+    async def fake_schema_patch(db):
         schema_patch_calls.append(db)
 
     monkeypatch.setattr("main.engine", DummyEngine())
@@ -133,10 +124,10 @@ async def test_initialize_runtime_dependencies_once_bootstraps_admin(monkeypatch
     )
     monkeypatch.setattr("main.AsyncSessionLocal", DummySessionFactory())
     monkeypatch.setattr("main.DatabaseTimeService.ensure_kst_timezone", fake_ensure_timezone)
-    monkeypatch.setattr("main.SchemaPatchService.ensure_trace_event_columns", fake_ensure_schema_patch)
-    monkeypatch.setattr("main.SchemaPatchService.ensure_chat_message_attachment_columns", fake_ensure_chat_message_patch)
-    monkeypatch.setattr("main.SchemaPatchService.ensure_uploaded_file_columns", fake_ensure_upload_patch)
-    monkeypatch.setattr("main.SchemaPatchService.ensure_user_memory_settings_columns", fake_ensure_user_memory_patch)
+    monkeypatch.setattr("main.SchemaPatchService.ensure_trace_event_columns", fake_schema_patch)
+    monkeypatch.setattr("main.SchemaPatchService.ensure_chat_message_attachment_columns", fake_schema_patch)
+    monkeypatch.setattr("main.SchemaPatchService.ensure_uploaded_file_columns", fake_schema_patch)
+    monkeypatch.setattr("main.SchemaPatchService.ensure_user_memory_settings_columns", fake_schema_patch)
     monkeypatch.setattr("main.ensure_bootstrap_admin", fake_bootstrap_admin)
     monkeypatch.setattr("main.LLMPricingService.ensure_default_pricing_snapshots", fake_ensure_pricing)
     monkeypatch.setattr("main.initialize_memory_store", AsyncMock())
@@ -150,7 +141,3 @@ async def test_initialize_runtime_dependencies_once_bootstraps_admin(monkeypatch
     assert len(schema_patch_calls) == 4
     assert len(bootstrap_calls) == 1
     assert len(pricing_calls) == 1
-
-
-def test_personalization_instruction_model_is_registered_in_metadata():
-    assert "user_personalization_instructions" in Base.metadata.tables

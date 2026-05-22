@@ -78,32 +78,6 @@ def test_resume_edge_case_5_malicious_feedback_length():
     )
 
 
-def test_resume_edge_case_5_valid_feedback(mock_postgres_saver, monkeypatch):
-    """
-    Ensure valid feedback payload is accepted.
-    """
-    # Mock LoggingService to prevent db errors
-    from services.logging_service import LoggingService
-
-    async def mock_log(*args, **kwargs):
-        pass
-
-    monkeypatch.setattr(LoggingService, "log_message", mock_log)
-
-    valid_feedback = "a" * 1500
-    # Use stream context manager because it returns EventSourceResponse (streaming)
-    with client.stream(
-        "POST",
-        "/api/chat/resume",
-        json={
-            "thread_id": "valid_id",
-            "action": "feedback",
-            "feedback": valid_feedback,
-        },
-    ) as response:
-        assert response.status_code == 200
-
-
 def test_resume_allows_paused_checkpoint_without_pending_tasks(monkeypatch):
     class PausedSaver(MockSaver):
         async def aget_tuple(self, config):

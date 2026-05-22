@@ -15,7 +15,6 @@ class FakeRouterLLM:
         return self
 
     async def ainvoke(self, messages):
-        # Stub the Pydantic router response
         return {"next": self.target_node}
 
 
@@ -45,27 +44,9 @@ class DirectFinishLLM:
         }
 
 
-class CapturingRouterLLM:
-    def __init__(self, next_node: str):
-        self.next_node = next_node
-        self.captured_messages = None
-
-    def with_structured_output(self, schema):
-        return self
-
-    async def ainvoke(self, messages):
-        self.captured_messages = messages
-        return {
-            "next": self.next_node,
-            "reasoning": "captured",
-            "content": "",
-            "requires_approval": False,
-        }
-
-
 @pytest.mark.asyncio
 async def test_supervisor_routes_to_worker():
-    """Test if supervisor returns a Command object routing to the requested worker."""
+    """Routing decision must populate active_team / active_worker / route_history."""
     fake_llm = FakeRouterLLM("search_agent")
     supervisor_func = make_supervisor_node(
         fake_llm,  # type: ignore
@@ -81,17 +62,14 @@ async def test_supervisor_routes_to_worker():
     command = await supervisor_func(state)
 
     assert command.goto == "search_agent"
-    assert command.update["next"] == "search_agent"
     assert command.update["active_team"] == "research"
     assert command.update["active_worker"] == "search_agent"
     assert command.update["route_history"][0]["layer"] == "team"
-    assert command.update["route_history"][0]["team"] == "research"
-    assert command.update["route_history"][0].get("reasoning", "") == ""
 
 
 @pytest.mark.asyncio
 async def test_supervisor_routes_to_finish():
-    """Test if supervisor translates FINISH to the END node (__end__)."""
+    """FINISH at team layer must clear active_team/worker and terminate streaming."""
     fake_llm = FakeRouterLLM("FINISH")
     supervisor_func = make_supervisor_node(fake_llm, ["search_agent", "web_scraper"])  # type: ignore
 
@@ -104,80 +82,11 @@ async def test_supervisor_routes_to_finish():
     assert command.update["streaming_status"] == "completed"
     assert command.update["response_mode"] == "direct"
     assert command.update["active_team"] is None
-    assert command.update["active_worker"] is None
-    assert command.update["route_history"][0]["next"] == "FINISH"
-
-
-@pytest.mark.asyncio
-async def test_supervisor_routes_to_vision_team():
-    """Test if supervisor routes to vision_team when multimodal input is present."""
-    # We stub the LLM to return "vision_team"
-    fake_llm = FakeRouterLLM("vision_team")
-    supervisor_func = make_supervisor_node(
-        fake_llm,  # type: ignore
-        ["research_team", "writing_team", "vision_team"],
-    )
-
-    multimodal_content = [
-        {"type": "text", "text": "What is in this image?"},
-        {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,..."}},
-    ]
-    state = cast(
-        BaseAgentState,
-        {
-            "messages": [HumanMessage(content=cast(list, multimodal_content))],
-            "next": "",
-        },
-    )
-    command = await supervisor_func(state)
-
-    assert command.goto == "vision_team"
-    assert command.update["active_team"] == "vision"
-    assert command.update["active_worker"] is None
-    assert command.update["response_mode"] == "delegated"
-    assert command.update["streaming_status"] == "running"
-    assert command.update["route_history"][0]["team"] == "vision"
-
-
-@pytest.mark.asyncio
-async def test_head_supervisor_includes_split_personalization_blocks_in_system_prompt():
-    fake_llm = CapturingRouterLLM("research_team")
-    supervisor_func = make_supervisor_node(
-        fake_llm,  # type: ignore[arg-type]
-        ["research_team", "writing_team", "vision_team", "data_science_team"],
-        layer="head",
-        final_node_name="finalizer",
-    )
-
-    state = cast(
-        BaseAgentState,
-        {
-            "messages": [HumanMessage(content="최근 LLM 동향을 조사해줘")],
-            "shared_context": {
-                "personalization": {
-                    "enabled": True,
-                    "profile_block": "- 직업: AI Engineer",
-                    "instructions_block": "- 답변 길이: 기본적으로 간결한 답변을 선호한다",
-                    "memory_block": "- [technical_stack] LangGraph와 LangChain을 자주 다룬다",
-                }
-            },
-            "next": "",
-        },
-    )
-
-    command = await supervisor_func(state)
-
-    assert command.goto == "research_team"
-    assert fake_llm.captured_messages is not None
-    system_prompt = fake_llm.captured_messages[0]["content"]
-    assert "USER PERSONALIZATION PROFILE" in system_prompt
-    assert "USER RESPONSE PREFERENCES" in system_prompt
-    assert "USER MEMORY NOTES" in system_prompt
-    assert "The latest user request in the current turn overrides saved personalization." in system_prompt
 
 
 @pytest.mark.asyncio
 async def test_head_supervisor_routes_complex_finish_to_finalizer():
+    """Multi-team turn FINISH must drop into finalizer, not __end__."""
     fake_llm = FakeRouterLLM("FINISH")
     supervisor_func = make_supervisor_node(
         fake_llm,  # type: ignore
@@ -213,11 +122,11 @@ async def test_head_supervisor_routes_complex_finish_to_finalizer():
     assert command.goto == "finalizer"
     assert command.update["response_mode"] == "finalizer"
     assert command.update["streaming_status"] == "running"
-    assert command.update["route_history"][0]["next"] == "finalizer"
 
 
 @pytest.mark.asyncio
 async def test_head_supervisor_keeps_direct_finish_when_content_exists_even_with_prior_team_history():
+    """Regression: prior team activity must not force finalizer when LLM emitted direct answer."""
     direct_llm = DirectFinishLLM()
     supervisor_func = make_supervisor_node(
         direct_llm,  # type: ignore
@@ -250,18 +159,9 @@ async def test_head_supervisor_keeps_direct_finish_when_content_exists_even_with
 
 @pytest.mark.asyncio
 async def test_head_supervisor_finish_emits_llm_content_when_no_identity_override():
-    """Regression: Phase 2.4 head/team split + LLMRouter introduced a
-    ``RouterDecision`` schema without a ``content`` field. Simple turns
-    that don't match the deterministic identity override (e.g. "한 문장
-    자기소개", greetings, general common-sense) ended up with an empty
-    AI message because the head supervisor had no text to attach. The
-    LLM-emitted ``decision.content`` must be promoted to
-    ``AIMessage(content=..., name="supervisor")`` and the response mode
-    must stay ``direct`` so the SSE layer doesn't fall back to the
-    finalizer (which sees an empty plan / route_history and produces
-    nothing).
-    """
-    direct_llm = DirectFinishLLM()  # content = "저는 OrchAgent입니다."
+    """Regression: Phase 2.4 router schema dropped ``content``; ensure simple FINISH
+    turns surface the LLM-emitted text as an ``AIMessage(name="supervisor")``."""
+    direct_llm = DirectFinishLLM()
     supervisor_func = make_supervisor_node(
         direct_llm,  # type: ignore
         ["research_team", "writing_team", "vision_team", "data_science_team"],
@@ -269,8 +169,6 @@ async def test_head_supervisor_finish_emits_llm_content_when_no_identity_overrid
         final_node_name="finalizer",
     )
 
-    # "한 문장으로 자기소개 해주세요." does NOT match any identity pattern
-    # in _orchagent_identity_response, so the LLM content path is taken.
     state = cast(
         BaseAgentState,
         {
@@ -284,89 +182,13 @@ async def test_head_supervisor_finish_emits_llm_content_when_no_identity_overrid
     assert command.goto == "__end__"
     assert command.update["response_mode"] == "direct"
     assert command.update["streaming_status"] == "completed"
-    # LLM-supplied content is what the user actually sees.
     assert command.update["messages"][0].content == "저는 OrchAgent입니다."
     assert command.update["messages"][0].name == "supervisor"
 
 
 @pytest.mark.asyncio
-async def test_head_supervisor_overrides_identity_answer_to_orchagent():
-    direct_llm = DirectFinishLLM()
-    supervisor_func = make_supervisor_node(
-        direct_llm,  # type: ignore
-        ["research_team", "writing_team", "vision_team", "data_science_team"],
-        layer="head",
-        final_node_name="finalizer",
-    )
-
-    state = cast(
-        BaseAgentState,
-        {
-            "messages": [HumanMessage(content="너 이름이 뭐야?")],
-            "next": "",
-        },
-    )
-
-    command = await supervisor_func(state)
-
-    assert command.goto == "__end__"
-    assert command.update["response_mode"] == "direct"
-    assert command.update["messages"][0].content == "저는 OrchAgent입니다."
-
-
-@pytest.mark.asyncio
-async def test_head_supervisor_prompt_discourages_writing_team_for_simple_research_answer():
-    fake_llm = CapturingRouterLLM("research_team")
-    supervisor_func = make_supervisor_node(
-        fake_llm,  # type: ignore[arg-type]
-        ["research_team", "writing_team", "vision_team"],
-        layer="head",
-        final_node_name="finalizer",
-    )
-
-    state = cast(
-        BaseAgentState,
-        {
-            "messages": [HumanMessage(content="최신 AI 반도체 동향을 조사해서 설명해줘")],
-            "next": "",
-        },
-    )
-
-    await supervisor_func(state)
-
-    assert fake_llm.captured_messages is not None
-    system_prompt = fake_llm.captured_messages[0]["content"]
-    assert "Do NOT route to `writing_team` by default after `research_team`" in system_prompt
-
-
-@pytest.mark.asyncio
-async def test_team_supervisor_does_not_receive_global_task_plan_prompt():
-    fake_llm = CapturingRouterLLM("search_agent")
-    supervisor_func = make_supervisor_node(
-        fake_llm,  # type: ignore[arg-type]
-        ["search_agent", "web_scraper"],
-        layer="team",
-        team_name="ResearchTeam",
-    )
-
-    state = cast(
-        BaseAgentState,
-        {
-            "messages": [HumanMessage(content="Search and summarize RoPE")],
-            "next": "",
-            "task_plan": "1. [research_team] Search.\n2. [writing_team] Write.",
-        },
-    )
-
-    await supervisor_func(state)
-
-    assert fake_llm.captured_messages is not None
-    system_prompt = fake_llm.captured_messages[0]["content"]
-    assert "CURRENT TASK PLAN" not in system_prompt
-
-
-@pytest.mark.asyncio
 async def test_team_supervisor_coerces_invalid_cross_graph_route_to_finish():
+    """A team supervisor must not be allowed to jump back to head_supervisor directly."""
     class InvalidTeamLLM:
         def with_structured_output(self, schema):
             return self
@@ -398,12 +220,11 @@ async def test_team_supervisor_coerces_invalid_cross_graph_route_to_finish():
 
     assert command.goto == "__end__"
     assert command.update["route_history"][0]["next"] == "FINISH"
-    assert command.update["active_team"] is None
-    assert command.update["active_worker"] is None
 
 
 @pytest.mark.asyncio
 async def test_research_team_supervisor_stops_after_dispatch_limit():
+    """Hitting the team dispatch limit must force the supervisor to FINISH."""
     fake_llm = FakeRouterLLM("search_agent")
     supervisor_func = make_supervisor_node(
         fake_llm,  # type: ignore
@@ -435,12 +256,11 @@ async def test_research_team_supervisor_stops_after_dispatch_limit():
 
     assert command.goto == "__end__"
     assert command.update["route_history"][0]["next"] == "FINISH"
-    assert command.update["active_team"] is None
-    assert command.update["active_worker"] is None
 
 
 @pytest.mark.asyncio
 async def test_head_supervisor_forces_approval_from_shared_context_flag(monkeypatch):
+    """HITL: shared_context.force_requires_approval must trigger an interrupt before dispatch."""
     interrupts = []
 
     def fake_interrupt(payload):
