@@ -2,7 +2,7 @@
 
 Phase 2.6 of the codebase-wide refactor. Plan §4.0 P3 says the supervisor
 should never **override** the LLM's routing decision; it can only **block**
-or **re-request** it. These helpers implement exactly that policy.
+or **re-request** it. These four helpers implement exactly that policy.
 
 All functions are intentionally pure:
 
@@ -137,39 +137,10 @@ def fallback_decision_on_parse_failure(
     )
 
 
-def reject_coding_team_without_repo_binding(
-    decision: RouterDecision,
-    *,
-    repo_bound: bool,
-) -> SafeguardOutcome:
-    """Force FINISH when the LLM picks ``coding_team`` without a bound repo.
-
-    Coding workers require a bound repository to read/write files. When the
-    router LLM selects ``coding_team`` for a thread that has no repository
-    binding we cannot proceed — block and force FINISH so the head supervisor
-    answers directly instead of dispatching a team that will fail.
-
-    This is a pure P3 safeguard: it never changes a *valid* LLM decision; it
-    only blocks one that violates a hard system precondition.
-    """
-    if decision.next != "coding_team" or repo_bound:
-        return SafeguardOutcome(decision=decision)
-    return SafeguardOutcome(
-        decision=RouterDecision(
-            next="FINISH",
-            reason="safeguard: coding_team requires a bound repository.",
-            request_review=False,
-            team_finished=True,
-        ),
-        status="fallback_finish",
-    )
-
-
 __all__ = [
     "SafeguardOutcome",
     "enforce_dispatch_limit",
     "enforce_team_redirect_limit",
     "fallback_decision_on_parse_failure",
-    "reject_coding_team_without_repo_binding",
     "reject_invalid_goto",
 ]
