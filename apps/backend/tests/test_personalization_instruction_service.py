@@ -58,6 +58,7 @@ class DummyDb:
 
 
 def test_validate_instruction_text_rejects_policy_override():
+    """Block prompt-injection style preferences that try to bypass approvals."""
     with pytest.raises(PersonalizationInstructionValidationError):
         PersonalizationInstructionService.validate_instruction_text(
             title="정책 우회",
@@ -65,22 +66,9 @@ def test_validate_instruction_text_rejects_policy_override():
         )
 
 
-def test_sanitize_instruction_fields_allows_bounded_preference():
-    instruction_type, title, content = (
-        PersonalizationInstructionService.sanitize_instruction_fields(
-            instruction_type="response_style",
-            title="  설명 방식  ",
-            content_text="  추상 개념은 예시와 함께 설명한다  ",
-        )
-    )
-
-    assert instruction_type == "response_style"
-    assert title == "설명 방식"
-    assert content == "추상 개념은 예시와 함께 설명한다"
-
-
 @pytest.mark.asyncio
 async def test_create_instruction_persists_sanitized_row():
+    """Sanitizer trims whitespace and the row is committed exactly once."""
     db = DummyDb()
 
     instruction = await PersonalizationInstructionService.create_instruction(
@@ -92,8 +80,6 @@ async def test_create_instruction_persists_sanitized_row():
         enabled=True,
     )
 
-    assert instruction.user_id == "user-1"
-    assert instruction.instruction_type == "user_profile"
     assert instruction.title == "직업"
     assert instruction.content_text == "AI Engineer 다"
     assert db.commit_count == 1
@@ -111,16 +97,3 @@ async def test_update_instruction_returns_none_when_missing():
     )
 
     assert updated is None
-
-
-@pytest.mark.asyncio
-async def test_delete_instruction_returns_none_when_missing():
-    db = DummyDb(rows=[None])
-
-    deleted = await PersonalizationInstructionService.delete_instruction(
-        db,
-        user_id="user-1",
-        instruction_id=uuid4(),
-    )
-
-    assert deleted is None

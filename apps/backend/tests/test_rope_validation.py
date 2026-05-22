@@ -263,14 +263,6 @@ async def test_rope_algorithm_query_simulation(monkeypatch):
     ) as response:
         payloads = _sse_payloads(response)
 
-    # Debug print
-    for p in payloads:
-        print(
-            f"DEBUG: {p.get('event_type')} - {p.get('content') or p.get('status') or p.get('target') or p.get('display_name')}"
-        )
-        if p.get("event_type") == "error":
-            print(f"ERROR MESSAGE: {p.get('message')}")
-
     # 1. Check Tool Count
     tool_starts = [p for p in payloads if p["event_type"] == "tool_start"]
     tool_ends = [p for p in payloads if p["event_type"] == "tool_end"]

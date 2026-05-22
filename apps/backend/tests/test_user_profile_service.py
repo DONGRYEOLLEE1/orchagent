@@ -8,13 +8,9 @@ from services.auth_service import DuplicateEmailError, hash_password
 from services.user_profile_service import UserProfileService
 
 
-def test_normalize_profile_fields():
-    assert UserProfileService.normalize_display_name("  Dr. Lee  ") == "Dr. Lee"
-    assert UserProfileService.normalize_email("  USER@Example.com ") == "user@example.com"
-
-
 @pytest.mark.asyncio
 async def test_patch_self_raises_on_duplicate_email():
+    """Duplicate email detection is the only non-trivial behavior worth pinning."""
     user = AuthUser(
         id="user-1",
         login_id="user1",

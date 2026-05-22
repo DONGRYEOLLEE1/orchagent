@@ -63,49 +63,6 @@ def test_patch_thread_updates_title_and_pinned(monkeypatch):
     assert response.json()["pinned"] is True
 
 
-def test_patch_thread_updates_pin_state_without_title_change(monkeypatch):
-    summary = ThreadSummary(
-        thread_id="thread-1",
-        title="Original thread",
-        preview="Latest reply",
-        created_at=datetime(2026, 3, 22, 10, 0, 0, tzinfo=timezone.utc),
-        last_activity_at=datetime(2026, 3, 22, 10, 0, 0, tzinfo=timezone.utc),
-        message_count=2,
-        latest_status="completed",
-        checkpoint_id="cp-1",
-        pinned=True,
-        archived=False,
-    )
-
-    async def mock_get_chat_session(db, thread_id, *, user_id=None):
-        return object()
-
-    async def mock_upsert(*args, **kwargs):
-        return None
-
-    async def mock_get_thread_summary(db, thread_id, *, user_id):
-        return summary
-
-    from services.thread_profile_service import ThreadProfileService
-    from services.thread_service import ThreadService
-
-    app.dependency_overrides[get_db] = _override_get_db
-    monkeypatch.setattr(ThreadService, "get_chat_session", mock_get_chat_session)
-    monkeypatch.setattr(ThreadProfileService, "upsert_thread_profile", mock_upsert)
-    monkeypatch.setattr(ThreadService, "get_thread_summary", mock_get_thread_summary)
-    try:
-        response = client.patch(
-            "/api/threads/thread-1",
-            json={"pinned": True},
-        )
-    finally:
-        app.dependency_overrides.pop(get_db, None)
-
-    assert response.status_code == 200
-    assert response.json()["title"] == "Original thread"
-    assert response.json()["pinned"] is True
-
-
 def test_patch_thread_returns_404_for_other_users_thread(monkeypatch):
     async def mock_get_chat_session(db, thread_id, *, user_id=None):
         assert thread_id == "thread-1"

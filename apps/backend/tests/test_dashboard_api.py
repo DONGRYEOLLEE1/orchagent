@@ -11,39 +11,34 @@ from services.security_service import get_current_user
 client = TestClient(app)
 
 
-def test_dashboard_summary_returns_current_user_metrics(monkeypatch):
+def _build_summary(user_id: str = "test-user") -> DashboardSummary:
+    return DashboardSummary(
+        user_id=user_id,
+        total_turns=3,
+        completed_turns=2,
+        total_llm_calls=7,
+        total_input_tokens=10,
+        total_output_tokens=20,
+        total_tokens=30,
+        total_reasoning_tokens=5,
+        total_cost_microusd=100,
+        exact_total_cost_microusd=100,
+        estimated_total_cost_microusd=0,
+        exact_reasoning_cost_microusd=0,
+        estimated_reasoning_cost_microusd=25,
+        avg_latency_ms=1000,
+        avg_ttft_ms=300,
+        total_tool_calls=4,
+        total_inference_cost_microusd=100,
+    )
+
+
+def test_dashboard_summary_daily_and_live_traces(monkeypatch):
+    """One smoke test for the three dashboard endpoints; deep aggregation logic
+    is exercised in test_dashboard_service.py."""
     async def mock_summary(*args, **kwargs):
-        return DashboardSummary(
-            user_id="test-user",
-            total_turns=3,
-            completed_turns=2,
-            total_llm_calls=7,
-            total_input_tokens=10,
-            total_output_tokens=20,
-            total_tokens=30,
-            total_reasoning_tokens=5,
-            total_cost_microusd=100,
-            exact_total_cost_microusd=100,
-            estimated_total_cost_microusd=0,
-            exact_reasoning_cost_microusd=0,
-            estimated_reasoning_cost_microusd=25,
-            avg_latency_ms=1000,
-            avg_ttft_ms=300,
-            total_tool_calls=4,
-            total_inference_cost_microusd=100,
-        )
+        return _build_summary()
 
-    monkeypatch.setattr(DashboardService, "get_summary", mock_summary)
-
-    response = client.get("/api/dashboard/summary")
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["user_id"] == "test-user"
-    assert body["total_tokens"] == 30
-
-
-def test_dashboard_daily_usage_returns_points(monkeypatch):
     async def mock_daily(*args, **kwargs):
         return [
             DailyUsagePoint(
@@ -56,16 +51,6 @@ def test_dashboard_daily_usage_returns_points(monkeypatch):
             )
         ]
 
-    monkeypatch.setattr(DashboardService, "get_daily_usage_series", mock_daily)
-
-    response = client.get("/api/dashboard/daily-usage")
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["points"][0]["usage_date"] == "2026-03-24"
-
-
-def test_dashboard_live_traces_returns_rows(monkeypatch):
     async def mock_live(*args, **kwargs):
         return [
             LiveTraceRow(
@@ -86,45 +71,28 @@ def test_dashboard_live_traces_returns_rows(monkeypatch):
             )
         ]
 
+    monkeypatch.setattr(DashboardService, "get_summary", mock_summary)
+    monkeypatch.setattr(DashboardService, "get_daily_usage_series", mock_daily)
     monkeypatch.setattr(DashboardService, "get_live_traces", mock_live)
 
-    response = client.get("/api/dashboard/live-traces?limit=5")
-
-    assert response.status_code == 200
-    body = response.json()
-    assert len(body["rows"]) == 1
-    assert body["rows"][0]["model"] == "gpt-5.4-mini"
+    assert client.get("/api/dashboard/summary").json()["total_tokens"] == 30
+    assert client.get("/api/dashboard/daily-usage").json()["points"][0]["usage_date"] == "2026-03-24"
+    assert client.get("/api/dashboard/live-traces?limit=5").json()["rows"][0]["model"] == "gpt-5.4-mini"
 
 
 def test_dashboard_forbids_non_admin_cross_user_lookup():
+    """Non-admin user attempting cross-user lookup must be 403."""
     response = client.get("/api/dashboard/summary?user_id=someone-else")
     assert response.status_code == 403
 
 
 def test_dashboard_allows_admin_cross_user_lookup(monkeypatch):
+    """Admin role bypasses cross-user restriction."""
     async def override_current_user():
         return SimpleNamespace(id="admin-user", role="admin")
 
     async def mock_summary(*args, **kwargs):
-        return DashboardSummary(
-            user_id="someone-else",
-            total_turns=1,
-            completed_turns=1,
-            total_llm_calls=2,
-            total_input_tokens=1,
-            total_output_tokens=1,
-            total_tokens=2,
-            total_reasoning_tokens=0,
-            total_cost_microusd=0,
-            exact_total_cost_microusd=0,
-            estimated_total_cost_microusd=0,
-            exact_reasoning_cost_microusd=0,
-            estimated_reasoning_cost_microusd=0,
-            avg_latency_ms=100,
-            avg_ttft_ms=50,
-            total_tool_calls=0,
-            total_inference_cost_microusd=0,
-        )
+        return _build_summary(user_id="someone-else")
 
     monkeypatch.setattr(DashboardService, "get_summary", mock_summary)
     previous = dict(app.dependency_overrides)

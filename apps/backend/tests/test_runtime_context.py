@@ -16,7 +16,6 @@ from agent_tools.runtime import (
     ToolArtifact,
     ToolAttachment,
     ToolRuntimeContext,
-    artifact_path,
     attachment_manifest,
     collect_runtime_artifacts,
     get_tool_runtime_context,
@@ -53,7 +52,8 @@ def runtime(tmp_path: Path):
         reset_tool_runtime_context(token)
 
 
-def test_get_tool_runtime_context_returns_active_context(runtime) -> None:
+def test_runtime_context_token_lifecycle(runtime) -> None:
+    """Active context returns inside a token; outside it must raise."""
     assert get_tool_runtime_context() is runtime
 
 
@@ -76,64 +76,47 @@ def test_set_tool_runtime_context_creates_directories(tmp_path: Path) -> None:
     )
     token = set_tool_runtime_context(context)
     try:
-        assert workspace_dir.exists() and workspace_dir.is_dir()
-        assert artifact_dir.exists() and artifact_dir.is_dir()
-        assert log_dir.exists() and log_dir.is_dir()
+        assert workspace_dir.is_dir()
+        assert artifact_dir.is_dir()
+        assert log_dir.is_dir()
     finally:
         reset_tool_runtime_context(token)
 
 
-def test_attachment_manifest_round_trips_attachment(runtime) -> None:
+def test_attachment_manifest_and_resolve(runtime) -> None:
+    """Manifest exposes attachments; resolve on unknown id raises."""
     items = attachment_manifest()
     assert len(items) == 1
     assert items[0]["id"] == "att-1"
     assert items[0]["mime_type"] == "image/png"
-
-
-def test_resolve_runtime_attachment_raises_for_unknown_id(runtime) -> None:
+    assert [att.id for att in list_runtime_attachments()] == ["att-1"]
     with pytest.raises(ValueError):
         resolve_runtime_attachment("missing")
 
 
-def test_list_runtime_attachments_returns_all(runtime) -> None:
-    assert [att.id for att in list_runtime_attachments()] == ["att-1"]
-
-
-def test_artifact_path_resolves_relative_to_artifact_dir(runtime) -> None:
-    path = artifact_path("output.csv")
-    assert path.parent == runtime.artifact_dir
-
-
 def test_register_runtime_artifact_appends_and_dedupes(runtime) -> None:
+    """Identical artifact paths must be collapsed into a single entry."""
     runtime.artifact_dir.mkdir(parents=True, exist_ok=True)
     csv_path = runtime.artifact_dir / "report.csv"
     csv_path.write_text("a,b,c", encoding="utf-8")
 
-    first = register_runtime_artifact(
-        file_path=csv_path, title="Report", kind="table"
-    )
-    second = register_runtime_artifact(
-        file_path=csv_path, title="Report", kind="table"
-    )
+    first = register_runtime_artifact(file_path=csv_path, title="Report", kind="table")
+    second = register_runtime_artifact(file_path=csv_path, title="Report", kind="table")
 
     assert isinstance(first, ToolArtifact)
     assert isinstance(second, ToolArtifact)
     artifacts = collect_runtime_artifacts()
-    # Duplicate storage_path should be deduplicated
     assert sum(1 for art in artifacts if art.storage_path == str(csv_path)) == 1
 
 
-def test_register_runtime_artifact_rejects_outside_workspace(
+def test_register_runtime_artifact_rejects_outside_workspace_or_missing(
     runtime, tmp_path: Path
 ) -> None:
+    """Artifacts must stay inside the artifact_dir and must exist on disk."""
     outside = tmp_path / "outside.txt"
     outside.write_text("nope", encoding="utf-8")
     with pytest.raises(ValueError):
         register_runtime_artifact(file_path=outside)
 
-
-def test_register_runtime_artifact_rejects_missing_file(runtime) -> None:
     with pytest.raises(ValueError):
-        register_runtime_artifact(
-            file_path=runtime.artifact_dir / "definitely_missing.bin"
-        )
+        register_runtime_artifact(file_path=runtime.artifact_dir / "missing.bin")

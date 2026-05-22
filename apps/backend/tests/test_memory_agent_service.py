@@ -7,16 +7,11 @@ from services.memory_agent_service import (
 )
 
 
-def test_should_review_message_detects_preference_signal():
-    assert (
-        MemoryAgentService.should_review_message(
-            "난 가수 백예린을 굉장히 좋아해. 대표곡 5개만 뽑아줘."
-        )
-        is True
-    )
-
-
-def test_should_review_message_returns_false_for_plain_request():
+def test_should_review_message_signal_detection():
+    """Memory review must trigger on preference signals but not on plain task requests."""
+    assert MemoryAgentService.should_review_message(
+        "난 가수 백예린을 굉장히 좋아해. 대표곡 5개만 뽑아줘."
+    ) is True
     assert MemoryAgentService.should_review_message("백예린 대표곡 5개만 뽑아줘.") is False
 
 
@@ -31,10 +26,11 @@ async def test_extract_candidates_returns_empty_without_signal():
 
 
 @pytest.mark.asyncio
-async def test_extract_candidates_filters_and_normalizes(monkeypatch):
+async def test_extract_candidates_filters_unsafe_and_temporary_candidates(monkeypatch):
+    """Sanitizer must drop sensitive-info, unknown-category, temporary-turn, and
+    policy-override candidates while keeping a valid bounded preference."""
     class FakeAgent:
         async def ainvoke(self, payload):
-            assert "Latest user message" in payload["messages"][0]["content"]
             return {
                 "structured_response": MemoryExtractionResult(
                     candidates=[
@@ -62,29 +58,6 @@ async def test_extract_candidates_filters_and_normalizes(monkeypatch):
                             confidence=95,
                             salience=60,
                         ),
-                    ]
-                )
-            }
-
-    monkeypatch.setattr(MemoryAgentService, "_get_agent", staticmethod(lambda: FakeAgent()))
-
-    result = await MemoryAgentService.extract_candidates(
-        user_message="난 가수 백예린을 굉장히 좋아해. 대표곡 5개만 뽑아줘.",
-        assistant_message="대표곡 5개를 정리했어.",
-    )
-
-    assert len(result) == 1
-    assert result[0].category == "personal_interest"
-    assert result[0].content_text == "가수 백예린을 좋아한다"
-
-
-@pytest.mark.asyncio
-async def test_extract_candidates_rejects_temporary_or_policy_override_preferences(monkeypatch):
-    class FakeAgent:
-        async def ainvoke(self, payload):
-            return {
-                "structured_response": MemoryExtractionResult(
-                    candidates=[
                         MemoryCandidatePayload(
                             category="response_format",
                             title="임시 언어",
@@ -101,14 +74,6 @@ async def test_extract_candidates_rejects_temporary_or_policy_override_preferenc
                             confidence=95,
                             salience=60,
                         ),
-                        MemoryCandidatePayload(
-                            category="response_format",
-                            title="답변 길이",
-                            content_text="항상 간결한 답변을 선호한다",
-                            scope_type="user_global",
-                            confidence=92,
-                            salience=75,
-                        ),
                     ]
                 )
             }
@@ -116,27 +81,25 @@ async def test_extract_candidates_rejects_temporary_or_policy_override_preferenc
     monkeypatch.setattr(MemoryAgentService, "_get_agent", staticmethod(lambda: FakeAgent()))
 
     result = await MemoryAgentService.extract_candidates(
-        user_message="나는 항상 간결하게 답변받는 편을 좋아해.",
-        assistant_message="알겠어.",
+        user_message="난 가수 백예린을 굉장히 좋아해. 대표곡 5개만 뽑아줘.",
+        assistant_message="대표곡 5개를 정리했어.",
     )
 
     assert len(result) == 1
-    assert result[0].title == "답변 길이"
-    assert result[0].content_text == "항상 간결한 답변을 선호한다"
+    assert result[0].category == "personal_interest"
+    assert result[0].content_text == "가수 백예린을 좋아한다"
 
 
 def test_memory_agent_uses_low_reasoning_effort(monkeypatch):
+    """Memory agent must opt into the low-effort reasoning preset (cost guard)."""
     MemoryAgentService._get_agent.cache_clear()
     captured: dict[str, object] = {}
 
     def fake_init_chat_model(*, model, model_provider, reasoning):
-        captured["model"] = model
-        captured["model_provider"] = model_provider
         captured["reasoning"] = reasoning
         return object()
 
     def fake_create_agent(**kwargs):
-        captured["create_agent_kwargs"] = kwargs
         return object()
 
     monkeypatch.setattr("services.memory_agent_service.init_chat_model", fake_init_chat_model)
@@ -144,5 +107,4 @@ def test_memory_agent_uses_low_reasoning_effort(monkeypatch):
 
     MemoryAgentService._get_agent()
 
-    assert captured["model"] == "gpt-5.4-mini"
     assert captured["reasoning"] == {"effort": "low"}

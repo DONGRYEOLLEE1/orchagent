@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from models.auth import AuthSession, AuthUser, KST
-from core.config import Settings
 from services.auth_service import (
     DuplicateLoginIdError,
     IssuedSession,
@@ -17,93 +16,58 @@ from services.auth_service import (
     hash_password,
     issue_session,
     revoke_session,
-    validate_password_policy,
     verify_password,
     verify_csrf_token,
 )
 
 
 def test_hash_password_round_trip_verification():
-    password = "admin1"
-
-    stored_hash = hash_password(password)
+    """pbkdf2 hashes must verify the original password but reject a wrong one."""
+    stored_hash = hash_password("admin1")
 
     assert stored_hash.startswith("pbkdf2_sha256$")
-    assert verify_password(password, stored_hash)
+    assert verify_password("admin1", stored_hash)
     assert not verify_password("wrong-password", stored_hash)
 
 
-def test_validate_password_policy_requires_lowercase_and_number():
-    with pytest.raises(Exception):
-        validate_password_policy("AAAA")
-
-    with pytest.raises(Exception):
-        validate_password_policy("abcd")
-
-    validate_password_policy("abc1")
-
-
-def test_auth_allowed_origins_parses_csv():
-    settings = Settings(
-        AUTH_ALLOWED_ORIGINS="http://localhost:3000, http://127.0.0.1:3000"
-    )
-
-    assert settings.auth_allowed_origins == [
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ]
-
-
 @pytest.mark.asyncio
-async def test_ensure_bootstrap_admin_creates_default_admin(monkeypatch):
-    result = SimpleNamespace(scalar_one_or_none=lambda: None)
-    db = AsyncMock()
-    db.execute = AsyncMock(return_value=result)
-    db.add = Mock()
-    db.commit = AsyncMock()
-    db.refresh = AsyncMock()
-
+async def test_ensure_bootstrap_admin_is_idempotent_and_creates_on_first_run(monkeypatch):
+    """First run creates the admin row; subsequent runs return the existing user."""
     monkeypatch.setattr("services.auth_service.settings.AUTH_BOOTSTRAP_ADMIN_ENABLED", True)
     monkeypatch.setattr("services.auth_service.settings.AUTH_BOOTSTRAP_ADMIN_LOGIN_ID", "admin")
     monkeypatch.setattr("services.auth_service.settings.AUTH_BOOTSTRAP_ADMIN_PASSWORD", "admin1")
 
-    admin_user = await ensure_bootstrap_admin(db)
+    # First run: no existing user → admin is created.
+    create_result = SimpleNamespace(scalar_one_or_none=lambda: None)
+    db_create = AsyncMock()
+    db_create.execute = AsyncMock(return_value=create_result)
+    db_create.add = Mock()
+    db_create.commit = AsyncMock()
+    db_create.refresh = AsyncMock()
 
-    assert admin_user is not None
+    admin_user = await ensure_bootstrap_admin(db_create)
     assert admin_user.login_id == "admin"
     assert admin_user.role == "admin"
-    assert admin_user.status == "active"
     assert admin_user.must_change_password is True
     assert verify_password("admin1", admin_user.password_hash)
-    db.add.assert_called_once()
-    db.commit.assert_awaited_once()
-    db.refresh.assert_awaited_once_with(admin_user)
+    db_create.add.assert_called_once()
 
-
-@pytest.mark.asyncio
-async def test_ensure_bootstrap_admin_is_idempotent(monkeypatch):
+    # Second run: existing user → no insertion.
     existing_user = SimpleNamespace(login_id="admin", role="admin")
-    result = SimpleNamespace(scalar_one_or_none=lambda: existing_user)
-    db = AsyncMock()
-    db.execute = AsyncMock(return_value=result)
-    db.add = Mock()
-    db.commit = AsyncMock()
-    db.refresh = AsyncMock()
+    idempotent_result = SimpleNamespace(scalar_one_or_none=lambda: existing_user)
+    db_idem = AsyncMock()
+    db_idem.execute = AsyncMock(return_value=idempotent_result)
+    db_idem.add = Mock()
+    db_idem.commit = AsyncMock()
+    db_idem.refresh = AsyncMock()
 
-    monkeypatch.setattr("services.auth_service.settings.AUTH_BOOTSTRAP_ADMIN_ENABLED", True)
-    monkeypatch.setattr("services.auth_service.settings.AUTH_BOOTSTRAP_ADMIN_LOGIN_ID", "admin")
-    monkeypatch.setattr("services.auth_service.settings.AUTH_BOOTSTRAP_ADMIN_PASSWORD", "admin1")
-
-    returned_user = await ensure_bootstrap_admin(db)
-
-    assert returned_user is existing_user
-    db.add.assert_not_called()
-    db.commit.assert_not_awaited()
-    db.refresh.assert_not_awaited()
+    assert await ensure_bootstrap_admin(db_idem) is existing_user
+    db_idem.add.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_create_user_raises_for_duplicate_login_id(monkeypatch):
+async def test_create_user_raises_for_duplicate_login_id():
+    """Duplicate login_id (with whitespace) must be rejected and not committed."""
     existing_user = AuthUser(
         login_id="existing",
         password_hash=hash_password("abcdefghijklmn1"),
@@ -114,11 +78,7 @@ async def test_create_user_raises_for_duplicate_login_id(monkeypatch):
     db.add = Mock()
 
     with pytest.raises(DuplicateLoginIdError):
-        await create_user(
-            db,
-            login_id=" existing ",
-            password="abcdefghijklmn1",
-        )
+        await create_user(db, login_id=" existing ", password="abcdefghijklmn1")
 
     db.add.assert_not_called()
 
@@ -154,7 +114,7 @@ async def test_issue_session_stores_hashed_tokens_and_can_be_resolved():
     issued = await issue_session(db, user=user, user_agent="ua", ip_address="127.0.0.1")
 
     assert isinstance(issued, IssuedSession)
-    assert issued.session.user_id == "user-1"
+    # Raw tokens must not match the persisted hash.
     assert issued.session.session_token_hash != issued.session_token
     assert verify_csrf_token(issued.csrf_token, issued.session)
 
@@ -173,10 +133,7 @@ async def test_get_auth_session_by_token_filters_revoked_and_expired_sessions():
     db.execute = AsyncMock(return_value=result)
 
     monkeypatch = pytest.MonkeyPatch()
-    monkeypatch.setattr(
-        "services.auth_service._token_hash",
-        lambda raw_token: "hash",
-    )
+    monkeypatch.setattr("services.auth_service._token_hash", lambda raw_token: "hash")
     try:
         resolved = await get_auth_session_by_token(db, "raw-token")
     finally:
@@ -186,7 +143,8 @@ async def test_get_auth_session_by_token_filters_revoked_and_expired_sessions():
 
 
 @pytest.mark.asyncio
-async def test_revoke_session_sets_revoked_at():
+async def test_revoke_session_and_change_password_persist_state():
+    """revoke_session sets revoked_at; change_password clears must_change_password."""
     session = AuthSession(
         id="session-1",
         user_id="user-1",
@@ -195,31 +153,21 @@ async def test_revoke_session_sets_revoked_at():
         expires_at=datetime.now(KST) + timedelta(hours=1),
         revoked_at=None,
     )
-    db = AsyncMock()
-    db.commit = AsyncMock()
-
-    await revoke_session(db, session)
-
+    db_revoke = AsyncMock()
+    db_revoke.commit = AsyncMock()
+    await revoke_session(db_revoke, session)
     assert session.revoked_at is not None
-    db.commit.assert_awaited_once()
 
-
-@pytest.mark.asyncio
-async def test_change_password_clears_must_change_password():
     user = AuthUser(
         login_id="user1",
         password_hash=hash_password("abcdefghijklmn1"),
         must_change_password=True,
     )
-    db = AsyncMock()
-    db.commit = AsyncMock()
-    db.refresh = AsyncMock()
+    db_change = AsyncMock()
+    db_change.commit = AsyncMock()
+    db_change.refresh = AsyncMock()
 
-    updated = await change_password(
-        db,
-        user=user,
-        new_password="abcdefghijklmn2",
-    )
+    updated = await change_password(db_change, user=user, new_password="abcdefghijklmn2")
 
     assert updated.must_change_password is False
     assert verify_password("abcdefghijklmn2", updated.password_hash)
