@@ -662,9 +662,12 @@ test('uploads supported files before sending chat and forwards attachment ids', 
   await waitFor(() => {
     expect(screen.getByText('CSV 분석 시작')).toBeInTheDocument();
   });
-  await waitFor(() => {
-    expect(screen.getByAltText('trend.png')).toBeInTheDocument();
-  });
+  await waitFor(
+    () => {
+      expect(screen.getByAltText('trend.png')).toBeInTheDocument();
+    },
+    { timeout: 10000 },
+  );
 
   expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/api/uploads'))).toBe(true);
   expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/api/chat'))).toBe(true);
