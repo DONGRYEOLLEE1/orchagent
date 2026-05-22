@@ -119,6 +119,21 @@ OrchAgent 런타임의 head/team supervisor가 사용자 질의를 파악해 sub
 
 ### P5. 회귀는 evaluation harness로 측정
 - 라우팅 정확도 회귀는 `apps/backend/tests/routing_eval/`의 골든 데이터셋 + scorer로 측정.
+
+### 도메인별 첫 분기 의무 (질의 → 첫 worker 매핑, prompt-driven)
+
+LLM이 결정하지만, 사용자 질의의 입력 신호에 대해 **첫 worker가 누구여야 하는지**는 prompt에 한 줄로 명시되어 있어야 한다. 첫 분기가 흔들리면 안전망이 늦게 발동되거나 dispatch 예산을 낭비하기 때문. 새 도메인 추가 시 이 표를 함께 갱신한다.
+
+| 사용자 질의 신호 | 첫 sub-agent | 첫 worker | prompt 위치 |
+|:---|:---|:---|:---|
+| 데이터 첨부(csv/xlsx/json/pdf/docx) + 분석/차트 요청 | `data_science_team` | **`data_engineer`** (ONE-pass inspect) → `data_analyst`(python_repl + 차트) | `SYSTEM_SUPERVISOR_PROMPT` `# TEAM SELECTION HINTS` + `TEAM_SUPERVISOR_PROMPT` `# DATA SCIENCE TEAM HANDOFF` |
+| 이미지 첨부 | `vision_team` | `image_inspector` → `image_editor` | `SYSTEM_SUPERVISOR_PROMPT` `# TEAM SELECTION HINTS` |
+| 최신 정보·뉴스·"latest" 요청 | `research_team` | `search` → 필요 시 `web_scraper` | `RESEARCH_TEAM_SUPERVISOR_PROMPT` |
+| repo 바인딩 + 코드 수정/실행 | `coding_team` | `codebase_explorer` → `implementation_engineer` → (선택) `runtime_verifier` | `SYSTEM_SUPERVISOR_PROMPT` `# CRITICAL GUIDELINES 2a/2b` |
+| 명시적 보고서/슬라이드/문서 작성 | `writing_team` | `note_taker` → `doc_writer` | `SYSTEM_SUPERVISOR_PROMPT` `# CRITICAL GUIDELINES 6a` |
+| 단순 인사·일반 지식·정체 질문 | (직접 응답) | head supervisor 자체 답변 | `SYSTEM_SUPERVISOR_PROMPT` `# IDENTITY` + `# CRITICAL GUIDELINES 4` |
+
+이 표의 첫 worker 매핑은 **prompt-driven** — 코드에는 어떤 정규식·키워드·`_should_force_*` 함수도 추가하지 않는다. 회귀는 `routing_eval/golden_dataset.json`의 카테고리별 케이스가 잡는다 (현 시점 18 cases, data_science 카테고리 7 cases).
 - 새 의도 카테고리를 추가하면 `golden_dataset.json`에 케이스를 함께 추가하고, top-1 정확도 ≥ 95% 유지를 목표.
 - 휴리스틱 추가 충동이 생기면 P5의 evaluation 결과로 먼저 정량 입증할 것.
 
