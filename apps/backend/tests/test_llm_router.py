@@ -51,6 +51,30 @@ def _llm(payload: Any, *, raise_exc: Exception | None = None) -> _StubLLM:
     return _StubLLM(_StubStructured(payload, raise_exc=raise_exc))
 
 
+class _SequenceStructured:
+    """Replay a sequence of (payload, raise_exc) pairs across ``ainvoke``.
+
+    Lets us test the 1-retry policy: first call can raise/return junk and
+    the second call returns a valid RouterDecision.
+    """
+
+    def __init__(self, steps: list[tuple[Any, Exception | None]]):
+        self._steps = list(steps)
+        self.calls = 0
+
+    async def ainvoke(self, _messages: list[Any]) -> Any:
+        index = min(self.calls, len(self._steps) - 1)
+        self.calls += 1
+        payload, exc = self._steps[index]
+        if exc is not None:
+            raise exc
+        return payload
+
+
+def _sequence_llm(steps: list[tuple[Any, Exception | None]]) -> _StubLLM:
+    return _StubLLM(_SequenceStructured(steps))  # type: ignore[arg-type]
+
+
 @pytest.mark.asyncio
 async def test_valid_decision_passes_through() -> None:
     decision_payload = RouterDecision(
@@ -209,3 +233,77 @@ async def test_safeguard_forced_finish_strips_direct_answer_content() -> None:
     assert decision.next == "FINISH"
     assert status == "rejected_invalid_goto"
     assert decision.content == ""
+
+
+@pytest.mark.asyncio
+async def test_parse_failure_retries_once_and_recovers() -> None:
+    """Plan §4.0.5: structured-output 파싱 실패 시 1회 재요청 후 성공해야 한다."""
+    recovered = RouterDecision(
+        next="data_science_team",
+        reason="retry recovered",
+        request_review=False,
+        content="",
+    )
+    llm = _sequence_llm(
+        [
+            (None, ValueError("Structured Output response does not have a parsed field")),
+            (recovered, None),
+        ]
+    )
+    decision, status = await decide_route(
+        llm,  # type: ignore[arg-type]
+        system_prompt="sys",
+        messages=[],
+        allowed_nodes=["data_science_team"],
+        layer="head",
+    )
+    assert decision.next == "data_science_team"
+    assert decision.reason == "retry recovered"
+    assert status == "accepted"
+    # Ensure the underlying stub was indeed called twice (1 fail + 1 retry).
+    assert llm._structured.calls == 2  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_parse_failure_persists_across_both_attempts() -> None:
+    """두 번 모두 파싱이 실패하면 safeguard FINISH로 폴백."""
+    llm = _sequence_llm(
+        [
+            (None, ValueError("first parse fail")),
+            (None, ValueError("second parse fail")),
+        ]
+    )
+    decision, status = await decide_route(
+        llm,  # type: ignore[arg-type]
+        system_prompt="sys",
+        messages=[],
+        allowed_nodes=["data_science_team"],
+        layer="head",
+    )
+    assert decision.next == "FINISH"
+    assert status == "parse_failed"
+    assert llm._structured.calls == 2  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_salvage_router_decision_from_raw_error_message() -> None:
+    """OpenAI Responses API가 raw text content로 emit해도 error 메시지에서 JSON을 추출해 복원."""
+    raw_msg = (
+        "Structured Output response does not have a 'parsed' field nor a 'refusal' "
+        "field. Received message: content=[{'type': 'text', 'text': "
+        '\'{"next":"data_science_team","reason":"sales.csv product 분석"}\'}'
+        "]"
+    )
+    err = ValueError(raw_msg)
+    llm = _sequence_llm([(None, err), (None, err)])  # 둘 다 같은 에러
+    decision, status = await decide_route(
+        llm,  # type: ignore[arg-type]
+        system_prompt="sys",
+        messages=[],
+        allowed_nodes=["data_science_team"],
+        layer="head",
+    )
+    # Tier-3 recovery — JSON salvaged from the raw error string.
+    assert decision.next == "data_science_team"
+    assert "sales.csv" in decision.reason
+    assert status == "accepted"
