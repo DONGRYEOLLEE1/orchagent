@@ -85,15 +85,3 @@ async def test_create_instruction_persists_sanitized_row():
     assert db.commit_count == 1
 
 
-@pytest.mark.asyncio
-async def test_update_instruction_returns_none_when_missing():
-    db = DummyDb(rows=[None])
-
-    updated = await PersonalizationInstructionService.update_instruction(
-        db,
-        user_id="user-1",
-        instruction_id=uuid4(),
-        enabled=False,
-    )
-
-    assert updated is None

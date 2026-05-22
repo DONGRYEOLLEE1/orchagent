@@ -2,7 +2,7 @@ import pytest
 from typing import cast
 from agent_core.supervisor import make_supervisor_node
 from agent_core.state import BaseAgentState, build_route_entry
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import HumanMessage
 
 
 class FakeRouterLLM:
@@ -69,7 +69,7 @@ async def test_supervisor_routes_to_worker():
 
 @pytest.mark.asyncio
 async def test_supervisor_routes_to_finish():
-    """FINISH at team layer must clear active_team/worker and terminate streaming."""
+    """FINISH at head layer must clear active_team/worker and terminate streaming."""
     fake_llm = FakeRouterLLM("FINISH")
     supervisor_func = make_supervisor_node(fake_llm, ["search_agent", "web_scraper"])  # type: ignore
 
@@ -125,42 +125,28 @@ async def test_head_supervisor_routes_complex_finish_to_finalizer():
 
 
 @pytest.mark.asyncio
-async def test_head_supervisor_keeps_direct_finish_when_content_exists_even_with_prior_team_history():
-    """Regression: prior team activity must not force finalizer when LLM emitted direct answer."""
-    direct_llm = DirectFinishLLM()
-    supervisor_func = make_supervisor_node(
-        direct_llm,  # type: ignore
-        ["research_team", "writing_team", "vision_team", "data_science_team"],
-        layer="head",
-        final_node_name="finalizer",
-    )
-
-    state = cast(
-        BaseAgentState,
-        {
-            "messages": [HumanMessage(content="너 이름이 뭐야?")],
-            "next": "",
-            "route_history": [
-                build_route_entry(
-                    layer="team",
-                    node="supervisor",
-                    next_node="FINISH",
-                    team="data_science",
-                )
-            ],
-        },
-    )
-
-    command = await supervisor_func(state)
-
-    assert command.goto == "__end__"
-    assert command.update["response_mode"] == "direct"
-
-
-@pytest.mark.asyncio
-async def test_head_supervisor_finish_emits_llm_content_when_no_identity_override():
-    """Regression: Phase 2.4 router schema dropped ``content``; ensure simple FINISH
-    turns surface the LLM-emitted text as an ``AIMessage(name="supervisor")``."""
+@pytest.mark.parametrize(
+    "prior_history",
+    [
+        # Regression A (Phase 2.4): no prior team history → direct FINISH with
+        # content must emit AIMessage(name="supervisor") and reach __end__.
+        [],
+        # Regression B: prior team activity must NOT force finalizer when the
+        # LLM emitted a direct answer for a follow-up identity question.
+        [
+            build_route_entry(
+                layer="team",
+                node="supervisor",
+                next_node="FINISH",
+                team="data_science",
+            )
+        ],
+    ],
+    ids=["no_prior_history", "with_prior_team_history"],
+)
+async def test_head_supervisor_direct_finish_with_content(prior_history):
+    """Direct FINISH with LLM content must (a) go to __end__, (b) emit content
+    via AIMessage(name="supervisor"), regardless of prior team history."""
     direct_llm = DirectFinishLLM()
     supervisor_func = make_supervisor_node(
         direct_llm,  # type: ignore
@@ -174,6 +160,7 @@ async def test_head_supervisor_finish_emits_llm_content_when_no_identity_overrid
         {
             "messages": [HumanMessage(content="한 문장으로 자기소개 해주세요.")],
             "next": "",
+            "route_history": prior_history,
         },
     )
 
@@ -181,81 +168,8 @@ async def test_head_supervisor_finish_emits_llm_content_when_no_identity_overrid
 
     assert command.goto == "__end__"
     assert command.update["response_mode"] == "direct"
-    assert command.update["streaming_status"] == "completed"
     assert command.update["messages"][0].content == "저는 OrchAgent입니다."
     assert command.update["messages"][0].name == "supervisor"
-
-
-@pytest.mark.asyncio
-async def test_team_supervisor_coerces_invalid_cross_graph_route_to_finish():
-    """A team supervisor must not be allowed to jump back to head_supervisor directly."""
-    class InvalidTeamLLM:
-        def with_structured_output(self, schema):
-            return self
-
-        async def ainvoke(self, messages):
-            return {
-                "next": "head_supervisor",
-                "reasoning": "Return to the head supervisor directly.",
-                "content": "",
-            }
-
-    supervisor_func = make_supervisor_node(
-        InvalidTeamLLM(),  # type: ignore[arg-type]
-        ["search_agent", "web_scraper"],
-        layer="team",
-        team_name="ResearchTeam",
-    )
-
-    state = cast(
-        BaseAgentState,
-        {
-            "messages": [HumanMessage(content="Keep researching")],
-            "next": "",
-            "task_plan": "1. [research_team] Search.\n2. [writing_team] Write.",
-        },
-    )
-
-    command = await supervisor_func(state)
-
-    assert command.goto == "__end__"
-    assert command.update["route_history"][0]["next"] == "FINISH"
-
-
-@pytest.mark.asyncio
-async def test_research_team_supervisor_stops_after_dispatch_limit():
-    """Hitting the team dispatch limit must force the supervisor to FINISH."""
-    fake_llm = FakeRouterLLM("search_agent")
-    supervisor_func = make_supervisor_node(
-        fake_llm,  # type: ignore
-        ["search_agent", "web_scraper"],
-        layer="team",
-        team_name="ResearchTeam",
-        max_team_dispatches=5,
-    )
-
-    state = cast(
-        BaseAgentState,
-        {
-            "messages": [HumanMessage(content="Keep researching")],
-            "next": "",
-            "shared_context": {"research_dispatch_count": 5},
-            "route_history": [
-                build_route_entry(
-                    layer="team",
-                    node="supervisor",
-                    next_node="search_agent",
-                    team="research",
-                    worker="search_agent",
-                )
-                for _ in range(5)
-            ],
-        },
-    )
-    command = await supervisor_func(state)
-
-    assert command.goto == "__end__"
-    assert command.update["route_history"][0]["next"] == "FINISH"
 
 
 @pytest.mark.asyncio

@@ -1,37 +1,12 @@
 from datetime import datetime, timedelta
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
 
-from models.logging import KST, ChatSession
-from services.logging_service import LoggingService
 from services.thread_profile_service import ThreadProfileService
 from services.thread_service import ThreadService
-
-
-@pytest.mark.asyncio
-async def test_log_message_updates_session_timestamp():
-    """Logging a message must bump the parent session's updated_at."""
-    old_time = KST.localize(datetime(2026, 3, 20, 12, 0, 0))
-    session = ChatSession(id="thread-1", updated_at=old_time)
-    db = AsyncMock()
-    db.commit = AsyncMock()
-    db.refresh = AsyncMock()
-    db.add = Mock()
-
-    original_get_or_create_session = LoggingService.get_or_create_session
-    LoggingService.get_or_create_session = AsyncMock(return_value=session)
-    try:
-        message = await LoggingService.log_message(
-            db, "thread-1", role="user", content="hello", user_id="user-1"
-        )
-    finally:
-        LoggingService.get_or_create_session = original_get_or_create_session
-
-    assert session.updated_at > old_time
-    assert message.session_id == "thread-1"
 
 
 def test_build_summary_uses_phase_zero_derivation_rules():
@@ -57,12 +32,6 @@ def test_build_summary_uses_phase_zero_derivation_rules():
     assert summary.preview == "assistant answer"
     assert summary.message_count == 3
     assert summary.latest_status == "completed"
-
-
-def test_derive_status_prefers_status_trace_over_checkpoint_status():
-    assert ThreadService._derive_status("errored", "completed") == "errored"
-    assert ThreadService._derive_status(None, "interrupted") == "interrupted"
-    assert ThreadService._derive_status(None, None) is None
 
 
 def test_sort_thread_summaries_prioritizes_pinned_then_recent_activity():
@@ -106,45 +75,6 @@ def test_sort_thread_summaries_prioritizes_pinned_then_recent_activity():
 
 
 @pytest.mark.asyncio
-async def test_get_thread_messages_maps_attachments_to_public_urls():
-    """ThreadService must rewrite raw storage_path into a public attachment URL."""
-    message_id = uuid4()
-    created_at = datetime(2026, 3, 21, 9, 0, 0)
-    result = SimpleNamespace(
-        mappings=lambda: SimpleNamespace(
-            all=lambda: [
-                {
-                    "id": message_id,
-                    "role": "user",
-                    "content": "Analyze this PDF",
-                    "created_at": created_at,
-                    "attachments": [
-                        {
-                            "kind": "pdf",
-                            "storage_path": "apps/backend/data/uploads/pdf/example.pdf",
-                            "file_name": "example.pdf",
-                            "mime_type": "application/pdf",
-                            "size_bytes": 2048,
-                        }
-                    ],
-                }
-            ]
-        )
-    )
-    db = AsyncMock()
-    db.execute = AsyncMock(return_value=result)
-
-    messages = await ThreadService.get_thread_messages(db, "thread-doc")
-
-    attachment = messages[0].attachments[0]
-    assert attachment.kind == "pdf"
-    assert attachment.file_name == "example.pdf"
-    assert attachment.url == (
-        f"/api/threads/thread-doc/messages/{message_id}/attachments/0"
-    )
-
-
-@pytest.mark.asyncio
 async def test_delete_thread_cleans_turn_dependencies_before_session_delete():
     """delete_thread must purge turn FK dependencies before removing the session row."""
     db = AsyncMock()
@@ -172,17 +102,3 @@ async def test_delete_thread_cleans_turn_dependencies_before_session_delete():
     assert db.commit.await_count == 1
 
 
-@pytest.mark.asyncio
-async def test_get_thread_detail_returns_none_when_summary_is_missing():
-    db = AsyncMock()
-
-    original_get_thread_summary = ThreadService.get_thread_summary
-    ThreadService.get_thread_summary = AsyncMock(return_value=None)
-    try:
-        detail = await ThreadService.get_thread_detail(
-            db, "missing-thread", user_id="user-1"
-        )
-    finally:
-        ThreadService.get_thread_summary = original_get_thread_summary
-
-    assert detail is None

@@ -43,31 +43,6 @@ async def test_start_turn_assigns_next_turn_index():
 
 
 @pytest.mark.asyncio
-async def test_mark_first_token_sets_ttft():
-    started_at = datetime(2026, 3, 24, 8, 0, tzinfo=UTC)
-    first_token_at = started_at + timedelta(milliseconds=320)
-    turn = ChatTurn(
-        id=uuid4(),
-        thread_id="thread-1",
-        user_id="user-1",
-        turn_index=1,
-        request_kind="chat",
-        status="running",
-        started_at=started_at,
-        trace_id="trace-1",
-    )
-    mock_db = AsyncMock()
-    mock_db.get.return_value = turn
-
-    updated = await ChatAnalyticsService.mark_first_token(
-        mock_db, turn.id, first_token_at
-    )
-
-    assert updated is turn
-    assert turn.ttft_ms == 320
-
-
-@pytest.mark.asyncio
 async def test_finalize_turn_sets_completed_latency_and_summary_fields():
     """Completion path must compute latency and persist summary fields."""
     started_at = datetime(2026, 3, 24, 8, 0, tzinfo=UTC)

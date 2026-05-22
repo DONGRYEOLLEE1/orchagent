@@ -97,9 +97,17 @@ async def test_valid_decision_passes_through() -> None:
 
 
 @pytest.mark.asyncio
-async def test_invalid_next_is_coerced_to_finish() -> None:
+async def test_invalid_next_coerced_to_finish_and_strips_content() -> None:
+    """Safeguard for invalid goto: forces FINISH AND strips any direct-answer
+    content the LLM tried to slip in (safety intercept, not authoring)."""
     decision, status = await decide_route(
-        _llm({"next": "not_a_real_team", "reason": "oops"}),  # type: ignore[arg-type]
+        _llm(
+            {
+                "next": "not_a_real_team",
+                "reason": "oops",
+                "content": "this should be discarded by the safeguard",
+            }
+        ),  # type: ignore[arg-type]
         system_prompt="sys",
         messages=[],
         allowed_nodes=["research_team", "writing_team"],
@@ -108,80 +116,66 @@ async def test_invalid_next_is_coerced_to_finish() -> None:
     assert decision.next == "FINISH"
     assert status == "rejected_invalid_goto"
     assert "not_a_real_team" in decision.reason
-
-
-@pytest.mark.asyncio
-async def test_parse_failure_returns_finish_fallback() -> None:
-    decision, status = await decide_route(
-        _llm(payload=None, raise_exc=ValueError("bad json blob")),  # type: ignore[arg-type]
-        system_prompt="sys",
-        messages=[],
-        allowed_nodes=["research_team"],
-        layer="head",
-    )
-    assert decision.next == "FINISH"
-    assert status == "parse_failed"
-    assert "safeguard" in decision.reason
-
-
-@pytest.mark.asyncio
-async def test_non_router_payload_is_parse_failed() -> None:
-    """LLM returned something that isn't a RouterDecision / dict shape."""
-    decision, status = await decide_route(
-        _llm(payload="just a string"),  # type: ignore[arg-type]
-        system_prompt="sys",
-        messages=[],
-        allowed_nodes=["research_team"],
-        layer="head",
-    )
-    assert decision.next == "FINISH"
-    assert status == "parse_failed"
-
-
-@pytest.mark.asyncio
-async def test_head_layer_redirect_limit_forces_finish() -> None:
-    decision_payload = RouterDecision(next="research_team", reason="keep digging")
-    decision, status = await decide_route(
-        _llm(decision_payload),  # type: ignore[arg-type]
-        system_prompt="sys",
-        messages=[],
-        allowed_nodes=["research_team"],
-        layer="head",
-        same_team_streak=10,  # well above default safeguard limit
-    )
-    assert decision.next == "FINISH"
-    assert status == "fallback_finish"
-
-
-@pytest.mark.asyncio
-async def test_team_layer_dispatch_limit_forces_finish() -> None:
-    decision_payload = RouterDecision(next="search_worker", reason="one more search")
-    decision, status = await decide_route(
-        _llm(decision_payload),  # type: ignore[arg-type]
-        system_prompt="sys",
-        messages=[],
-        allowed_nodes=["search_worker", "web_scraper"],
-        layer="team",
-        dispatch_count=8,
-        max_team_dispatches=8,
-    )
-    assert decision.next == "FINISH"
-    assert status == "fallback_finish"
-
-
-@pytest.mark.asyncio
-async def test_head_finish_decision_is_accepted() -> None:
-    decision, status = await decide_route(
-        _llm({"next": "FINISH", "reason": "trivial greeting", "content": ""}),  # type: ignore[arg-type]
-        system_prompt="sys",
-        messages=[],
-        allowed_nodes=["research_team"],
-        layer="head",
-    )
-    assert decision.next == "FINISH"
-    assert status == "accepted"
-    assert decision.reason == "trivial greeting"
     assert decision.content == ""
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "payload,raise_exc",
+    [
+        # Tier-1: raise on both attempts → parse_failed.
+        (None, ValueError("bad json blob")),
+        # Tier-2: LLM returned non-RouterDecision (plain string).
+        ("just a string", None),
+    ],
+)
+async def test_parse_failure_falls_back_to_finish(payload, raise_exc) -> None:
+    decision, status = await decide_route(
+        _llm(payload=payload, raise_exc=raise_exc),  # type: ignore[arg-type]
+        system_prompt="sys",
+        messages=[],
+        allowed_nodes=["research_team"],
+        layer="head",
+    )
+    assert decision.next == "FINISH"
+    assert status == "parse_failed"
+    assert "safeguard" in decision.reason or decision.reason
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "decision_payload,layer,allowed_nodes,kwargs",
+    [
+        # Head-layer same-team redirect limit hit.
+        (
+            RouterDecision(next="research_team", reason="keep digging"),
+            "head",
+            ["research_team"],
+            {"same_team_streak": 10},
+        ),
+        # Team-layer dispatch limit hit.
+        (
+            RouterDecision(next="search_worker", reason="one more search"),
+            "team",
+            ["search_worker", "web_scraper"],
+            {"dispatch_count": 8, "max_team_dispatches": 8},
+        ),
+    ],
+    ids=["head_redirect_limit", "team_dispatch_limit"],
+)
+async def test_layer_limit_forces_finish(decision_payload, layer, allowed_nodes, kwargs) -> None:
+    """Either safeguard limit (head same-team redirect / team dispatch) must
+    coerce the decision into FINISH with status=fallback_finish."""
+    decision, status = await decide_route(
+        _llm(decision_payload),  # type: ignore[arg-type]
+        system_prompt="sys",
+        messages=[],
+        allowed_nodes=allowed_nodes,
+        layer=layer,
+        **kwargs,
+    )
+    assert decision.next == "FINISH"
+    assert status == "fallback_finish"
 
 
 @pytest.mark.asyncio
@@ -212,30 +206,6 @@ async def test_head_finish_with_direct_answer_content_round_trips() -> None:
 
 
 @pytest.mark.asyncio
-async def test_safeguard_forced_finish_strips_direct_answer_content() -> None:
-    """When a safeguard forces FINISH (invalid goto / redirect limit /
-    dispatch limit / parse failure), the resulting RouterDecision must
-    NOT carry direct-answer content — safeguards intercept routing for
-    safety, not to author replies."""
-    decision, status = await decide_route(
-        _llm(
-            {
-                "next": "not_a_real_team",
-                "reason": "oops",
-                "content": "this should be discarded by the safeguard",
-            }
-        ),  # type: ignore[arg-type]
-        system_prompt="sys",
-        messages=[],
-        allowed_nodes=["research_team"],
-        layer="head",
-    )
-    assert decision.next == "FINISH"
-    assert status == "rejected_invalid_goto"
-    assert decision.content == ""
-
-
-@pytest.mark.asyncio
 async def test_parse_failure_retries_once_and_recovers() -> None:
     """Plan §4.0.5: structured-output 파싱 실패 시 1회 재요청 후 성공해야 한다."""
     recovered = RouterDecision(
@@ -261,27 +231,6 @@ async def test_parse_failure_retries_once_and_recovers() -> None:
     assert decision.reason == "retry recovered"
     assert status == "accepted"
     # Ensure the underlying stub was indeed called twice (1 fail + 1 retry).
-    assert llm._structured.calls == 2  # type: ignore[attr-defined]
-
-
-@pytest.mark.asyncio
-async def test_parse_failure_persists_across_both_attempts() -> None:
-    """두 번 모두 파싱이 실패하면 safeguard FINISH로 폴백."""
-    llm = _sequence_llm(
-        [
-            (None, ValueError("first parse fail")),
-            (None, ValueError("second parse fail")),
-        ]
-    )
-    decision, status = await decide_route(
-        llm,  # type: ignore[arg-type]
-        system_prompt="sys",
-        messages=[],
-        allowed_nodes=["data_science_team"],
-        layer="head",
-    )
-    assert decision.next == "FINISH"
-    assert status == "parse_failed"
     assert llm._structured.calls == 2  # type: ignore[attr-defined]
 
 

@@ -12,25 +12,20 @@ async def _override_get_db():
 
 
 @pytest.mark.no_auth_override
-def test_threads_requires_auth():
+@pytest.mark.parametrize(
+    "method,path,json_body",
+    [
+        ("GET", "/api/threads", None),
+        ("POST", "/api/chat", {"message": "hello", "thread_id": "thread-1"}),
+    ],
+    ids=["threads_list", "chat_post"],
+)
+def test_protected_route_requires_auth(method, path, json_body):
+    """Any caller missing auth cookies must receive 401 from protected routes."""
     app.dependency_overrides.clear()
     app.dependency_overrides[get_db] = _override_get_db
     try:
-        response = client.get("/api/threads")
-    finally:
-        app.dependency_overrides.clear()
-        app.dependency_overrides.pop(get_db, None)
-
-    assert response.status_code == 401
-    assert response.json()["detail"] == "Authentication required"
-
-
-@pytest.mark.no_auth_override
-def test_chat_requires_auth():
-    app.dependency_overrides.clear()
-    app.dependency_overrides[get_db] = _override_get_db
-    try:
-        response = client.post("/api/chat", json={"message": "hello", "thread_id": "thread-1"})
+        response = client.request(method, path, json=json_body)
     finally:
         app.dependency_overrides.clear()
         app.dependency_overrides.pop(get_db, None)

@@ -52,9 +52,12 @@ def test_team_builder_registers_native_worker_subgraphs(monkeypatch):
     assert ("worker_b", "supervisor") in edges
 
 
-@pytest.mark.parametrize(
-    "builder_cls,team_label,workers,expected_prompts",
-    [
+def test_team_builders_use_prompt_kit_per_worker(monkeypatch):
+    """AGENTS.md規約: every worker prompt must come from prompt-kit, not inline strings.
+
+    Bundled across teams in one test — only the monkeypatched stub matters and is
+    reset between iterations by reassigning the ``created`` list."""
+    cases = [
         (
             ResearchTeamBuilder,
             "ResearchTeam",
@@ -71,13 +74,8 @@ def test_team_builder_registers_native_worker_subgraphs(monkeypatch):
                 RUNTIME_VERIFIER_PROMPT.template,
             ],
         ),
-    ],
-)
-def test_team_builders_use_prompt_kit_per_worker(
-    monkeypatch, builder_cls, team_label, workers, expected_prompts
-):
-    """AGENTS.md規約: every worker prompt must come from prompt-kit, not inline strings."""
-    created = []
+    ]
+    created: list[dict[str, object]] = []
 
     def fake_create_agent(*, model, tools=None, system_prompt=None, **kwargs):
         created.append({"name": kwargs.get("name"), "system_prompt": system_prompt})
@@ -85,32 +83,31 @@ def test_team_builders_use_prompt_kit_per_worker(
 
     monkeypatch.setattr("agent_core.builder.create_agent", fake_create_agent)
 
-    builder = builder_cls(object(), team_label, workers)  # type: ignore[arg-type]
-    builder.register_nodes()
+    for builder_cls, team_label, workers, expected_prompts in cases:
+        created.clear()
+        builder = builder_cls(object(), team_label, workers)  # type: ignore[arg-type]
+        builder.register_nodes()
+        assert [entry["name"] for entry in created] == workers, team_label
+        assert [entry["system_prompt"] for entry in created] == expected_prompts, team_label
 
-    assert [entry["name"] for entry in created] == workers
-    assert [entry["system_prompt"] for entry in created] == expected_prompts
 
-
-@pytest.mark.parametrize(
-    ("relative_path", "worker_count"),
-    [
-        ("apps/backend/workflow/teams/research.py", 2),
-        ("apps/backend/workflow/teams/writing.py", 3),
-        ("apps/backend/workflow/teams/vision.py", 1),
-        ("apps/backend/workflow/teams/coding.py", 3),
-    ],
-)
-def test_team_modules_use_add_worker_without_blocking_wrappers(
-    relative_path: str, worker_count: int
-):
+def test_team_modules_use_add_worker_without_blocking_wrappers():
+    """AGENTS.md規約: every team module must (a) register all its workers via
+    ``self.add_worker(`` and (b) never use blocking wrappers (``.invoke(state)``)
+    or inline ``HumanMessage(`` / ``create_agent(`` calls."""
     repo_root = Path(__file__).resolve().parents[3]
-    source = (repo_root / relative_path).read_text()
-
-    assert source.count("self.add_worker(") == worker_count
-    assert ".invoke(state)" not in source
-    assert "HumanMessage(" not in source
-    assert "create_agent(" not in source
+    expected = {
+        "apps/backend/workflow/teams/research.py": 2,
+        "apps/backend/workflow/teams/writing.py": 3,
+        "apps/backend/workflow/teams/vision.py": 1,
+        "apps/backend/workflow/teams/coding.py": 3,
+    }
+    for relative_path, worker_count in expected.items():
+        source = (repo_root / relative_path).read_text()
+        assert source.count("self.add_worker(") == worker_count, relative_path
+        assert ".invoke(state)" not in source, relative_path
+        assert "HumanMessage(" not in source, relative_path
+        assert "create_agent(" not in source, relative_path
 
 
 @pytest.mark.parametrize(
