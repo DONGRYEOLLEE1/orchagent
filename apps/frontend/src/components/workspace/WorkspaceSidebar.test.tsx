@@ -35,40 +35,33 @@ const baseProps = {
   onDeleteThread: vi.fn(),
 };
 
-test('clicking a thread invokes onSelectThread with the thread id', async () => {
+test('desktop sidebar forwards thread selection + new-chat clicks', async () => {
+  // Consolidates `clicking a thread invokes onSelectThread` +
+  // `clicking New Chat invokes onCreateThread` (both fire from the desktop
+  // sidebar layout).
   const user = userEvent.setup();
   const onSelectThread = vi.fn();
-
-  render(
-    <WorkspaceSidebar
-      {...baseProps}
-      onSelectThread={onSelectThread}
-    />
-  );
-
-  const threadButton = screen.getByRole('button', { name: /open thread alpha thread/i });
-  await user.click(threadButton);
-
-  expect(onSelectThread).toHaveBeenCalledWith('thread-alpha');
-});
-
-test('clicking New Chat invokes onCreateThread', async () => {
-  const user = userEvent.setup();
   const onCreateThread = vi.fn();
 
   render(
     <WorkspaceSidebar
       {...baseProps}
+      onSelectThread={onSelectThread}
       onCreateThread={onCreateThread}
     />
   );
 
-  await user.click(screen.getByRole('button', { name: /new chat/i }));
+  await user.click(screen.getByRole('button', { name: /open thread alpha thread/i }));
+  expect(onSelectThread).toHaveBeenCalledWith('thread-alpha');
 
+  await user.click(screen.getByRole('button', { name: /new chat/i }));
   expect(onCreateThread).toHaveBeenCalledTimes(1);
 });
 
 test('mobile drawer renders a close button that triggers onCloseMobileSidebar', async () => {
+  // Kept separate from the desktop test — mobile mode mounts a second drawer
+  // that duplicates buttons, so a dedicated render isolates the close-button
+  // hookup unambiguously.
   const user = userEvent.setup();
   const onCloseMobileSidebar = vi.fn();
 
@@ -80,7 +73,6 @@ test('mobile drawer renders a close button that triggers onCloseMobileSidebar', 
     />
   );
 
-  // Backdrop close button (aria-label) is rendered when the drawer is open.
   await user.click(screen.getByRole('button', { name: /close thread sidebar/i }));
   expect(onCloseMobileSidebar).toHaveBeenCalled();
 });

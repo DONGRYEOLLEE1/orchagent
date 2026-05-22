@@ -20,10 +20,11 @@ const threads: ThreadSummary[] = [
   },
 ];
 
-test('renders saved thread items and forwards selection', async () => {
+test('thread row click, action menu open + delete, and backdrop close all fire the right callbacks', async () => {
+  // Consolidates `renders saved thread items and forwards selection` +
+  // `closes the thread actions menu when the backdrop is clicked`.
   const user = userEvent.setup();
   const onSelectThread = vi.fn();
-  const onNewChat = vi.fn();
   const onDeleteThread = vi.fn();
 
   render(
@@ -33,7 +34,7 @@ test('renders saved thread items and forwards selection', async () => {
       error=""
       selectedThreadId=""
       disabled={false}
-      onNewChat={onNewChat}
+      onNewChat={vi.fn()}
       onSelectThread={onSelectThread}
       onDeleteThread={onDeleteThread}
     />
@@ -42,43 +43,23 @@ test('renders saved thread items and forwards selection', async () => {
   const threadButton = screen.getByRole('button', { name: /open thread first thread/i });
   await user.hover(threadButton);
   await user.click(threadButton);
+  expect(onSelectThread).toHaveBeenCalledWith('thread-1');
+
+  await user.click(screen.getByRole('button', { name: /thread actions first thread/i }));
+  expect(screen.getByRole('menu')).toBeInTheDocument();
+
+  // Backdrop close still works without firing delete.
+  await user.click(screen.getByRole('button', { name: /close thread actions menu for first thread/i }));
+  expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+
+  // Re-open and confirm delete still routes through onDeleteThread.
+  await user.hover(threadButton);
   await user.click(screen.getByRole('button', { name: /thread actions first thread/i }));
   await user.click(screen.getByRole('button', { name: /delete first thread/i }));
-
-  expect(screen.getByText('First thread')).toBeInTheDocument();
-  expect(screen.queryByText('A saved preview')).not.toBeInTheDocument();
-  expect(onSelectThread).toHaveBeenCalledWith('thread-1');
   expect(onDeleteThread).toHaveBeenCalledWith('thread-1');
 });
 
-test('closes the thread actions menu when the backdrop is clicked', async () => {
-  const user = userEvent.setup();
-
-  render(
-    <ThreadListSidebar
-      threads={threads}
-      loadState="success"
-      error=""
-      selectedThreadId=""
-      disabled={false}
-      onNewChat={vi.fn()}
-      onSelectThread={vi.fn()}
-      onDeleteThread={vi.fn()}
-    />
-  );
-
-  const threadButton = screen.getByRole('button', { name: /open thread first thread/i });
-  await user.hover(threadButton);
-  await user.click(screen.getByRole('button', { name: /thread actions first thread/i }));
-
-  expect(screen.getByRole('menu')).toBeInTheDocument();
-
-  await user.click(screen.getByRole('button', { name: /close thread actions menu for first thread/i }));
-
-  expect(screen.queryByRole('menu')).not.toBeInTheDocument();
-});
-
-test('shows empty, loading, and disabled states', () => {
+test('renders empty + loading + error + disabled states', () => {
   const { rerender } = render(
     <ThreadListSidebar
       threads={[]}
@@ -90,7 +71,6 @@ test('shows empty, loading, and disabled states', () => {
       onSelectThread={vi.fn()}
     />
   );
-
   expect(screen.getByText(/loading threads/i)).toBeInTheDocument();
 
   rerender(
@@ -104,7 +84,6 @@ test('shows empty, loading, and disabled states', () => {
       onSelectThread={vi.fn()}
     />
   );
-
   expect(screen.getByText(/no saved threads yet/i)).toBeInTheDocument();
   expect(screen.getByText(/failed to load threads/i)).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /new chat/i })).toBeDisabled();

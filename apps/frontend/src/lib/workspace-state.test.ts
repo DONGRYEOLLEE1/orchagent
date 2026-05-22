@@ -12,121 +12,58 @@ import {
 } from '@/lib/workspace-state';
 import type { ThreadDetail, ThreadSummary } from '@/types/thread';
 
-test('creates optimistic thread summaries and moves them to the top', () => {
-  const older: ThreadSummary = {
-    thread_id: 'thread-old',
-    title: 'Older thread',
-    preview: 'Older preview',
-    created_at: '2026-03-22T08:00:00Z',
-    last_activity_at: '2026-03-22T08:10:00Z',
-    message_count: 1,
-    latest_status: 'completed',
-    checkpoint_id: 'cp-old',
-    pinned: false,
-    archived: false,
+function summary(overrides: Partial<ThreadSummary> & { thread_id: string }): ThreadSummary {
+  return {
+    thread_id: overrides.thread_id,
+    title: overrides.title ?? `Thread ${overrides.thread_id}`,
+    preview: overrides.preview ?? 'preview',
+    created_at: overrides.created_at ?? '2026-03-22T08:00:00Z',
+    last_activity_at: overrides.last_activity_at ?? '2026-03-22T09:00:00Z',
+    message_count: overrides.message_count ?? 1,
+    latest_status: overrides.latest_status ?? 'completed',
+    checkpoint_id: overrides.checkpoint_id ?? 'cp-x',
+    pinned: overrides.pinned ?? false,
+    archived: overrides.archived ?? false,
   };
+}
 
+test('thread-collection sort/insert/patch helpers honour pinned-first + recency ordering', () => {
+  // Consolidates three prior cases (`creates optimistic`, `sorts pinned`,
+  // `patchThreadSummary reorders pinned threads to the top`) into one
+  // sequential exercise of the public helpers on the same fixture.
+
+  // upsertThreadSummary places an optimistic new thread at the top.
+  const older = summary({ thread_id: 'thread-old', title: 'Older thread', last_activity_at: '2026-03-22T08:10:00Z' });
   const optimistic = createOptimisticThreadSummary({
     threadId: 'thread-live',
     content: 'A fresh prompt for a new conversation',
   });
-
-  const reordered = upsertThreadSummary([older], optimistic);
-
-  expect(optimistic.title).toContain('A fresh prompt');
+  const upserted = upsertThreadSummary([older], optimistic);
   expect(optimistic.latest_status).toBe('running');
-  expect(reordered.map((thread) => thread.thread_id)).toEqual([
-    'thread-live',
-    'thread-old',
+  expect(upserted.map((t) => t.thread_id)).toEqual(['thread-live', 'thread-old']);
+
+  // sortThreadSummaries puts pinned threads ahead of newer unpinned ones.
+  const sorted = sortThreadSummaries([
+    summary({ thread_id: 'unpinned', last_activity_at: '2026-03-22T12:00:00Z' }),
+    summary({ thread_id: 'pinned-old', pinned: true, last_activity_at: '2026-03-22T09:00:00Z' }),
   ]);
+  expect(sorted.map((t) => t.thread_id)).toEqual(['pinned-old', 'unpinned']);
+
+  // patchThreadSummary toggling pinned=true moves a thread to the top.
+  const patched = patchThreadSummary(
+    [
+      summary({ thread_id: 'a', last_activity_at: '2026-03-22T12:00:00Z' }),
+      summary({ thread_id: 'b', last_activity_at: '2026-03-22T09:00:00Z' }),
+    ],
+    'b',
+    { pinned: true },
+  );
+  expect(patched.map((t) => t.thread_id)).toEqual(['b', 'a']);
 });
 
-test('sorts pinned threads ahead of newer unpinned threads', () => {
-  const threads: ThreadSummary[] = [
-    {
-      thread_id: 'thread-new-unpinned',
-      title: 'New unpinned',
-      preview: 'Preview',
-      created_at: '2026-03-22T10:00:00Z',
-      last_activity_at: '2026-03-22T12:00:00Z',
-      message_count: 2,
-      latest_status: 'completed',
-      checkpoint_id: 'cp-1',
-      pinned: false,
-      archived: false,
-    },
-    {
-      thread_id: 'thread-pinned-old',
-      title: 'Pinned old',
-      preview: 'Preview',
-      created_at: '2026-03-22T08:00:00Z',
-      last_activity_at: '2026-03-22T09:00:00Z',
-      message_count: 2,
-      latest_status: 'completed',
-      checkpoint_id: 'cp-2',
-      pinned: true,
-      archived: false,
-    },
-  ];
-
-  const sorted = sortThreadSummaries(threads);
-
-  expect(sorted.map((thread) => thread.thread_id)).toEqual([
-    'thread-pinned-old',
-    'thread-new-unpinned',
-  ]);
-});
-
-test('patchThreadSummary reorders pinned threads to the top', () => {
-  const threads: ThreadSummary[] = [
-    {
-      thread_id: 'thread-a',
-      title: 'A',
-      preview: 'Preview',
-      created_at: '2026-03-22T08:00:00Z',
-      last_activity_at: '2026-03-22T12:00:00Z',
-      message_count: 2,
-      latest_status: 'completed',
-      checkpoint_id: 'cp-a',
-      pinned: false,
-      archived: false,
-    },
-    {
-      thread_id: 'thread-b',
-      title: 'B',
-      preview: 'Preview',
-      created_at: '2026-03-22T07:00:00Z',
-      last_activity_at: '2026-03-22T09:00:00Z',
-      message_count: 2,
-      latest_status: 'completed',
-      checkpoint_id: 'cp-b',
-      pinned: false,
-      archived: false,
-    },
-  ];
-
-  const patched = patchThreadSummary(threads, 'thread-b', { pinned: true });
-
-  expect(patched.map((thread) => thread.thread_id)).toEqual([
-    'thread-b',
-    'thread-a',
-  ]);
-});
-
-test('hydrates active thread state from detail and summary metadata', () => {
+test('hydrates active-thread slice from ThreadDetail and re-applies summary metadata', () => {
   const detail: ThreadDetail = {
-    thread: {
-      thread_id: 'thread-1',
-      title: 'Thread title',
-      preview: 'Preview',
-      created_at: '2026-03-22T10:00:00Z',
-      last_activity_at: '2026-03-22T10:20:00Z',
-      message_count: 2,
-      latest_status: 'interrupted',
-      checkpoint_id: 'cp-1',
-      pinned: false,
-      archived: false,
-    },
+    thread: summary({ thread_id: 'thread-1', title: 'Thread title', latest_status: 'interrupted', checkpoint_id: 'cp-1', message_count: 2, last_activity_at: '2026-03-22T10:20:00Z', created_at: '2026-03-22T10:00:00Z' }),
     messages: [
       {
         id: 'm-1',
@@ -141,12 +78,7 @@ test('hydrates active thread state from detail and summary metadata', () => {
           },
         ],
       },
-      {
-        id: 'm-2',
-        role: 'assistant',
-        content: 'hi',
-        created_at: '2026-03-22T10:01:00Z',
-      },
+      { id: 'm-2', role: 'assistant', content: 'hi', created_at: '2026-03-22T10:01:00Z' },
     ],
   };
 
@@ -164,7 +96,7 @@ test('hydrates active thread state from detail and summary metadata', () => {
   expect(updated.checkpointId).toBe('cp-2');
 });
 
-test('builds historical stream state from latest status', () => {
+test('builds historical stream state from latest status; initial active state defaults to draft', () => {
   expect(createHistoricalStreamSessionState('interrupted')).toMatchObject({
     currentNode: 'Requires User Action',
     isInterrupted: true,

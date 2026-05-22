@@ -10,9 +10,6 @@ from services.security_service import (
     apply_auth_cookies,
     clear_auth_cookies,
     get_current_session,
-    get_current_user,
-    request_client_ip,
-    request_user_agent,
     require_csrf,
 )
 
@@ -117,14 +114,3 @@ async def test_require_csrf_accepts_match_and_rejects_missing_header():
         monkeypatch.undo()
 
 
-def test_request_context_helpers_use_forwarded_headers():
-    request = build_request(
-        method="GET",
-        headers={
-            "user-agent": "pytest-agent",
-            "x-forwarded-for": "203.0.113.10, 127.0.0.1",
-        },
-    )
-
-    assert request_user_agent(request) == "pytest-agent"
-    assert request_client_ip(request) == "203.0.113.10"

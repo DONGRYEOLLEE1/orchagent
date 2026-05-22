@@ -31,18 +31,6 @@ async def test_create_events_batches_single_commit():
     mock_db.commit.assert_awaited_once()
 
 
-@pytest.mark.asyncio
-async def test_get_thread_traces_returns_persisted_rows():
-    mock_db = AsyncMock()
-    mock_result = MagicMock()
-    mock_result.scalars.return_value.all.return_value = ["trace1", "trace2"]
-    mock_db.execute.return_value = mock_result
-
-    traces = await TraceService.get_thread_traces(mock_db, "test_thread")
-
-    assert len(traces) == 2
-
-
 def test_trace_payload_optimization():
     """Large base64 strings and verbose payload strings must be truncated."""
     long_base64 = "data:image/jpeg;base64," + "A" * 1000

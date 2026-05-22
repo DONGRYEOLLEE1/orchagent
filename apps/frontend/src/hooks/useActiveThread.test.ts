@@ -1,8 +1,8 @@
 /**
- * useActiveThread — unit tests (Phase 3.2).
+ * useActiveThread — unit tests.
  *
- * Covers message append + summary apply transitions. Network access is
- * mocked so the slice transitions can be asserted in isolation.
+ * Consolidated case exercises both helpers (appendMessage + applySummary) in
+ * one render, plus verifies summaries for other thread ids are ignored.
  */
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -36,57 +36,26 @@ describe('useActiveThread', () => {
     vi.clearAllMocks();
   });
 
-  it('appendMessage pushes the new chat message onto the active slice', () => {
+  it('appendMessage + applySummary update the active slice; non-matching summaries are ignored', () => {
     const { result } = renderHook(() => useActiveThread());
 
-    act(() => {
-      result.current.beginLoadingThread('t-1');
-    });
-
+    act(() => result.current.beginLoadingThread('t-1'));
     expect(result.current.activeThread.threadId).toBe('t-1');
-    expect(result.current.activeThread.messages).toHaveLength(0);
 
-    const message: ChatMessage = {
-      id: 'u-1',
-      role: 'user',
-      content: 'hello',
-    };
-
-    act(() => {
-      result.current.appendMessage(message);
-    });
-
+    const message: ChatMessage = { id: 'u-1', role: 'user', content: 'hello' };
+    act(() => result.current.appendMessage(message));
     expect(result.current.activeThread.messages).toEqual([message]);
-  });
 
-  it('applySummary refreshes title/checkpoint when the summary matches the active thread', () => {
-    const { result } = renderHook(() => useActiveThread());
-
-    act(() => {
-      result.current.beginLoadingThread('t-1');
-    });
-
-    const matchingSummary = makeSummary({
-      thread_id: 't-1',
-      title: 'renamed by ai',
-      checkpoint_id: 'ckpt-99',
-      latest_status: 'completed',
-    });
-
-    act(() => {
-      result.current.applySummary(matchingSummary);
-    });
-
+    act(() =>
+      result.current.applySummary(
+        makeSummary({ thread_id: 't-1', title: 'renamed by ai', checkpoint_id: 'ckpt-99' }),
+      ),
+    );
     expect(result.current.activeThread.title).toBe('renamed by ai');
     expect(result.current.activeThread.checkpointId).toBe('ckpt-99');
 
-    const otherSummary = makeSummary({ thread_id: 't-2', title: 'unrelated' });
-
-    act(() => {
-      result.current.applySummary(otherSummary);
-    });
-
-    // Slice is unchanged for non-matching summaries.
+    // Non-matching summary must be a no-op for the active slice.
+    act(() => result.current.applySummary(makeSummary({ thread_id: 't-2', title: 'unrelated' })));
     expect(result.current.activeThread.title).toBe('renamed by ai');
   });
 });

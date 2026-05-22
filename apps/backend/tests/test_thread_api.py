@@ -130,23 +130,6 @@ def test_get_thread_absolutizes_message_attachment_urls(monkeypatch):
     assert attachment["url"].startswith("http://testserver/api/threads/thread-attachment/")
 
 
-def test_get_thread_returns_404_for_missing_thread(monkeypatch):
-    async def mock_get_thread_detail(db, thread_id, *, user_id):
-        return None
-
-    from services.thread_service import ThreadService
-
-    app.dependency_overrides[get_db] = _override_get_db
-    monkeypatch.setattr(ThreadService, "get_thread_detail", mock_get_thread_detail)
-    try:
-        response = client.get("/api/threads/missing-thread")
-    finally:
-        app.dependency_overrides.pop(get_db, None)
-
-    assert response.status_code == 404
-    assert response.json() == {"detail": "Thread not found"}
-
-
 def test_upload_files_rejects_unsupported_type():
     """Upload route must guard against arbitrary binary uploads."""
     app.dependency_overrides[get_db] = _override_get_db

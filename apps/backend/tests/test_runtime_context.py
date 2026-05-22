@@ -52,12 +52,10 @@ def runtime(tmp_path: Path):
         reset_tool_runtime_context(token)
 
 
-def test_runtime_context_token_lifecycle(runtime) -> None:
-    """Active context returns inside a token; outside it must raise."""
-    assert get_tool_runtime_context() is runtime
-
-
 def test_get_tool_runtime_context_raises_outside_token() -> None:
+    """No active runtime → get_tool_runtime_context() must raise. The positive
+    "returns active context" half is implicitly covered by every fixture-using
+    test below."""
     with pytest.raises(RuntimeError):
         get_tool_runtime_context()
 
