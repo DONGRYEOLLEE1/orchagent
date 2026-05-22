@@ -9,7 +9,7 @@ top-of-graph router that:
   when the LLM raises ``request_review`` or the state flag
   ``force_requires_approval`` is set.
 - Picks the finalizer over a raw FINISH when synthesis is appropriate.
-- Enforces the per-team redirect safeguard via the LLM router.
+- Enforces head-layer safeguards via the LLM router.
 - Writes the routing decision into the persistent ``route_history`` so
   the SSE layer can emit ``route`` events without re-deriving it.
 """
@@ -23,7 +23,6 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.graph import END
 from langgraph.types import Command
 
-from agent_core.safeguards import reject_coding_team_without_repo_binding
 from agent_core.state import (
     BaseAgentState,
     ResponseMode,
@@ -84,18 +83,6 @@ def make_head_supervisor_node(
             layer="head",
             same_team_streak=same_team_streak,
         )
-
-        # ---- Coding team safeguard: needs repo binding. -------------------
-        # Block before HITL so the user is not asked to approve a dispatch
-        # that the system cannot execute anyway.
-        binding_outcome = reject_coding_team_without_repo_binding(
-            decision,
-            repo_bound=bool(shared_context.get("repo_binding")),
-        )
-        if binding_outcome.status != "accepted":
-            decision = binding_outcome.decision
-            status = binding_outcome.status
-            print(f"[HeadSupervisor] {decision.reason}", flush=True)
 
         # ---- HITL: interrupt only when LLM (or state flag) asked for it. --
         state_requires_approval = bool(

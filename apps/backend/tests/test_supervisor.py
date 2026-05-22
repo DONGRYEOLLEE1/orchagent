@@ -18,6 +18,16 @@ class FakeRouterLLM:
         return {"next": self.target_node}
 
 
+class CountingRouterLLM(FakeRouterLLM):
+    def __init__(self, target_node: str):
+        super().__init__(target_node)
+        self.calls = 0
+
+    async def ainvoke(self, messages):
+        self.calls += 1
+        return {"next": self.target_node, "reason": "LLM chose next worker"}
+
+
 class ApprovalAwareLLM:
     def with_structured_output(self, schema):
         return self
@@ -65,6 +75,29 @@ async def test_supervisor_routes_to_worker():
     assert command.update["active_team"] == "research"
     assert command.update["active_worker"] == "search_agent"
     assert command.update["route_history"][0]["layer"] == "team"
+
+
+@pytest.mark.asyncio
+async def test_team_dispatch_limit_runs_after_llm_decision():
+    """Dispatch limit is a post-decision safeguard, not a pre-LLM branch."""
+    fake_llm = CountingRouterLLM("search_agent")
+    supervisor_func = make_supervisor_node(
+        fake_llm,  # type: ignore
+        ["search_agent", "web_scraper"],
+        layer="team",
+        team_name="ResearchTeam",
+        max_team_dispatches=0,
+    )
+
+    state = cast(
+        BaseAgentState,
+        {"messages": [HumanMessage(content="Find me something")], "next": ""},
+    )
+    command = await supervisor_func(state)
+
+    assert fake_llm.calls == 1
+    assert command.goto == "__end__"
+    assert command.update["route_history"][0]["reasoning"].startswith("safeguard:")
 
 
 @pytest.mark.asyncio

@@ -19,7 +19,6 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import AIMessage
 from langgraph.graph import END
 from langgraph.types import Command
 
@@ -71,22 +70,6 @@ def make_team_supervisor_node(
         team_dispatch_count = _current_turn_team_dispatches(
             route_history, normalized_team=normalized_team
         )
-
-        # Pre-check dispatch ceiling before paying for an LLM call — saves a
-        # round-trip when the team is already saturated this turn.
-        if (
-            normalized_team
-            and max_team_dispatches is not None
-            and team_dispatch_count >= max_team_dispatches
-        ):
-            print(
-                f"[TeamSupervisor:{normalized_team}] dispatch limit reached "
-                f"({team_dispatch_count}/{max_team_dispatches}).",
-                flush=True,
-            )
-            return _force_finish_due_to_dispatch_limit(
-                normalized_team=normalized_team,
-            )
 
         system_prompt = compose_system_prompt(
             base_system_prompt,
@@ -143,39 +126,6 @@ def make_team_supervisor_node(
         return Command(update=update_data, goto=goto)
 
     return team_supervisor_node
-
-
-def _force_finish_due_to_dispatch_limit(*, normalized_team: str) -> Command:
-    """Return a FINISH Command when the dispatch ceiling is hit pre-LLM."""
-    return Command(
-        update={
-            "active_team": None,
-            "active_worker": None,
-            "route_history": [
-                build_route_entry(
-                    layer="team",
-                    node="supervisor",
-                    next_node="FINISH",
-                    team=normalized_team,
-                    reasoning=(
-                        f"{normalized_team} team dispatch limit reached; "
-                        "returning control."
-                    ),
-                )
-            ],
-            "messages": [
-                AIMessage(
-                    content=(
-                        f"[{normalized_team.capitalize()} Team Limit] Dispatch "
-                        "budget reached. Return to the head supervisor and "
-                        "synthesize with the gathered evidence."
-                    ),
-                    name="supervisor",
-                )
-            ],
-        },
-        goto=END,
-    )
 
 
 def _log_decision(decision: Any, goto: str, status: str) -> None:

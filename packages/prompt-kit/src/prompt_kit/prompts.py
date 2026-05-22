@@ -38,12 +38,21 @@ When finished, respond with FINISH.
 
 # {ROUTER_DECISION_GUIDANCE}
 
+# REQUIRED FIRST ROUTES
+- Data attachment (csv, xlsx, json, pdf, docx) plus analysis, extraction, table, chart, or visualization intent → `data_science_team`. That team must start with `data_engineer` for one-pass inspect/preview/profile, then `data_analyst` for verified calculations and chart PNG generation.
+- Image attachment → `vision_team`. In the current graph, the Vision Team's implemented first worker is `vision_analyst`; do not invent worker names that are not in the team's member list.
+- Current events, news, or "latest" information → `research_team`. The Research Team must start with `search`, then use `web_scraper` only when deeper page evidence is needed.
+- Bound repository plus code reading, editing, tests, refactors, debugging, runtime, or repo-local implementation → `coding_team`. The Coding Team must start with `codebase_explorer`, then `implementation_engineer`, then `runtime_verifier` only when execution evidence is needed.
+- Explicit report, article, outline, slide, document, or saved writing artifact → `writing_team`. The Writing Team must start with `note_taker`, then `doc_writer`; use `chart_generator` only when the requested writing artifact needs a chart from available evidence.
+- Simple greetings, identity questions, conversational pleasantries, and general knowledge that needs no tools → `FINISH` with a complete `content` answer from the head supervisor.
+
 # TEAM SELECTION HINTS
 - If the latest user turn carries one or more image attachments, prefer `vision_team` (unless the user explicitly asked for repo work, research, etc.).
-- **If the latest user turn carries ANY data attachment (pdf, csv, xlsx, docx, json), you MUST route to `data_science_team`** — this team owns analysis, aggregation, chart/PNG generation, and document extraction. The team supervisor will ALWAYS start with `data_engineer` (single-pass inspect/preview/profile brief) before handing off to `data_analyst` for calculations and chart PNG generation. Do NOT route data-attachment turns to `coding_team` (no repo is bound for analysis-only requests) or to `research_team` (the data is already in the file). `data_science_team` runs sandboxed Python and saves real chart images.
+- **If the latest user turn carries ANY data attachment (pdf, csv, xlsx, docx, json), you MUST route to `data_science_team`** — this team owns analysis, aggregation, chart/PNG generation, and document extraction. Do NOT route data-attachment turns to `coding_team` (no repo is bound for analysis-only requests) or to `research_team` (the data is already in the file). `data_science_team` runs sandboxed Python and saves real chart images.
 - A request involving an attached spreadsheet/CSV/JSON and the phrase "차트/시각화/그래프/visualization/chart/plot/PNG/이미지" is ALWAYS a `data_science_team` task. `request_review` must stay `false` for these — the python_repl_data_tool sandbox is safe and needs no human approval.
 - If a repository is bound to the current thread AND the user is asking for code reads, edits, tests, refactors, or any repo-local implementation work, prefer `coding_team`. With no bound repo, do NOT route to `coding_team` — answer directly or via the finalizer instead.
 - For questions about current events, news, or "latest" topics, prefer `research_team` and do not rely on internal knowledge.
+- For explicit long-form writing deliverables, prefer `writing_team`; do not use it for ordinary final-answer synthesis.
 
 # CRITICAL GUIDELINES
 1. Write concise routing reasoning in the 'reason' field. If a CURRENT TASK PLAN is provided, refer to the current stage, but do not expand a simple task into unnecessary micro-steps.
@@ -62,7 +71,7 @@ When finished, respond with FINISH.
 10a. Outputting code as text — explanations, snippets, examples, walkthroughs of LangChain/LangGraph/MCP/etc. — is NOT 'executing code'. When the user only asks to *see* or *describe* code, set `request_review` to false even if coding_team handles the response.
 11. AVOID re-dispatching the same team after it already returned control once in this turn. If the latest `[Review Failed]`/`[Review Warning]`/team feedback in the conversation came from a team you already routed to, prefer FINISH so the finalizer synthesizes from what is already gathered. Only re-route to the same team when there is a concrete actionable gap that team alone can fix.
 """,
-    version="2.6",
+    version="2.7",
 )
 
 TEAM_SUPERVISOR_PROMPT = PromptTemplate(
@@ -85,6 +94,16 @@ When finished, respond with FINISH.
 - If the analyst's PNG/chart attempt failed once with a code error, dispatch `data_analyst` ONE more time with the Reviewer feedback so the analyst can fix the code. After two failed analyst attempts in a row, FINISH and let the head supervisor synthesize from what was gathered.
 - If the user explicitly asked for a chart/PNG and the analyst has not yet been dispatched, route to `data_analyst` immediately even if the engineer brief is incomplete — the analyst can fill the gap.
 
+# WRITING TEAM HANDOFF (when members include `note_taker` and `doc_writer`)
+- Start a new report, article, outline, slide, or saved document request with `note_taker` so the evidence and structure are organized first.
+- After `note_taker` has produced an outline or structured notes, route to `doc_writer` for the polished artifact.
+- Use `chart_generator` only when the writing deliverable needs a chart generated from already-available evidence or data.
+- Do not call `doc_writer` first for a new writing artifact unless the conversation already contains a complete outline.
+
+# VISION TEAM HANDOFF (when members include `vision_analyst`)
+- Start image-attachment requests with `vision_analyst`.
+- The current Vision Team exposes `vision_analyst` as the image-inspection worker. Do not choose `image_inspector` or `image_editor` unless those exact names are present in the provided member list.
+
 # CRITICAL GUIDELINES
 1. Write concise routing reasoning in the 'reason' field. Explicitly state what remains, but keep the worker sequence minimal.
 2. If you receive a [Validation Failed] message from a validator, read the feedback and route the task BACK to the appropriate worker for self-correction.
@@ -92,7 +111,7 @@ When finished, respond with FINISH.
 4. AVOID loops: If a worker has already attempted a task and failed multiple times, do not keep sending it back without a clear reason. If you cannot improve the output further, return FINISH and let the head supervisor decide.
 5. Prefer FINISH when the team objective is materially complete. Minor stylistic improvements alone do not justify another worker handoff.
 """,
-    version="1.4",
+    version="1.5",
 )
 
 RESEARCH_TEAM_SUPERVISOR_PROMPT = PromptTemplate(
@@ -549,7 +568,7 @@ THREAD_TITLE_SUMMARIZER_PROMPT = PromptTemplate(
 3. Keep the title to one line.
 4. Keep it concise and list-friendly.
 5. Maximum length: 24 characters.
-6. Preserve important technical keywords like RoPE, ALiBi, JWT, OAuth, SQL when helpful.
+6. Preserve important technical terms like RoPE, ALiBi, JWT, OAuth, SQL when helpful.
 7. Remove polite phrasing, question endings, and unnecessary detail.
 8. Do not include quotes, markdown, bullets, colons, or trailing punctuation.
 
@@ -582,7 +601,7 @@ SUGGESTED_QUERIES_PROMPT = PromptTemplate(
 
 # OUTPUT RULES
 1. Return only the structured output fields.
-2. Prefer Korean unless a technical keyword is better preserved in English.
+2. Prefer Korean unless a technical term is better preserved in English.
 3. Each suggestion must be one line.
 4. Keep each suggestion short and sidebar-friendly.
 5. Maximum length per suggestion: 36 characters.
@@ -593,7 +612,7 @@ SUGGESTED_QUERIES_PROMPT = PromptTemplate(
 
 # QUALITY BAR
 - The suggestions should feel actionable.
-- Preserve important technical keywords when useful.
+- Preserve important technical terms when useful.
 - Prefer concrete continuations over generic prompts.
 
 # EXAMPLE

@@ -13,8 +13,7 @@ Field semantics:
 - ``reason``: short human-readable explanation, exposed to the UI via
   the ``route`` SSE event (plan §4.0 P4).
 - ``request_review``: ``True`` if the supervisor wants to interrupt for
-  HITL approval before continuing. Replaces the rule-based
-  ``_should_force_approval`` heuristic.
+  HITL approval before continuing. The LLM sets this from prompt policy.
 - ``team_finished``: team supervisor asserts the team has nothing more
   to do this turn; head supervisor uses this to decide between another
   team dispatch and a finalizer call.
@@ -26,8 +25,8 @@ Field semantics:
   direct-FINISH turns would emit an empty AI message (regression seen
   after the head/team split in Phase 2.4).
 
-This schema lives in agent_core so that both supervisor.py (today's
-rule-based logic) and the upcoming ``LLMRouter`` class can share it.
+This schema lives in agent_core so the supervisor factories and the shared
+LLM router can use the same structured-output contract.
 """
 
 from __future__ import annotations
@@ -53,7 +52,7 @@ class RouterDecision(BaseModel):
         default=False,
         description=(
             "Set True when the supervisor wants to pause for human approval "
-            "before continuing (replaces _should_force_approval heuristic)."
+            "before continuing according to the prompt policy."
         ),
     )
     team_finished: bool = Field(
