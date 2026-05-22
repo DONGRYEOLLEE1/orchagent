@@ -130,7 +130,9 @@ test('login redirects to the workspace after success', async () => {
   });
 });
 
-test('workspace auth guard redirects unauthenticated users to login', async () => {
+test('workspace auth guard redirects to login on unauthenticated /api/auth/me', async () => {
+  // The other auth-redirect path (authed user, threads 401) lives in a single
+  // consolidated case below — both flows terminate at replace('/login').
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url.includes('/api/auth/me')) {
@@ -333,6 +335,9 @@ test('profile panel saves and updates the visible user state', async () => {
 
   expect(await screen.findByDisplayValue('Updated Name')).toBeInTheDocument();
   expect(screen.getAllByText('Updated Name').length).toBeGreaterThan(0);
+  // Non-admin users must not see the admin status panel — folds the prior
+  // `admin status panel is hidden for non-admin users` case into this one.
+  expect(screen.queryByText(/Admin User Status/i)).not.toBeInTheDocument();
 });
 
 test('admin status panel is only rendered for admins and can submit a status change', async () => {
@@ -389,36 +394,3 @@ test('admin status panel is only rendered for admins and can submit a status cha
   expect(await screen.findByText(/Updated user2 to disabled/i)).toBeInTheDocument();
 });
 
-test('admin status panel is hidden for non-admin users', async () => {
-  const user = userEvent.setup();
-  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-    const url = String(input);
-
-    if (url.includes('/api/auth/me')) {
-      return jsonResponse({
-        id: 'user-1',
-        login_id: 'user1',
-        role: 'user',
-        status: 'active',
-        display_name: null,
-        email: null,
-        must_change_password: false,
-      });
-    }
-
-    if (url.includes('/api/threads?limit=50')) {
-      return jsonResponse({ threads: [] });
-    }
-
-    throw new Error(`Unhandled fetch: ${url}`);
-  });
-
-  vi.stubGlobal('fetch', fetchMock);
-
-  renderWithAuth(<ChatWorkspace />);
-
-  const accountButton = await screen.findByRole('button', { name: /open account drawer/i });
-  await user.click(accountButton);
-  expect(await screen.findByText(/System Ready/i)).toBeInTheDocument();
-  expect(screen.queryByText(/Admin User Status/i)).not.toBeInTheDocument();
-});

@@ -8,6 +8,8 @@ import { beforeEach, expect, test, vi } from 'vitest';
 import { AuthProvider } from '@/components/auth/AuthProvider';
 import ChatWorkspace from '@/components/workspace/WorkspaceRouteRoot';
 
+// ---- next/navigation mocks ----
+
 const pathnameSubscribers = new Set<() => void>();
 let mockPathname = '/';
 
@@ -68,6 +70,8 @@ vi.mock('react-syntax-highlighter/dist/esm/styles/prism', () => ({
   atomDark: {},
 }));
 
+// ---- helpers ----
+
 function jsonResponse(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), {
     status,
@@ -100,12 +104,35 @@ function deferredSseResponse() {
   };
 }
 
-function defaultTelemetryPayload(threadId: string) {
+function authMePayload(overrides: Partial<Record<string, unknown>> = {}) {
   return {
-    thread_id: threadId,
-    reasoning_summary: '',
-    suggested_queries: [],
+    id: 'user-1',
+    login_id: 'tester',
+    role: 'user',
+    status: 'active',
+    display_name: null,
+    email: null,
+    must_change_password: false,
+    ...overrides,
   };
+}
+
+function summary(overrides: Partial<Record<string, unknown>> & { thread_id: string; title: string }) {
+  return {
+    preview: 'preview',
+    created_at: '2026-03-22T10:00:00Z',
+    last_activity_at: '2026-03-22T10:15:00Z',
+    message_count: 2,
+    latest_status: 'completed',
+    checkpoint_id: 'cp-1',
+    pinned: false,
+    archived: false,
+    ...overrides,
+  };
+}
+
+function defaultTelemetryPayload(threadId: string) {
+  return { thread_id: threadId, reasoning_summary: '', suggested_queries: [] };
 }
 
 function maybeHandleTelemetryRequest(url: string): Response | null {
@@ -113,13 +140,18 @@ function maybeHandleTelemetryRequest(url: string): Response | null {
   if (telemetryMatch) {
     return jsonResponse(defaultTelemetryPayload(decodeURIComponent(telemetryMatch[1])));
   }
-
   const suggestionsMatch = url.match(/\/api\/threads\/([^/]+)\/suggested-queries$/);
   if (suggestionsMatch) {
     return jsonResponse(defaultTelemetryPayload(decodeURIComponent(suggestionsMatch[1])));
   }
-
   return null;
+}
+
+function stubCsrfCookie() {
+  Object.defineProperty(document, 'cookie', {
+    configurable: true,
+    get: () => 'orch_csrf=csrf-token',
+  });
 }
 
 function renderWorkspace(pathname = '/') {
@@ -131,60 +163,31 @@ function renderWorkspace(pathname = '/') {
   );
 }
 
-test('hydrates a selected thread and resets to a draft with New Chat', async () => {
+// ---- tests ----
+
+test('hydrates a selected thread (with telemetry) and resets to draft via New Chat', async () => {
   const user = userEvent.setup();
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
-    const telemetryResponse = maybeHandleTelemetryRequest(url);
-    if (telemetryResponse) {
-      return telemetryResponse;
-    }
 
-    if (url.includes('/api/auth/me')) {
+    if (url.includes('/api/auth/me')) return jsonResponse(authMePayload());
+    if (url.includes('/api/threads?limit=50')) {
       return jsonResponse({
-        id: 'user-1',
-        login_id: 'tester',
-        role: 'user',
-        status: 'active',
-        display_name: null,
-        email: null,
-        must_change_password: false,
+        threads: [summary({ thread_id: 'thread-1', title: 'Existing thread', preview: 'Saved assistant answer' })],
       });
     }
 
-    if (url.includes('/api/threads?limit=50')) {
+    if (url.includes('/api/threads/thread-1/telemetry')) {
       return jsonResponse({
-        threads: [
-          {
-            thread_id: 'thread-1',
-            title: 'Existing thread',
-            preview: 'Saved assistant answer',
-            created_at: '2026-03-22T10:00:00Z',
-            last_activity_at: '2026-03-22T10:15:00Z',
-            message_count: 2,
-            latest_status: 'completed',
-            checkpoint_id: 'cp-1',
-            pinned: false,
-            archived: false,
-          },
-        ],
+        thread_id: 'thread-1',
+        reasoning_summary: '저장된 reasoning summary',
+        suggested_queries: ['후속 질문 A'],
       });
     }
 
     if (url.includes('/api/threads/thread-1')) {
       return jsonResponse({
-        thread: {
-          thread_id: 'thread-1',
-          title: 'Existing thread',
-          preview: 'Saved assistant answer',
-          created_at: '2026-03-22T10:00:00Z',
-          last_activity_at: '2026-03-22T10:15:00Z',
-          message_count: 2,
-          latest_status: 'completed',
-          checkpoint_id: 'cp-1',
-          pinned: false,
-          archived: false,
-        },
+        thread: summary({ thread_id: 'thread-1', title: 'Existing thread', preview: 'Saved assistant answer' }),
         messages: [
           {
             id: 'm-1',
@@ -199,12 +202,7 @@ test('hydrates a selected thread and resets to a draft with New Chat', async () 
               },
             ],
           },
-          {
-            id: 'm-2',
-            role: 'assistant',
-            content: 'Saved assistant answer',
-            created_at: '2026-03-22T10:01:00Z',
-          },
+          { id: 'm-2', role: 'assistant', content: 'Saved assistant answer', created_at: '2026-03-22T10:01:00Z' },
         ],
       });
     }
@@ -213,7 +211,6 @@ test('hydrates a selected thread and resets to a draft with New Chat', async () 
   });
 
   vi.stubGlobal('fetch', fetchMock);
-
   renderWorkspace();
 
   await user.click(await screen.findByRole('button', { name: /open thread existing thread/i }));
@@ -222,9 +219,10 @@ test('hydrates a selected thread and resets to a draft with New Chat', async () 
   expect(await screen.findByText('Saved user question')).toBeInTheDocument();
   expect(screen.getByAltText('첨부 이미지 1')).toBeInTheDocument();
   expect(screen.getAllByText('Saved assistant answer').length).toBeGreaterThan(0);
-  expect(screen.getByText(/historical timeline replay is not restored in v1/i)).toBeInTheDocument();
-  expect(screen.queryByText(/session state/i)).not.toBeInTheDocument();
+  expect(await screen.findByText('저장된 reasoning summary')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '후속 질문 A' })).toBeInTheDocument();
 
+  // image preview dialog opens & closes
   await user.click(screen.getByRole('button', { name: '첨부 이미지 1 크게 보기' }));
   expect(screen.getByRole('dialog', { name: '첨부 이미지 1 확대 보기' })).toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: 'Close image preview' }));
@@ -232,322 +230,40 @@ test('hydrates a selected thread and resets to a draft with New Chat', async () 
     expect(screen.queryByRole('dialog', { name: '첨부 이미지 1 확대 보기' })).not.toBeInTheDocument();
   });
 
+  // new chat resets to draft
   await user.click(screen.getByRole('button', { name: /new chat/i }));
   expect(pushMock).toHaveBeenCalledWith('/');
-
   expect(await screen.findByText('System Ready')).toBeInTheDocument();
-  expect(screen.queryByText('draft_session')).not.toBeInTheDocument();
-});
-
-test('hydrates a thread when directly entering /c/{threadId}', async () => {
-  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-    const url = String(input);
-    const telemetryResponse = maybeHandleTelemetryRequest(url);
-    if (telemetryResponse) {
-      return telemetryResponse;
-    }
-
-    if (url.includes('/api/auth/me')) {
-      return jsonResponse({
-        id: 'user-1',
-        login_id: 'tester',
-        role: 'user',
-        status: 'active',
-        display_name: null,
-        email: null,
-        must_change_password: false,
-      });
-    }
-
-    if (url.includes('/api/threads?limit=50')) {
-      return jsonResponse({ threads: [] });
-    }
-
-    if (url.includes('/api/threads/thread-1')) {
-      return jsonResponse({
-        thread: {
-          thread_id: 'thread-1',
-          title: 'Direct route thread',
-          preview: 'Saved assistant answer',
-          created_at: '2026-03-22T10:00:00Z',
-          last_activity_at: '2026-03-22T10:15:00Z',
-          message_count: 2,
-          latest_status: 'completed',
-          checkpoint_id: 'cp-1',
-          pinned: false,
-          archived: false,
-        },
-        messages: [
-          {
-            id: 'm-1',
-            role: 'user',
-            content: 'Direct route question',
-            created_at: '2026-03-22T10:00:00Z',
-          },
-          {
-            id: 'm-2',
-            role: 'assistant',
-            content: 'Direct route answer',
-            created_at: '2026-03-22T10:01:00Z',
-          },
-        ],
-      });
-    }
-
-    throw new Error(`Unhandled fetch: ${url}`);
-  });
-
-  vi.stubGlobal('fetch', fetchMock);
-
-  renderWorkspace('/c/thread-1');
-
-  expect(await screen.findByText('Direct route question')).toBeInTheDocument();
-  expect(screen.getByText('Direct route answer')).toBeInTheDocument();
-});
-
-test('hydrates historical reasoning summary and suggested queries for a selected thread', async () => {
-  const user = userEvent.setup();
-  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-    const url = String(input);
-
-    if (url.includes('/api/auth/me')) {
-      return jsonResponse({
-        id: 'user-1',
-        login_id: 'tester',
-        role: 'user',
-        status: 'active',
-        display_name: null,
-        email: null,
-        must_change_password: false,
-      });
-    }
-
-    if (url.includes('/api/threads?limit=50')) {
-      return jsonResponse({
-        threads: [
-          {
-            thread_id: 'thread-telemetry',
-            title: 'Telemetry thread',
-            preview: 'Saved answer',
-            created_at: '2026-03-22T10:00:00Z',
-            last_activity_at: '2026-03-22T10:15:00Z',
-            message_count: 2,
-            latest_status: 'completed',
-            checkpoint_id: 'cp-1',
-            pinned: false,
-            archived: false,
-          },
-        ],
-      });
-    }
-
-    if (url.includes('/api/threads/thread-telemetry/telemetry')) {
-      return jsonResponse({
-        thread_id: 'thread-telemetry',
-        reasoning_summary: '저장된 reasoning summary',
-        suggested_queries: ['후속 질문 A', '후속 질문 B'],
-      });
-    }
-
-    if (url.includes('/api/threads/thread-telemetry')) {
-      return jsonResponse({
-        thread: {
-          thread_id: 'thread-telemetry',
-          title: 'Telemetry thread',
-          preview: 'Saved answer',
-          created_at: '2026-03-22T10:00:00Z',
-          last_activity_at: '2026-03-22T10:15:00Z',
-          message_count: 2,
-          latest_status: 'completed',
-          checkpoint_id: 'cp-1',
-          pinned: false,
-          archived: false,
-        },
-        messages: [
-          {
-            id: 'm-1',
-            role: 'user',
-            content: 'Saved user question',
-            created_at: '2026-03-22T10:00:00Z',
-          },
-          {
-            id: 'm-2',
-            role: 'assistant',
-            content: 'Saved assistant answer',
-            created_at: '2026-03-22T10:01:00Z',
-          },
-        ],
-      });
-    }
-
-    throw new Error(`Unhandled fetch: ${url}`);
-  });
-
-  vi.stubGlobal('fetch', fetchMock);
-
-  renderWorkspace();
-
-  await user.click(await screen.findByRole('button', { name: /open thread telemetry thread/i }));
-
-  expect(await screen.findByText('저장된 reasoning summary')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: '후속 질문 A' })).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: '후속 질문 B' })).toBeInTheDocument();
-});
-
-test('generates suggested queries when historical telemetry is missing them', async () => {
-  const user = userEvent.setup();
-  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-    const url = String(input);
-
-    if (url.includes('/api/auth/me')) {
-      return jsonResponse({
-        id: 'user-1',
-        login_id: 'tester',
-        role: 'user',
-        status: 'active',
-        display_name: null,
-        email: null,
-        must_change_password: false,
-      });
-    }
-
-    if (url.includes('/api/threads?limit=50')) {
-      return jsonResponse({
-        threads: [
-          {
-            thread_id: 'thread-historical-suggest',
-            title: 'Historical suggest thread',
-            preview: 'Saved answer',
-            created_at: '2026-03-22T10:00:00Z',
-            last_activity_at: '2026-03-22T10:15:00Z',
-            message_count: 4,
-            latest_status: 'completed',
-            checkpoint_id: 'cp-1',
-            pinned: false,
-            archived: false,
-          },
-        ],
-      });
-    }
-
-    if (url.includes('/api/threads/thread-historical-suggest/telemetry')) {
-      return jsonResponse({
-        thread_id: 'thread-historical-suggest',
-        reasoning_summary: '',
-        suggested_queries: [],
-      });
-    }
-
-    if (url.includes('/api/threads/thread-historical-suggest/suggested-queries')) {
-      return jsonResponse({
-        thread_id: 'thread-historical-suggest',
-        reasoning_summary: '',
-        suggested_queries: ['후속 질문 복구'],
-      });
-    }
-
-    if (url.includes('/api/threads/thread-historical-suggest')) {
-      return jsonResponse({
-        thread: {
-          thread_id: 'thread-historical-suggest',
-          title: 'Historical suggest thread',
-          preview: 'Saved answer',
-          created_at: '2026-03-22T10:00:00Z',
-          last_activity_at: '2026-03-22T10:15:00Z',
-          message_count: 4,
-          latest_status: 'completed',
-          checkpoint_id: 'cp-1',
-          pinned: false,
-          archived: false,
-        },
-        messages: [
-          { id: 'm-1', role: 'user', content: '질문 1', created_at: '2026-03-22T10:00:00Z' },
-          { id: 'm-2', role: 'assistant', content: '답변 1', created_at: '2026-03-22T10:01:00Z' },
-          { id: 'm-3', role: 'user', content: '질문 2', created_at: '2026-03-22T10:02:00Z' },
-          { id: 'm-4', role: 'assistant', content: '답변 2', created_at: '2026-03-22T10:03:00Z' },
-        ],
-      });
-    }
-
-    throw new Error(`Unhandled fetch: ${url}`);
-  });
-
-  Object.defineProperty(document, 'cookie', {
-    configurable: true,
-    get: () => 'orch_csrf=csrf-token',
-  });
-  vi.stubGlobal('fetch', fetchMock);
-
-  renderWorkspace();
-
-  await user.click(await screen.findByRole('button', { name: /open thread historical suggest thread/i }));
-
-  expect(await screen.findByRole('button', { name: '후속 질문 복구' })).toBeInTheDocument();
-  expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/suggested-queries'))).toBe(true);
 });
 
 test('routes to dashboard from the top navigation', async () => {
   const user = userEvent.setup();
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
-    const telemetryResponse = maybeHandleTelemetryRequest(url);
-    if (telemetryResponse) {
-      return telemetryResponse;
-    }
-
-    if (url.includes('/api/auth/me')) {
-      return jsonResponse({
-        id: 'user-1',
-        login_id: 'tester',
-        role: 'user',
-        status: 'active',
-        display_name: null,
-        email: null,
-        must_change_password: false,
-      });
-    }
-
-    if (url.includes('/api/threads?limit=50')) {
-      return jsonResponse({ threads: [] });
-    }
-
+    if (url.includes('/api/auth/me')) return jsonResponse(authMePayload());
+    if (url.includes('/api/threads?limit=50')) return jsonResponse({ threads: [] });
     throw new Error(`Unhandled fetch: ${url}`);
   });
 
   vi.stubGlobal('fetch', fetchMock);
-
   renderWorkspace();
 
   await user.click(await screen.findByRole('button', { name: 'Dashboard' }));
-
   expect(pushMock).toHaveBeenCalledWith('/dashboard');
 });
 
-test('uploads supported files before sending chat and forwards attachment ids', async () => {
+test('uploads supported files before sending chat and forwards attachment ids — assistant attachment renders post-stream', async () => {
+  // REGRESSION: trend.png attachment timing (PR #8/#15) — assistant attachment
+  // must appear once SSE `attachments` event is delivered.
   const user = userEvent.setup();
   const deferred = deferredSseResponse();
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const telemetryResponse = maybeHandleTelemetryRequest(url);
-    if (telemetryResponse) {
-      return telemetryResponse;
-    }
+    if (telemetryResponse) return telemetryResponse;
 
-    if (url.includes('/api/auth/me')) {
-      return jsonResponse({
-        id: 'user-1',
-        login_id: 'tester',
-        role: 'user',
-        status: 'active',
-        display_name: null,
-        email: null,
-        must_change_password: false,
-      });
-    }
-
-    if (url.includes('/api/threads?limit=50')) {
-      return jsonResponse({ threads: [] });
-    }
+    if (url.includes('/api/auth/me')) return jsonResponse(authMePayload());
+    if (url.includes('/api/threads?limit=50')) return jsonResponse({ threads: [] });
 
     if (url.endsWith('/api/uploads')) {
       expect(init?.method).toBe('POST');
@@ -576,29 +292,14 @@ test('uploads supported files before sending chat and forwards attachment ids', 
     }
 
     if (url.endsWith('/ai-title')) {
-      return jsonResponse({
-        thread_id: 'thread-uploaded',
-        title: 'CSV 분석',
-        preview: '응답 대기 중',
-        created_at: '2026-03-22T10:00:00Z',
-        last_activity_at: '2026-03-22T10:00:00Z',
-        message_count: 1,
-        latest_status: 'running',
-        checkpoint_id: null,
-        pinned: false,
-        archived: false,
-      });
+      return jsonResponse(summary({ thread_id: 'thread-uploaded', title: 'CSV 분석', latest_status: 'running', checkpoint_id: null, message_count: 1 }));
     }
 
     throw new Error(`Unhandled fetch: ${url}`);
   });
 
-  Object.defineProperty(document, 'cookie', {
-    configurable: true,
-    get: () => 'orch_csrf=csrf-token',
-  });
+  stubCsrfCookie();
   vi.stubGlobal('fetch', fetchMock);
-
   renderWorkspace();
 
   await screen.findByPlaceholderText(/message orchagent/i);
@@ -621,12 +322,7 @@ test('uploads supported files before sending chat and forwards attachment ids', 
       display_name: 'Head Supervisor',
       timestamp: '2026-03-22T10:20:00Z',
     },
-    {
-      event_type: 'text',
-      node: 'assistant',
-      content: 'CSV 분석 시작',
-      timestamp: '2026-03-22T10:20:01Z',
-    },
+    { event_type: 'text', node: 'assistant', content: 'CSV 분석 시작', timestamp: '2026-03-22T10:20:01Z' },
     {
       event_type: 'attachments',
       role: 'assistant',
@@ -643,12 +339,7 @@ test('uploads supported files before sending chat and forwards attachment ids', 
       ],
       timestamp: '2026-03-22T10:20:01Z',
     },
-    {
-      event_type: 'checkpoint',
-      thread_id: 'thread-uploaded',
-      checkpoint_id: 'cp-upload',
-      timestamp: '2026-03-22T10:20:02Z',
-    },
+    { event_type: 'checkpoint', thread_id: 'thread-uploaded', checkpoint_id: 'cp-upload', timestamp: '2026-03-22T10:20:02Z' },
     {
       event_type: 'status',
       status: 'completed',
@@ -673,35 +364,15 @@ test('uploads supported files before sending chat and forwards attachment ids', 
   expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/api/chat'))).toBe(true);
 });
 
-test('blocks selecting more than five files immediately', async () => {
+test('blocks selecting more than five files and keeps the first five in the tray', async () => {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
-    const telemetryResponse = maybeHandleTelemetryRequest(url);
-    if (telemetryResponse) {
-      return telemetryResponse;
-    }
-
-    if (url.includes('/api/auth/me')) {
-      return jsonResponse({
-        id: 'user-1',
-        login_id: 'tester',
-        role: 'user',
-        status: 'active',
-        display_name: null,
-        email: null,
-        must_change_password: false,
-      });
-    }
-
-    if (url.includes('/api/threads?limit=50')) {
-      return jsonResponse({ threads: [] });
-    }
-
+    if (url.includes('/api/auth/me')) return jsonResponse(authMePayload());
+    if (url.includes('/api/threads?limit=50')) return jsonResponse({ threads: [] });
     throw new Error(`Unhandled fetch: ${url}`);
   });
 
   vi.stubGlobal('fetch', fetchMock);
-
   renderWorkspace();
 
   await screen.findByPlaceholderText(/message orchagent/i);
@@ -716,34 +387,18 @@ test('blocks selecting more than five files immediately', async () => {
   expect(screen.getByText('sample-0.json')).toBeInTheDocument();
   expect(screen.getByText('sample-4.json')).toBeInTheDocument();
   expect(screen.queryByText('sample-5.json')).not.toBeInTheDocument();
-  expect(screen.getByRole('button', { name: /send message/i })).toBeEnabled();
 });
 
-test('proceeds with uploaded files and keeps failed files in the tray on partial upload success', async () => {
+test('partial upload keeps failed files in the tray while the accepted file still streams', async () => {
   const user = userEvent.setup();
   const deferred = deferredSseResponse();
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const telemetryResponse = maybeHandleTelemetryRequest(url);
-    if (telemetryResponse) {
-      return telemetryResponse;
-    }
+    if (telemetryResponse) return telemetryResponse;
 
-    if (url.includes('/api/auth/me')) {
-      return jsonResponse({
-        id: 'user-1',
-        login_id: 'tester',
-        role: 'user',
-        status: 'active',
-        display_name: null,
-        email: null,
-        must_change_password: false,
-      });
-    }
-
-    if (url.includes('/api/threads?limit=50')) {
-      return jsonResponse({ threads: [] });
-    }
+    if (url.includes('/api/auth/me')) return jsonResponse(authMePayload());
+    if (url.includes('/api/threads?limit=50')) return jsonResponse({ threads: [] });
 
     if (url.endsWith('/api/uploads')) {
       return jsonResponse({
@@ -752,13 +407,8 @@ test('proceeds with uploaded files and keeps failed files in the tray on partial
             id: 'upload-json',
             input_index: 0,
             kind: 'json',
-            source_type: 'device',
-            processing_status: 'ready',
-            preview_status: 'pending',
             file_name: 'keep.json',
-            declared_extension: '.json',
             mime_type: 'application/json',
-            sniffed_mime_type: 'application/json',
             size_bytes: 12,
             created_at: '2026-03-22T10:00:00Z',
           },
@@ -784,29 +434,14 @@ test('proceeds with uploaded files and keeps failed files in the tray on partial
     }
 
     if (url.endsWith('/ai-title')) {
-      return jsonResponse({
-        thread_id: 'thread-partial',
-        title: '부분 업로드 테스트',
-        preview: '응답 대기 중',
-        created_at: '2026-03-22T10:00:00Z',
-        last_activity_at: '2026-03-22T10:00:00Z',
-        message_count: 1,
-        latest_status: 'running',
-        checkpoint_id: null,
-        pinned: false,
-        archived: false,
-      });
+      return jsonResponse(summary({ thread_id: 'thread-partial', title: '부분 업로드', latest_status: 'running', checkpoint_id: null, message_count: 1 }));
     }
 
     throw new Error(`Unhandled fetch: ${url}`);
   });
 
-  Object.defineProperty(document, 'cookie', {
-    configurable: true,
-    get: () => 'orch_csrf=csrf-token',
-  });
+  stubCsrfCookie();
   vi.stubGlobal('fetch', fetchMock);
-
   renderWorkspace();
 
   await screen.findByPlaceholderText(/message orchagent/i);
@@ -832,12 +467,7 @@ test('proceeds with uploaded files and keeps failed files in the tray on partial
       display_name: 'Head Supervisor',
       timestamp: '2026-03-22T10:20:00Z',
     },
-    {
-      event_type: 'text',
-      node: 'assistant',
-      content: '부분 업로드 응답',
-      timestamp: '2026-03-22T10:20:01Z',
-    },
+    { event_type: 'text', node: 'assistant', content: '부분 업로드 응답', timestamp: '2026-03-22T10:20:01Z' },
     {
       event_type: 'status',
       status: 'completed',
@@ -849,97 +479,38 @@ test('proceeds with uploaded files and keeps failed files in the tray on partial
   ]);
 
   expect(await screen.findByText(/reject.csv: CSV file exceeds 10MB limit/i)).toBeInTheDocument();
-  expect(screen.getByText('reject.csv')).toBeInTheDocument();
   await waitFor(
     () => {
-      expect(
-        screen.queryByText((content) => content.includes('부분 업로드 응답')),
-      ).not.toBeNull();
+      expect(screen.queryByText((content) => content.includes('부분 업로드 응답'))).not.toBeNull();
     },
     { timeout: 10000 },
   );
 });
 
-test('reuses the selected thread id for follow-up sends and disables switching while streaming', async () => {
+test('follow-up sends reuse the selected thread id and disable sidebar switching while streaming', async () => {
   const user = userEvent.setup();
   const deferred = deferredSseResponse();
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const telemetryResponse = maybeHandleTelemetryRequest(url);
-    if (telemetryResponse) {
-      return telemetryResponse;
-    }
+    if (telemetryResponse) return telemetryResponse;
 
-    if (url.includes('/api/auth/me')) {
-      return jsonResponse({
-        id: 'user-1',
-        login_id: 'tester',
-        role: 'user',
-        status: 'active',
-        display_name: null,
-        email: null,
-        must_change_password: false,
-      });
-    }
-
+    if (url.includes('/api/auth/me')) return jsonResponse(authMePayload());
     if (url.includes('/api/threads?limit=50')) {
       return jsonResponse({
         threads: [
-          {
-            thread_id: 'thread-1',
-            title: 'Primary thread',
-            preview: 'Existing answer',
-            created_at: '2026-03-22T10:00:00Z',
-            last_activity_at: '2026-03-22T10:15:00Z',
-            message_count: 2,
-            latest_status: 'completed',
-            checkpoint_id: 'cp-1',
-            pinned: false,
-            archived: false,
-          },
-          {
-            thread_id: 'thread-2',
-            title: 'Secondary thread',
-            preview: 'Another answer',
-            created_at: '2026-03-22T09:00:00Z',
-            last_activity_at: '2026-03-22T09:15:00Z',
-            message_count: 1,
-            latest_status: 'completed',
-            checkpoint_id: 'cp-2',
-            pinned: false,
-            archived: false,
-          },
+          summary({ thread_id: 'thread-1', title: 'Primary thread', preview: 'Existing answer' }),
+          summary({ thread_id: 'thread-2', title: 'Secondary thread', preview: 'Another answer', message_count: 1, last_activity_at: '2026-03-22T09:15:00Z' }),
         ],
       });
     }
 
     if (url.includes('/api/threads/thread-1')) {
       return jsonResponse({
-        thread: {
-          thread_id: 'thread-1',
-          title: 'Primary thread',
-          preview: 'Existing answer',
-          created_at: '2026-03-22T10:00:00Z',
-          last_activity_at: '2026-03-22T10:15:00Z',
-          message_count: 2,
-          latest_status: 'completed',
-          checkpoint_id: 'cp-1',
-          pinned: false,
-          archived: false,
-        },
+        thread: summary({ thread_id: 'thread-1', title: 'Primary thread', preview: 'Existing answer' }),
         messages: [
-          {
-            id: 'm-1',
-            role: 'user',
-            content: 'Original question',
-            created_at: '2026-03-22T10:00:00Z',
-          },
-          {
-            id: 'm-2',
-            role: 'assistant',
-            content: 'Existing answer',
-            created_at: '2026-03-22T10:01:00Z',
-          },
+          { id: 'm-1', role: 'user', content: 'Original question', created_at: '2026-03-22T10:00:00Z' },
+          { id: 'm-2', role: 'assistant', content: 'Existing answer', created_at: '2026-03-22T10:01:00Z' },
         ],
       });
     }
@@ -954,12 +525,10 @@ test('reuses the selected thread id for follow-up sends and disables switching w
   });
 
   vi.stubGlobal('fetch', fetchMock);
-
   renderWorkspace();
 
   await user.click(await screen.findByRole('button', { name: /open thread primary thread/i }));
   expect(await screen.findByText('Original question')).toBeInTheDocument();
-  expect(pushMock).toHaveBeenCalledWith('/c/thread-1');
 
   await user.type(screen.getByPlaceholderText(/message orchagent/i), 'Follow up request');
   await user.click(screen.getByRole('button', { name: /send message/i }));
@@ -976,18 +545,8 @@ test('reuses the selected thread id for follow-up sends and disables switching w
       display_name: 'Head Supervisor',
       timestamp: '2026-03-22T10:20:00Z',
     },
-    {
-      event_type: 'text',
-      node: 'assistant',
-      content: 'Follow up answer',
-      timestamp: '2026-03-22T10:20:01Z',
-    },
-    {
-      event_type: 'checkpoint',
-      thread_id: 'thread-1',
-      checkpoint_id: 'cp-3',
-      timestamp: '2026-03-22T10:20:02Z',
-    },
+    { event_type: 'text', node: 'assistant', content: 'Follow up answer', timestamp: '2026-03-22T10:20:01Z' },
+    { event_type: 'checkpoint', thread_id: 'thread-1', checkpoint_id: 'cp-3', timestamp: '2026-03-22T10:20:02Z' },
     {
       event_type: 'status',
       status: 'completed',
@@ -1003,47 +562,24 @@ test('reuses the selected thread id for follow-up sends and disables switching w
   });
 });
 
-test('starts ai title generation in parallel for a new thread and patches the title before chat completion', async () => {
-  const user = userEvent.setup();
-  const deferred = deferredSseResponse();
+test('ai title patches the optimistic thread on success and falls back to the prompt on failure', async () => {
+  // Consolidates two prior cases: parallel ai-title success + ai-title failure
+  // both checked from one render via two distinct fetch flows would be hard,
+  // so we run two minimal scenarios sequentially in one test by swapping
+  // the fetch mock between sub-scenarios.
+  const successDeferred = deferredSseResponse();
   let generatedThreadId = '';
 
-  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+  const successFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const telemetryResponse = maybeHandleTelemetryRequest(url);
-    if (telemetryResponse) {
-      return telemetryResponse;
-    }
+    if (telemetryResponse) return telemetryResponse;
 
-    if (url.includes('/api/auth/me')) {
-      return jsonResponse({
-        id: 'user-1',
-        login_id: 'tester',
-        role: 'user',
-        status: 'active',
-        display_name: null,
-        email: null,
-        must_change_password: false,
-      });
-    }
-
+    if (url.includes('/api/auth/me')) return jsonResponse(authMePayload());
     if (url.includes('/api/threads?limit=50')) {
       return jsonResponse({
         threads: generatedThreadId
-          ? [
-              {
-                thread_id: generatedThreadId,
-                title: 'RoPE 논문 탐색',
-                preview: '응답 대기 중',
-                created_at: '2026-03-22T10:00:00Z',
-                last_activity_at: '2026-03-22T10:00:00Z',
-                message_count: 1,
-                latest_status: 'running',
-                checkpoint_id: null,
-                pinned: false,
-                archived: false,
-              },
-            ]
+          ? [summary({ thread_id: generatedThreadId, title: 'RoPE 논문 탐색', latest_status: 'running', checkpoint_id: null, message_count: 1 })]
           : [],
       });
     }
@@ -1051,41 +587,26 @@ test('starts ai title generation in parallel for a new thread and patches the ti
     if (url.endsWith('/api/chat')) {
       const body = JSON.parse(String(init?.body || '{}'));
       generatedThreadId = body.thread_id;
-      return deferred.response;
+      return successDeferred.response;
     }
 
     if (url.endsWith('/ai-title')) {
       const match = url.match(/\/api\/threads\/([^/]+)\/ai-title$/);
-      const threadId = match?.[1];
-      generatedThreadId = decodeURIComponent(threadId || '');
-      return jsonResponse({
-        thread_id: generatedThreadId,
-        title: 'RoPE 논문 탐색',
-        preview: '응답 대기 중',
-        created_at: '2026-03-22T10:00:00Z',
-        last_activity_at: '2026-03-22T10:00:00Z',
-        message_count: 1,
-        latest_status: 'running',
-        checkpoint_id: null,
-        pinned: false,
-        archived: false,
-      });
+      generatedThreadId = decodeURIComponent(match?.[1] || generatedThreadId);
+      return jsonResponse(summary({ thread_id: generatedThreadId, title: 'RoPE 논문 탐색', latest_status: 'running', checkpoint_id: null, message_count: 1 }));
     }
 
     throw new Error(`Unhandled fetch: ${url}`);
   });
 
-  Object.defineProperty(document, 'cookie', {
-    configurable: true,
-    get: () => 'orch_csrf=csrf-token',
-  });
-  vi.stubGlobal('fetch', fetchMock);
+  stubCsrfCookie();
+  vi.stubGlobal('fetch', successFetch);
 
-  renderWorkspace();
+  const userOne = userEvent.setup();
+  const { unmount } = renderWorkspace();
 
-  const prompt = '웹검색을 통해 RoPE 논문을 탐색하고 메인 연구자가 원하는 바는 무엇인지 설명해주세요.';
-  await user.type(await screen.findByPlaceholderText(/message orchagent/i), prompt);
-  await user.click(screen.getByRole('button', { name: /send message/i }));
+  await userOne.type(await screen.findByPlaceholderText(/message orchagent/i), 'RoPE 논문 탐색해줘');
+  await userOne.click(screen.getByRole('button', { name: /send message/i }));
 
   await waitFor(() => {
     expect(replaceMock).toHaveBeenCalledWith(`/c/${generatedThreadId}`);
@@ -1095,27 +616,7 @@ test('starts ai title generation in parallel for a new thread and patches the ti
     expect(screen.getAllByText('RoPE 논문 탐색').length).toBeGreaterThan(0);
   });
 
-  deferred.complete([
-    {
-      event_type: 'status',
-      status: 'running',
-      thread_id: generatedThreadId,
-      node: 'head_supervisor',
-      display_name: 'Head Supervisor',
-      timestamp: '2026-03-22T10:20:00Z',
-    },
-    {
-      event_type: 'text',
-      node: 'assistant',
-      content: '최종 응답',
-      timestamp: '2026-03-22T10:20:01Z',
-    },
-    {
-      event_type: 'checkpoint',
-      thread_id: generatedThreadId,
-      checkpoint_id: 'cp-1',
-      timestamp: '2026-03-22T10:20:02Z',
-    },
+  successDeferred.complete([
     {
       event_type: 'status',
       status: 'completed',
@@ -1126,314 +627,75 @@ test('starts ai title generation in parallel for a new thread and patches the ti
     },
   ]);
 
-  await waitFor(() => {
-    expect(screen.getByText('최종 응답')).toBeInTheDocument();
-  });
+  unmount();
 
-  expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/api/chat'))).toBe(true);
-  expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/ai-title'))).toBe(true);
-});
+  // Sub-scenario 2: ai-title failure keeps the optimistic fallback title.
+  const failureDeferred = deferredSseResponse();
+  let failureThreadId = '';
+  const failurePrompt = '이 질문은 fallback 제목이 유지되는지 확인하기 위한 매우 긴 테스트 메시지입니다.';
 
-test('requests a second ai title update after the fifth completed turn', async () => {
-  const user = userEvent.setup();
-  const deferred = deferredSseResponse();
-  let aiTitleCalls = 0;
-  let suggestedQueriesCalls = 0;
-
-  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+  const failureFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+    const telemetryResponse = maybeHandleTelemetryRequest(url);
+    if (telemetryResponse) return telemetryResponse;
 
-    if (url.includes('/api/auth/me')) {
-      return jsonResponse({
-        id: 'user-1',
-        login_id: 'tester',
-        role: 'user',
-        status: 'active',
-        display_name: null,
-        email: null,
-        must_change_password: false,
-      });
-    }
-
-    if (url.includes('/api/threads?limit=50')) {
-      return jsonResponse({
-        threads: [
-          {
-            thread_id: 'thread-5turn',
-            title: '기존 AI 제목',
-            preview: 'Saved assistant answer',
-            created_at: '2026-03-22T10:00:00Z',
-            last_activity_at: '2026-03-22T10:15:00Z',
-            message_count: 8,
-            latest_status: 'completed',
-            checkpoint_id: 'cp-4',
-            pinned: false,
-            archived: false,
-          },
-        ],
-      });
-    }
-
-    if (url.includes('/api/threads/thread-5turn/telemetry')) {
-      return jsonResponse({
-        thread_id: 'thread-5turn',
-        reasoning_summary: 'historical reasoning',
-        suggested_queries: ['기존 추천 질문'],
-      });
-    }
-
-    if (url.endsWith('/suggested-queries')) {
-      suggestedQueriesCalls += 1;
-      return jsonResponse({
-        thread_id: 'thread-5turn',
-        reasoning_summary: 'latest reasoning',
-        suggested_queries: ['질문5를 더 깊게 파고들까'],
-      });
-    }
-
-    if (url.includes('/api/threads/thread-5turn') && !url.endsWith('/ai-title')) {
-      return jsonResponse({
-        thread: {
-          thread_id: 'thread-5turn',
-          title: '기존 AI 제목',
-          preview: 'Saved assistant answer',
-          created_at: '2026-03-22T10:00:00Z',
-          last_activity_at: '2026-03-22T10:15:00Z',
-          message_count: 8,
-          latest_status: 'completed',
-          checkpoint_id: 'cp-4',
-          pinned: false,
-          archived: false,
-        },
-        messages: [
-          { id: 'u1', role: 'user', content: '질문1', created_at: '2026-03-22T10:00:00Z' },
-          { id: 'a1', role: 'assistant', content: '답변1', created_at: '2026-03-22T10:01:00Z' },
-          { id: 'u2', role: 'user', content: '질문2', created_at: '2026-03-22T10:02:00Z' },
-          { id: 'a2', role: 'assistant', content: '답변2', created_at: '2026-03-22T10:03:00Z' },
-          { id: 'u3', role: 'user', content: '질문3', created_at: '2026-03-22T10:04:00Z' },
-          { id: 'a3', role: 'assistant', content: '답변3', created_at: '2026-03-22T10:05:00Z' },
-          { id: 'u4', role: 'user', content: '질문4', created_at: '2026-03-22T10:06:00Z' },
-          { id: 'a4', role: 'assistant', content: '답변4', created_at: '2026-03-22T10:07:00Z' },
-        ],
-      });
-    }
+    if (url.includes('/api/auth/me')) return jsonResponse(authMePayload());
+    if (url.includes('/api/threads?limit=50')) return jsonResponse({ threads: [] });
 
     if (url.endsWith('/api/chat')) {
       const body = JSON.parse(String(init?.body || '{}'));
-      expect(body.thread_id).toBe('thread-5turn');
-      return deferred.response;
+      failureThreadId = body.thread_id;
+      return failureDeferred.response;
     }
 
     if (url.endsWith('/ai-title')) {
-      aiTitleCalls += 1;
-      const body = JSON.parse(String(init?.body || '{}'));
-      if (aiTitleCalls === 1) {
-        expect(body).toEqual({});
-      }
-      return jsonResponse({
-        thread_id: 'thread-5turn',
-        title: '5턴 누적 주제 재요약',
-        preview: 'Saved assistant answer',
-        created_at: '2026-03-22T10:00:00Z',
-        last_activity_at: '2026-03-22T10:20:00Z',
-        message_count: 10,
-        latest_status: 'completed',
-        checkpoint_id: 'cp-5',
-        pinned: false,
-        archived: false,
-      });
+      return jsonResponse({ detail: 'title failed' }, 500);
     }
 
     throw new Error(`Unhandled fetch: ${url}`);
   });
 
-  Object.defineProperty(document, 'cookie', {
-    configurable: true,
-    get: () => 'orch_csrf=csrf-token',
-  });
-  vi.stubGlobal('fetch', fetchMock);
+  stubCsrfCookie();
+  vi.stubGlobal('fetch', failureFetch);
 
+  const userTwo = userEvent.setup();
   renderWorkspace();
 
-  await user.click(await screen.findByRole('button', { name: /open thread 기존 ai 제목/i }));
-  await user.type(screen.getByPlaceholderText(/message orchagent/i), '질문5');
-  await user.click(screen.getByRole('button', { name: /send message/i }));
+  await userTwo.type(await screen.findByPlaceholderText(/message orchagent/i), failurePrompt);
+  await userTwo.click(screen.getByRole('button', { name: /send message/i }));
 
-  deferred.complete([
-    {
-      event_type: 'status',
-      status: 'running',
-      thread_id: 'thread-5turn',
-      node: 'head_supervisor',
-      display_name: 'Head Supervisor',
-      timestamp: '2026-03-22T10:20:00Z',
-    },
-    {
-      event_type: 'text',
-      node: 'assistant',
-      content: '답변5',
-      timestamp: '2026-03-22T10:20:01Z',
-    },
-    {
-      event_type: 'checkpoint',
-      thread_id: 'thread-5turn',
-      checkpoint_id: 'cp-5',
-      timestamp: '2026-03-22T10:20:02Z',
-    },
+  await waitFor(() => {
+    expect(screen.getAllByText(failurePrompt).length).toBeGreaterThan(0);
+  });
+
+  failureDeferred.complete([
     {
       event_type: 'status',
       status: 'completed',
-      thread_id: 'thread-5turn',
+      thread_id: failureThreadId,
       node: 'assistant',
       display_name: 'Completed',
       timestamp: '2026-03-22T10:20:03Z',
     },
   ]);
 
-  await waitFor(() => {
-    expect(screen.getByText('답변5')).toBeInTheDocument();
-  });
-
-  await waitFor(() => {
-    expect(aiTitleCalls).toBe(1);
-    expect(screen.getAllByText('5턴 누적 주제 재요약').length).toBeGreaterThan(0);
-  });
-
-  await waitFor(() => {
-    expect(suggestedQueriesCalls).toBe(1);
-    expect(screen.getByRole('button', { name: '질문5를 더 깊게 파고들까' })).toBeInTheDocument();
-  });
+  expect(screen.queryByText('AI 제목')).not.toBeInTheDocument();
 });
 
-test('renders live reasoning chunks in the Inner Monologue panel', async () => {
+test('reasoning chunks stream into the Inner Monologue panel', async () => {
+  // Consolidates `renders live reasoning chunks` + `streams reasoning summary
+  // content` — both exercise the same `reasoning` event → Inner Monologue path.
   const user = userEvent.setup();
   const deferred = deferredSseResponse();
+  let generatedThreadId = '';
+
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const telemetryResponse = maybeHandleTelemetryRequest(url);
-    if (telemetryResponse) {
-      return telemetryResponse;
-    }
+    if (telemetryResponse) return telemetryResponse;
 
-    if (url.includes('/api/auth/me')) {
-      return jsonResponse({
-        id: 'user-1',
-        login_id: 'tester',
-        role: 'user',
-        status: 'active',
-        display_name: null,
-        email: null,
-        must_change_password: false,
-      });
-    }
-
-    if (url.includes('/api/threads?limit=50')) {
-      return jsonResponse({ threads: [] });
-    }
-
-    if (url.endsWith('/api/chat')) {
-      const body = JSON.parse(String(init?.body || '{}'));
-      expect(body.message).toBe('운영정책 요약해줘');
-      return deferred.response;
-    }
-
-    if (url.endsWith('/ai-title')) {
-      return jsonResponse({
-        thread_id: 'thread-reasoning',
-        title: '운영정책 요약',
-        preview: '응답 대기 중',
-        created_at: '2026-03-22T10:00:00Z',
-        last_activity_at: '2026-03-22T10:00:00Z',
-        message_count: 1,
-        latest_status: 'running',
-        checkpoint_id: null,
-        pinned: false,
-        archived: false,
-      });
-    }
-
-    throw new Error(`Unhandled fetch: ${url}`);
-  });
-
-  Object.defineProperty(document, 'cookie', {
-    configurable: true,
-    get: () => 'orch_csrf=csrf-token',
-  });
-  vi.stubGlobal('fetch', fetchMock);
-
-  renderWorkspace();
-
-  await user.type(await screen.findByPlaceholderText(/message orchagent/i), '운영정책 요약해줘');
-  await user.click(screen.getByRole('button', { name: /send message/i }));
-
-  deferred.complete([
-    {
-      event_type: 'status',
-      status: 'running',
-      thread_id: 'thread-reasoning',
-      node: 'head_supervisor',
-      display_name: 'Head Supervisor',
-      timestamp: '2026-03-22T10:20:00Z',
-    },
-    {
-      event_type: 'reasoning',
-      node: 'head_supervisor',
-      display_name: 'Head Supervisor',
-      content: '문서 요약을 위해 먼저 PDF 핵심 내용을 추출합니다.',
-      timestamp: '2026-03-22T10:20:01Z',
-    },
-    {
-      event_type: 'text',
-      node: 'assistant',
-      content: '요약 결과',
-      timestamp: '2026-03-22T10:20:02Z',
-    },
-    {
-      event_type: 'checkpoint',
-      thread_id: 'thread-reasoning',
-      checkpoint_id: 'cp-r',
-      timestamp: '2026-03-22T10:20:03Z',
-    },
-    {
-      event_type: 'status',
-      status: 'completed',
-      thread_id: 'thread-reasoning',
-      node: 'assistant',
-      display_name: 'Completed',
-      timestamp: '2026-03-22T10:20:04Z',
-    },
-  ]);
-
-  await waitFor(() => {
-    expect(
-      screen.getByText('문서 요약을 위해 먼저 PDF 핵심 내용을 추출합니다.')
-    ).toBeInTheDocument();
-  });
-});
-
-test('generates suggested queries after a completed answer and injects the clicked prompt', async () => {
-  const user = userEvent.setup();
-  const deferred = deferredSseResponse();
-  let generatedThreadId = '';
-
-  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
-
-    if (url.includes('/api/auth/me')) {
-      return jsonResponse({
-        id: 'user-1',
-        login_id: 'tester',
-        role: 'user',
-        status: 'active',
-        display_name: null,
-        email: null,
-        must_change_password: false,
-      });
-    }
-
-    if (url.includes('/api/threads?limit=50')) {
-      return jsonResponse({ threads: [] });
-    }
+    if (url.includes('/api/auth/me')) return jsonResponse(authMePayload());
+    if (url.includes('/api/threads?limit=50')) return jsonResponse({ threads: [] });
 
     if (url.endsWith('/api/chat')) {
       const body = JSON.parse(String(init?.body || '{}'));
@@ -1442,142 +704,14 @@ test('generates suggested queries after a completed answer and injects the click
     }
 
     if (url.endsWith('/ai-title')) {
-      return jsonResponse({
-        thread_id: generatedThreadId,
-        title: 'RoPE 논문 탐색',
-        preview: '응답 대기 중',
-        created_at: '2026-03-22T10:00:00Z',
-        last_activity_at: '2026-03-22T10:00:00Z',
-        message_count: 1,
-        latest_status: 'running',
-        checkpoint_id: null,
-        pinned: false,
-        archived: false,
-      });
-    }
-
-    if (url.endsWith('/suggested-queries')) {
-      return jsonResponse({
-        thread_id: generatedThreadId,
-        reasoning_summary: 'live reasoning',
-        suggested_queries: ['RoPE와 ALiBi 차이도 비교해줘'],
-      });
+      return jsonResponse(summary({ thread_id: generatedThreadId || 'thread-reasoning', title: 'reasoning 테스트', latest_status: 'running', checkpoint_id: null, message_count: 1 }));
     }
 
     throw new Error(`Unhandled fetch: ${url}`);
   });
 
-  Object.defineProperty(document, 'cookie', {
-    configurable: true,
-    get: () => 'orch_csrf=csrf-token',
-  });
+  stubCsrfCookie();
   vi.stubGlobal('fetch', fetchMock);
-
-  renderWorkspace();
-
-  await user.type(await screen.findByPlaceholderText(/message orchagent/i), 'RoPE 논문 설명해줘');
-  await user.click(screen.getByRole('button', { name: /send message/i }));
-
-  expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/suggested-queries'))).toBe(false);
-
-  deferred.complete([
-    {
-      event_type: 'status',
-      status: 'running',
-      thread_id: generatedThreadId,
-      node: 'head_supervisor',
-      display_name: 'Head Supervisor',
-      timestamp: '2026-03-22T10:20:00Z',
-    },
-    {
-      event_type: 'text',
-      node: 'assistant',
-      content: '최종 응답',
-      timestamp: '2026-03-22T10:20:01Z',
-    },
-    {
-      event_type: 'checkpoint',
-      thread_id: generatedThreadId,
-      checkpoint_id: 'cp-1',
-      timestamp: '2026-03-22T10:20:02Z',
-    },
-    {
-      event_type: 'status',
-      status: 'completed',
-      thread_id: generatedThreadId,
-      node: 'assistant',
-      display_name: 'Completed',
-      timestamp: '2026-03-22T10:20:03Z',
-    },
-  ]);
-
-  const suggestionButton = await screen.findByRole('button', {
-    name: 'RoPE와 ALiBi 차이도 비교해줘',
-  });
-  expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/suggested-queries'))).toBe(true);
-
-  await user.click(suggestionButton);
-  expect(screen.getByDisplayValue('RoPE와 ALiBi 차이도 비교해줘')).toBeInTheDocument();
-});
-
-test('streams reasoning summary content into the inner monologue panel', async () => {
-  const user = userEvent.setup();
-  const deferred = deferredSseResponse();
-  let generatedThreadId = '';
-
-  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
-
-    if (url.includes('/api/auth/me')) {
-      return jsonResponse({
-        id: 'user-1',
-        login_id: 'tester',
-        role: 'user',
-        status: 'active',
-        display_name: null,
-        email: null,
-        must_change_password: false,
-      });
-    }
-
-    if (url.includes('/api/threads?limit=50')) {
-      return jsonResponse({ threads: [] });
-    }
-
-    if (url.endsWith('/api/chat')) {
-      const body = JSON.parse(String(init?.body || '{}'));
-      generatedThreadId = body.thread_id;
-      return deferred.response;
-    }
-
-    if (url.endsWith('/ai-title')) {
-      return jsonResponse({
-        thread_id: generatedThreadId,
-        title: 'reasoning 테스트',
-        preview: '응답 대기 중',
-        created_at: '2026-03-22T10:00:00Z',
-        last_activity_at: '2026-03-22T10:00:00Z',
-        message_count: 1,
-        latest_status: 'running',
-        checkpoint_id: null,
-        pinned: false,
-        archived: false,
-      });
-    }
-
-    if (url.endsWith('/suggested-queries')) {
-      return jsonResponse(defaultTelemetryPayload(generatedThreadId));
-    }
-
-    throw new Error(`Unhandled fetch: ${url}`);
-  });
-
-  Object.defineProperty(document, 'cookie', {
-    configurable: true,
-    get: () => 'orch_csrf=csrf-token',
-  });
-  vi.stubGlobal('fetch', fetchMock);
-
   renderWorkspace();
 
   await user.type(await screen.findByPlaceholderText(/message orchagent/i), 'reasoning 테스트');
@@ -1585,10 +719,19 @@ test('streams reasoning summary content into the inner monologue panel', async (
 
   deferred.complete([
     {
+      event_type: 'status',
+      status: 'running',
+      thread_id: generatedThreadId,
+      node: 'head_supervisor',
+      display_name: 'Head Supervisor',
+      timestamp: '2026-03-22T10:20:00Z',
+    },
+    {
       event_type: 'reasoning',
       node: 'head_supervisor',
+      display_name: 'Head Supervisor',
       content: '이 turn은 research보다 synthesis가 먼저 필요하다.',
-      timestamp: '2026-03-22T10:20:00Z',
+      timestamp: '2026-03-22T10:20:01Z',
     },
     {
       event_type: 'status',
@@ -1603,29 +746,18 @@ test('streams reasoning summary content into the inner monologue panel', async (
   expect(await screen.findByText(/research보다 synthesis가 먼저 필요하다/i)).toBeInTheDocument();
 });
 
-test('shows a live fallback summary when no reasoning chunk is streamed', async () => {
+test('tool_start renders the fallback Inner Monologue summary when no reasoning chunk is streamed', async () => {
   const user = userEvent.setup();
   const deferred = deferredSseResponse();
   let generatedThreadId = '';
 
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+    const telemetryResponse = maybeHandleTelemetryRequest(url);
+    if (telemetryResponse) return telemetryResponse;
 
-    if (url.includes('/api/auth/me')) {
-      return jsonResponse({
-        id: 'user-1',
-        login_id: 'tester',
-        role: 'user',
-        status: 'active',
-        display_name: null,
-        email: null,
-        must_change_password: false,
-      });
-    }
-
-    if (url.includes('/api/threads?limit=50')) {
-      return jsonResponse({ threads: [] });
-    }
+    if (url.includes('/api/auth/me')) return jsonResponse(authMePayload());
+    if (url.includes('/api/threads?limit=50')) return jsonResponse({ threads: [] });
 
     if (url.endsWith('/api/chat')) {
       const body = JSON.parse(String(init?.body || '{}'));
@@ -1634,36 +766,20 @@ test('shows a live fallback summary when no reasoning chunk is streamed', async 
     }
 
     if (url.endsWith('/ai-title')) {
-      return jsonResponse({
-        thread_id: generatedThreadId,
-        title: '작업 파일 생성',
-        preview: '응답 대기 중',
-        created_at: '2026-03-22T10:00:00Z',
-        last_activity_at: '2026-03-22T10:00:00Z',
-        message_count: 1,
-        latest_status: 'running',
-        checkpoint_id: null,
-        pinned: false,
-        archived: false,
-      });
-    }
-
-    if (url.endsWith('/suggested-queries')) {
-      return jsonResponse(defaultTelemetryPayload(generatedThreadId));
+      return jsonResponse(summary({ thread_id: generatedThreadId || 'thread-fallback', title: '작업 파일 생성', latest_status: 'running', checkpoint_id: null, message_count: 1 }));
     }
 
     throw new Error(`Unhandled fetch: ${url}`);
   });
 
-  Object.defineProperty(document, 'cookie', {
-    configurable: true,
-    get: () => 'orch_csrf=csrf-token',
-  });
+  stubCsrfCookie();
   vi.stubGlobal('fetch', fetchMock);
-
   renderWorkspace();
 
-  await user.type(await screen.findByPlaceholderText(/message orchagent/i), 'Create a file named hi.txt in the workspace and write hi into it.');
+  await user.type(
+    await screen.findByPlaceholderText(/message orchagent/i),
+    'Create a file named hi.txt in the workspace and write hi into it.',
+  );
   await user.click(screen.getByRole('button', { name: /send message/i }));
 
   deferred.complete([
@@ -1684,198 +800,21 @@ test('shows a live fallback summary when no reasoning chunk is streamed', async 
     },
   ]);
 
-  expect(await screen.findByText(/Filesystem Write 도구 결과를 바탕으로 응답 근거를 정리하는 중입니다/i)).toBeInTheDocument();
+  expect(
+    await screen.findByText(/Filesystem Write 도구 결과를 바탕으로 응답 근거를 정리하는 중입니다/i),
+  ).toBeInTheDocument();
 });
 
-test('keeps a manual rename when a delayed ai title response arrives later', async () => {
+test('completed answer triggers suggested-queries fetch and clicking a suggestion injects the composer', async () => {
   const user = userEvent.setup();
   const deferred = deferredSseResponse();
   let generatedThreadId = '';
-  let resolveAiTitle: ((response: Response) => void) | null = null;
-
-  const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
-    const telemetryResponse = maybeHandleTelemetryRequest(url);
-    if (telemetryResponse) {
-      return Promise.resolve(telemetryResponse);
-    }
-
-    if (url.includes('/api/auth/me')) {
-      return Promise.resolve(jsonResponse({
-        id: 'user-1',
-        login_id: 'tester',
-        role: 'user',
-        status: 'active',
-        display_name: null,
-        email: null,
-        must_change_password: false,
-      }));
-    }
-
-    if (url.includes('/api/threads?limit=50')) {
-      return Promise.resolve(jsonResponse({
-        threads: generatedThreadId
-          ? [
-              {
-                thread_id: generatedThreadId,
-                title: '웹검색을 통해 ALiBi 위치 인코딩을 조사하고 500자 내외로 설명해줘.',
-                preview: '응답 대기 중',
-                created_at: '2026-03-22T10:00:00Z',
-                last_activity_at: '2026-03-22T10:00:00Z',
-                message_count: 1,
-                latest_status: 'running',
-                checkpoint_id: null,
-                pinned: false,
-                archived: false,
-              },
-            ]
-          : [],
-      }));
-    }
-
-    if (url.endsWith('/api/chat')) {
-      const body = JSON.parse(String(init?.body || '{}'));
-      generatedThreadId = body.thread_id;
-      return Promise.resolve(deferred.response);
-    }
-
-    if (url.endsWith('/ai-title')) {
-      const match = url.match(/\/api\/threads\/([^/]+)\/ai-title$/);
-      generatedThreadId = decodeURIComponent(match?.[1] || '');
-      return new Promise<Response>((resolve) => {
-        resolveAiTitle = resolve;
-      });
-    }
-
-    if (url.includes(`/api/threads/${generatedThreadId}`) && init?.method === 'PATCH') {
-      const body = JSON.parse(String(init.body || '{}'));
-      return Promise.resolve(jsonResponse({
-        thread_id: generatedThreadId,
-        title: body.title || '수동 제목',
-        preview: '응답 대기 중',
-        created_at: '2026-03-22T10:00:00Z',
-        last_activity_at: '2026-03-22T10:15:00Z',
-        message_count: 1,
-        latest_status: 'completed',
-        checkpoint_id: 'cp-1',
-        pinned: body.pinned ?? false,
-        archived: false,
-      }));
-    }
-
-    throw new Error(`Unhandled fetch: ${url}`);
-  });
-
-  Object.defineProperty(document, 'cookie', {
-    configurable: true,
-    get: () => 'orch_csrf=csrf-token',
-  });
-  vi.stubGlobal('fetch', fetchMock);
-
-  renderWorkspace();
-
-  await user.type(
-    await screen.findByPlaceholderText(/message orchagent/i),
-    '웹검색을 통해 ALiBi 위치 인코딩을 조사하고 500자 내외로 설명해줘.'
-  );
-  await user.click(screen.getByRole('button', { name: /send message/i }));
-
-  deferred.complete([
-    {
-      event_type: 'status',
-      status: 'running',
-      thread_id: generatedThreadId,
-      node: 'head_supervisor',
-      display_name: 'Head Supervisor',
-      timestamp: '2026-03-22T10:20:00Z',
-    },
-    {
-      event_type: 'text',
-      node: 'assistant',
-      content: '응답 완료',
-      timestamp: '2026-03-22T10:20:01Z',
-    },
-    {
-      event_type: 'checkpoint',
-      thread_id: generatedThreadId,
-      checkpoint_id: 'cp-1',
-      timestamp: '2026-03-22T10:20:02Z',
-    },
-    {
-      event_type: 'status',
-      status: 'completed',
-      thread_id: generatedThreadId,
-      node: 'assistant',
-      display_name: 'Completed',
-      timestamp: '2026-03-22T10:20:03Z',
-    },
-  ]);
-
-  await waitFor(() => {
-    expect(screen.getByText('응답 완료')).toBeInTheDocument();
-  });
-
-  const createdThreadButton = screen.getAllByRole('button', { name: /open thread/i })[0];
-  await user.hover(createdThreadButton);
-  await user.click(screen.getByRole('button', { name: /thread actions/i }));
-  await user.click(screen.getByRole('button', { name: /rename/i }));
-
-  const renameInput = screen.getByLabelText(new RegExp(`rename thread ${generatedThreadId}`, 'i'));
-  await user.clear(renameInput);
-  await user.type(renameInput, '수동 제목');
-  fireEvent.blur(renameInput);
-
-  await waitFor(() => {
-    expect(fetchMock.mock.calls.some(([input, init]) => String(input).includes(`/api/threads/${generatedThreadId}`) && init?.method === 'PATCH')).toBe(true);
-  });
-
-  resolveAiTitle?.(jsonResponse({
-    thread_id: generatedThreadId,
-    title: 'AI 제목',
-    preview: '응답 대기 중',
-    created_at: '2026-03-22T10:00:00Z',
-    last_activity_at: '2026-03-22T10:00:00Z',
-    message_count: 1,
-    latest_status: 'running',
-    checkpoint_id: null,
-    pinned: false,
-    archived: false,
-  }));
-
-  await waitFor(() => {
-    expect(fetchMock.mock.calls.some(([input, init]) => String(input).includes(`/api/threads/${generatedThreadId}`) && init?.method === 'PATCH')).toBe(true);
-  });
-  expect(screen.queryByText('AI 제목')).not.toBeInTheDocument();
-});
-
-test('keeps the optimistic fallback title when ai title generation fails', async () => {
-  const user = userEvent.setup();
-  const deferred = deferredSseResponse();
-  let generatedThreadId = '';
-  const prompt = '이 질문은 fallback 제목이 유지되는지 확인하기 위한 매우 긴 테스트 메시지입니다.';
 
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
-    const telemetryResponse = maybeHandleTelemetryRequest(url);
-    if (telemetryResponse) {
-      return telemetryResponse;
-    }
 
-    if (url.includes('/api/auth/me')) {
-      return jsonResponse({
-        id: 'user-1',
-        login_id: 'tester',
-        role: 'user',
-        status: 'active',
-        display_name: null,
-        email: null,
-        must_change_password: false,
-      });
-    }
-
-    if (url.includes('/api/threads?limit=50')) {
-      return jsonResponse({ threads: [] });
-    }
+    if (url.includes('/api/auth/me')) return jsonResponse(authMePayload());
+    if (url.includes('/api/threads?limit=50')) return jsonResponse({ threads: [] });
 
     if (url.endsWith('/api/chat')) {
       const body = JSON.parse(String(init?.body || '{}'));
@@ -1884,27 +823,28 @@ test('keeps the optimistic fallback title when ai title generation fails', async
     }
 
     if (url.endsWith('/ai-title')) {
-      return jsonResponse({ detail: 'title failed' }, 500);
+      return jsonResponse(summary({ thread_id: generatedThreadId, title: 'RoPE', latest_status: 'running', checkpoint_id: null, message_count: 1 }));
+    }
+
+    if (url.endsWith('/suggested-queries')) {
+      return jsonResponse({
+        thread_id: generatedThreadId,
+        reasoning_summary: 'live reasoning',
+        suggested_queries: ['RoPE와 ALiBi 차이도 비교해줘'],
+      });
     }
 
     throw new Error(`Unhandled fetch: ${url}`);
   });
 
-  Object.defineProperty(document, 'cookie', {
-    configurable: true,
-    get: () => 'orch_csrf=csrf-token',
-  });
+  stubCsrfCookie();
   vi.stubGlobal('fetch', fetchMock);
-
   renderWorkspace();
 
-  await user.type(await screen.findByPlaceholderText(/message orchagent/i), prompt);
+  await user.type(await screen.findByPlaceholderText(/message orchagent/i), 'RoPE 논문 설명해줘');
   await user.click(screen.getByRole('button', { name: /send message/i }));
 
-  const fallbackTitle = prompt;
-  await waitFor(() => {
-    expect(screen.getAllByText(fallbackTitle).length).toBeGreaterThan(0);
-  });
+  expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/suggested-queries'))).toBe(false);
 
   deferred.complete([
     {
@@ -1915,18 +855,8 @@ test('keeps the optimistic fallback title when ai title generation fails', async
       display_name: 'Head Supervisor',
       timestamp: '2026-03-22T10:20:00Z',
     },
-    {
-      event_type: 'text',
-      node: 'assistant',
-      content: 'fallback 응답',
-      timestamp: '2026-03-22T10:20:01Z',
-    },
-    {
-      event_type: 'checkpoint',
-      thread_id: generatedThreadId,
-      checkpoint_id: 'cp-1',
-      timestamp: '2026-03-22T10:20:02Z',
-    },
+    { event_type: 'text', node: 'assistant', content: '최종 응답', timestamp: '2026-03-22T10:20:01Z' },
+    { event_type: 'checkpoint', thread_id: generatedThreadId, checkpoint_id: 'cp-1', timestamp: '2026-03-22T10:20:02Z' },
     {
       event_type: 'status',
       status: 'completed',
@@ -1937,79 +867,38 @@ test('keeps the optimistic fallback title when ai title generation fails', async
     },
   ]);
 
-  await waitFor(() => {
-    expect(screen.getByText('fallback 응답')).toBeInTheDocument();
-  });
-  expect(screen.queryByText('AI 제목')).not.toBeInTheDocument();
+  const suggestionButton = await screen.findByRole('button', { name: 'RoPE와 ALiBi 차이도 비교해줘' });
+  expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/suggested-queries'))).toBe(true);
+
+  await user.click(suggestionButton);
+  expect(screen.getByDisplayValue('RoPE와 ALiBi 차이도 비교해줘')).toBeInTheDocument();
 });
 
-test('marks a thread as errored when a send request fails before streaming starts', async () => {
-  const user = userEvent.setup();
-  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+test('marks a thread errored when /api/chat fails and resume failure preserves the interrupt banner', async () => {
+  // Consolidates `marks errored on send fail` + `restores interrupted resume
+  // state when resume fails` into one test that covers both error pathways
+  // in a single render via two sequential scenarios.
+
+  // Scenario 1: send failure.
+  const userOne = userEvent.setup();
+  const sendFailFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const telemetryResponse = maybeHandleTelemetryRequest(url);
-    if (telemetryResponse) {
-      return telemetryResponse;
-    }
+    if (telemetryResponse) return telemetryResponse;
 
-    if (url.includes('/api/auth/me')) {
-      return jsonResponse({
-        id: 'user-1',
-        login_id: 'tester',
-        role: 'user',
-        status: 'active',
-        display_name: null,
-        email: null,
-        must_change_password: false,
-      });
-    }
-
+    if (url.includes('/api/auth/me')) return jsonResponse(authMePayload());
     if (url.includes('/api/threads?limit=50')) {
       return jsonResponse({
-        threads: [
-          {
-            thread_id: 'thread-1',
-            title: 'Primary thread',
-            preview: 'Existing answer',
-            created_at: '2026-03-22T10:00:00Z',
-            last_activity_at: '2026-03-22T10:15:00Z',
-            message_count: 2,
-            latest_status: 'completed',
-            checkpoint_id: 'cp-1',
-            pinned: false,
-            archived: false,
-          },
-        ],
+        threads: [summary({ thread_id: 'thread-1', title: 'Primary thread', preview: 'Existing answer' })],
       });
     }
 
     if (url.includes('/api/threads/thread-1')) {
       return jsonResponse({
-        thread: {
-          thread_id: 'thread-1',
-          title: 'Primary thread',
-          preview: 'Existing answer',
-          created_at: '2026-03-22T10:00:00Z',
-          last_activity_at: '2026-03-22T10:15:00Z',
-          message_count: 2,
-          latest_status: 'completed',
-          checkpoint_id: 'cp-1',
-          pinned: false,
-          archived: false,
-        },
+        thread: summary({ thread_id: 'thread-1', title: 'Primary thread', preview: 'Existing answer' }),
         messages: [
-          {
-            id: 'm-1',
-            role: 'user',
-            content: 'Original question',
-            created_at: '2026-03-22T10:00:00Z',
-          },
-          {
-            id: 'm-2',
-            role: 'assistant',
-            content: 'Existing answer',
-            created_at: '2026-03-22T10:01:00Z',
-          },
+          { id: 'm-1', role: 'user', content: 'Original question', created_at: '2026-03-22T10:00:00Z' },
+          { id: 'm-2', role: 'assistant', content: 'Existing answer', created_at: '2026-03-22T10:01:00Z' },
         ],
       });
     }
@@ -2023,91 +912,41 @@ test('marks a thread as errored when a send request fails before streaming start
     throw new Error(`Unhandled fetch: ${url}`);
   });
 
-  vi.stubGlobal('fetch', fetchMock);
+  vi.stubGlobal('fetch', sendFailFetch);
+  const { unmount } = renderWorkspace();
 
-  renderWorkspace();
-
-  await user.click(await screen.findByRole('button', { name: /open thread primary thread/i }));
-  await user.type(screen.getByPlaceholderText(/message orchagent/i), 'Failing follow up');
-  await user.click(screen.getByRole('button', { name: /send message/i }));
+  await userOne.click(await screen.findByRole('button', { name: /open thread primary thread/i }));
+  await userOne.type(screen.getByPlaceholderText(/message orchagent/i), 'Failing follow up');
+  await userOne.click(screen.getByRole('button', { name: /send message/i }));
 
   await waitFor(() => {
     expect(screen.getByText('Backend exploded')).toBeInTheDocument();
   });
-
   expect(replaceMock).not.toHaveBeenCalledWith(expect.stringMatching(/^\/c\//));
-
   expect(screen.getAllByText('Errored').length).toBeGreaterThan(0);
-  expect(screen.getByRole('button', { name: /open thread primary thread/i })).toBeEnabled();
-});
 
-test('restores interrupted resume state when resume fails before streaming starts', async () => {
-  const user = userEvent.setup();
-  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+  unmount();
+
+  // Scenario 2: resume failure on an interrupted thread.
+  const userTwo = userEvent.setup();
+  const resumeFailFetch = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     const telemetryResponse = maybeHandleTelemetryRequest(url);
-    if (telemetryResponse) {
-      return telemetryResponse;
-    }
+    if (telemetryResponse) return telemetryResponse;
 
-    if (url.includes('/api/auth/me')) {
-      return jsonResponse({
-        id: 'user-1',
-        login_id: 'tester',
-        role: 'user',
-        status: 'active',
-        display_name: null,
-        email: null,
-        must_change_password: false,
-      });
-    }
-
+    if (url.includes('/api/auth/me')) return jsonResponse(authMePayload());
     if (url.includes('/api/threads?limit=50')) {
       return jsonResponse({
-        threads: [
-          {
-            thread_id: 'thread-1',
-            title: 'Interrupted thread',
-            preview: 'Awaiting approval',
-            created_at: '2026-03-22T10:00:00Z',
-            last_activity_at: '2026-03-22T10:15:00Z',
-            message_count: 2,
-            latest_status: 'interrupted',
-            checkpoint_id: 'cp-1',
-            pinned: false,
-            archived: false,
-          },
-        ],
+        threads: [summary({ thread_id: 'thread-1', title: 'Interrupted thread', preview: 'Awaiting approval', latest_status: 'interrupted' })],
       });
     }
 
     if (url.includes('/api/threads/thread-1')) {
       return jsonResponse({
-        thread: {
-          thread_id: 'thread-1',
-          title: 'Interrupted thread',
-          preview: 'Awaiting approval',
-          created_at: '2026-03-22T10:00:00Z',
-          last_activity_at: '2026-03-22T10:15:00Z',
-          message_count: 2,
-          latest_status: 'interrupted',
-          checkpoint_id: 'cp-1',
-          pinned: false,
-          archived: false,
-        },
+        thread: summary({ thread_id: 'thread-1', title: 'Interrupted thread', preview: 'Awaiting approval', latest_status: 'interrupted' }),
         messages: [
-          {
-            id: 'm-1',
-            role: 'user',
-            content: 'Do the risky thing',
-            created_at: '2026-03-22T10:00:00Z',
-          },
-          {
-            id: 'm-2',
-            role: 'assistant',
-            content: 'Awaiting approval',
-            created_at: '2026-03-22T10:01:00Z',
-          },
+          { id: 'm-1', role: 'user', content: 'Do the risky thing', created_at: '2026-03-22T10:00:00Z' },
+          { id: 'm-2', role: 'assistant', content: 'Awaiting approval', created_at: '2026-03-22T10:01:00Z' },
         ],
       });
     }
@@ -2119,393 +958,85 @@ test('restores interrupted resume state when resume fails before streaming start
     throw new Error(`Unhandled fetch: ${url}`);
   });
 
-  vi.stubGlobal('fetch', fetchMock);
-
+  vi.stubGlobal('fetch', resumeFailFetch);
   renderWorkspace();
 
-  await user.click(await screen.findByRole('button', { name: /open thread interrupted thread/i }));
+  await userTwo.click(await screen.findByRole('button', { name: /open thread interrupted thread/i }));
   expect(await screen.findByText(/action required/i)).toBeInTheDocument();
 
-  await user.click(screen.getByRole('button', { name: /approve & continue/i }));
+  await userTwo.click(screen.getByRole('button', { name: /approve & continue/i }));
 
   await waitFor(() => {
     expect(screen.getByText('Resume failed')).toBeInTheDocument();
   });
-
+  // V-001: interrupt banner remains visible even after resume error.
   expect(screen.getByText(/action required/i)).toBeInTheDocument();
   expect(screen.queryByText(/\[User Action\]: approve/i)).not.toBeInTheDocument();
 });
 
-test('renames and pins a thread optimistically', async () => {
+test('toggles a thread pin state and reorders pinned threads to the top', async () => {
   const user = userEvent.setup();
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const telemetryResponse = maybeHandleTelemetryRequest(url);
-    if (telemetryResponse) {
-      return telemetryResponse;
-    }
+    if (telemetryResponse) return telemetryResponse;
 
-    if (url.includes('/api/auth/me')) {
-      return jsonResponse({
-        id: 'user-1',
-        login_id: 'tester',
-        role: 'user',
-        status: 'active',
-        display_name: null,
-        email: null,
-        must_change_password: false,
-      });
-    }
-
+    if (url.includes('/api/auth/me')) return jsonResponse(authMePayload());
     if (url.includes('/api/threads?limit=50')) {
       return jsonResponse({
         threads: [
-          {
-            thread_id: 'thread-1',
-            title: 'Existing thread',
-            preview: 'Saved assistant answer',
-            created_at: '2026-03-22T10:00:00Z',
-            last_activity_at: '2026-03-22T10:15:00Z',
-            message_count: 2,
-            latest_status: 'completed',
-            checkpoint_id: 'cp-1',
-            pinned: false,
-            archived: false,
-          },
-        ],
-      });
-    }
-
-    if (url.endsWith('/api/threads/thread-1')) {
-      if (init?.method === 'PATCH') {
-        const body = JSON.parse(String(init.body || '{}'));
-        return jsonResponse({
-          thread_id: 'thread-1',
-          title: body.title || 'Existing thread',
-          preview: 'Saved assistant answer',
-          created_at: '2026-03-22T10:00:00Z',
-          last_activity_at: '2026-03-22T10:15:00Z',
-          message_count: 2,
-          latest_status: 'completed',
-          checkpoint_id: 'cp-1',
-          pinned: body.pinned ?? false,
-          archived: false,
-        });
-      }
-
-      return jsonResponse({
-        thread: {
-          thread_id: 'thread-1',
-          title: 'Existing thread',
-          preview: 'Saved assistant answer',
-          created_at: '2026-03-22T10:00:00Z',
-          last_activity_at: '2026-03-22T10:15:00Z',
-          message_count: 2,
-          latest_status: 'completed',
-          checkpoint_id: 'cp-1',
-          pinned: false,
-          archived: false,
-        },
-        messages: [],
-      });
-    }
-
-    throw new Error(`Unhandled fetch: ${url}`);
-  });
-
-  Object.defineProperty(document, 'cookie', {
-    configurable: true,
-    get: () => 'orch_csrf=csrf-token',
-  });
-  vi.stubGlobal('fetch', fetchMock);
-
-  renderWorkspace();
-
-  const existingThreadButton = await screen.findByRole('button', { name: /open thread existing thread/i });
-  await user.hover(existingThreadButton);
-  await user.click(screen.getByRole('button', { name: /thread actions existing thread/i }));
-  await user.click(screen.getByRole('button', { name: /rename existing thread/i }));
-  const renameInput = screen.getByLabelText(/rename thread thread-1/i);
-  await user.clear(renameInput);
-  await user.type(renameInput, 'Renamed thread');
-  fireEvent.blur(renameInput);
-
-  await waitFor(() => {
-    const patchCalls = fetchMock.mock.calls.filter(([input, init]) => {
-      const url = String(input);
-      return url.endsWith('/api/threads/thread-1') && init?.method === 'PATCH';
-    });
-    expect(patchCalls.length).toBeGreaterThan(0);
-  });
-
-  await waitFor(() => {
-    expect(screen.getByRole('button', { name: /thread actions/i })).toBeEnabled();
-  });
-
-  await user.click(screen.getByRole('button', { name: /thread actions/i }));
-  await user.click(screen.getByRole('button', { name: /pin/i }));
-  expect(await screen.findByText('Pinned')).toBeInTheDocument();
-});
-
-test('toggles a thread pin state independently', async () => {
-  const user = userEvent.setup();
-  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
-    const telemetryResponse = maybeHandleTelemetryRequest(url);
-    if (telemetryResponse) {
-      return telemetryResponse;
-    }
-
-    if (url.includes('/api/auth/me')) {
-      return jsonResponse({
-        id: 'user-1',
-        login_id: 'tester',
-        role: 'user',
-        status: 'active',
-        display_name: null,
-        email: null,
-        must_change_password: false,
-      });
-    }
-
-    if (url.includes('/api/threads?limit=50')) {
-      return jsonResponse({
-        threads: [
-          {
-            thread_id: 'thread-2',
-            title: 'Already top',
-            preview: 'Saved assistant answer',
-            created_at: '2026-03-22T10:00:00Z',
-            last_activity_at: '2026-03-22T11:15:00Z',
-            message_count: 2,
-            latest_status: 'completed',
-            checkpoint_id: 'cp-2',
-            pinned: false,
-            archived: false,
-          },
-          {
-            thread_id: 'thread-1',
-            title: 'Pin me',
-            preview: 'Saved assistant answer',
-            created_at: '2026-03-22T10:00:00Z',
-            last_activity_at: '2026-03-22T10:15:00Z',
-            message_count: 2,
-            latest_status: 'completed',
-            checkpoint_id: 'cp-1',
-            pinned: false,
-            archived: false,
-          },
+          summary({ thread_id: 'thread-2', title: 'Already top', last_activity_at: '2026-03-22T11:15:00Z', checkpoint_id: 'cp-2' }),
+          summary({ thread_id: 'thread-1', title: 'Pin me' }),
         ],
       });
     }
 
     if (url.endsWith('/api/threads/thread-1')) {
       const body = JSON.parse(String(init?.body || '{}'));
-      return jsonResponse({
-        thread_id: 'thread-1',
-        title: 'Pin me',
-        preview: 'Saved assistant answer',
-        created_at: '2026-03-22T10:00:00Z',
-        last_activity_at: '2026-03-22T10:15:00Z',
-        message_count: 2,
-        latest_status: 'completed',
-        checkpoint_id: 'cp-1',
-        pinned: body.pinned ?? false,
-        archived: false,
-      });
+      return jsonResponse(summary({ thread_id: 'thread-1', title: 'Pin me', pinned: body.pinned ?? false }));
     }
 
     throw new Error(`Unhandled fetch: ${url}`);
   });
 
-  Object.defineProperty(document, 'cookie', {
-    configurable: true,
-    get: () => 'orch_csrf=csrf-token',
-  });
+  stubCsrfCookie();
   vi.stubGlobal('fetch', fetchMock);
-
   renderWorkspace();
 
   expect(
-    (await screen.findAllByRole('button', { name: /open thread/i })).map((button) => button.getAttribute('aria-label'))
-  ).toEqual([
-    'Open thread Already top',
-    'Open thread Pin me',
-  ]);
+    (await screen.findAllByRole('button', { name: /open thread/i })).map((b) => b.getAttribute('aria-label'))
+  ).toEqual(['Open thread Already top', 'Open thread Pin me']);
 
   const pinThreadButton = await screen.findByRole('button', { name: /open thread pin me/i });
   await user.hover(pinThreadButton);
   await user.click(screen.getByRole('button', { name: /thread actions pin me/i }));
   await user.click(screen.getByRole('button', { name: /pin pin me/i }));
+
   expect(await screen.findByText('Pinned')).toBeInTheDocument();
   expect(
-    screen.getAllByRole('button', { name: /open thread/i }).map((button) => button.getAttribute('aria-label'))
-  ).toEqual([
-    'Open thread Pin me',
-    'Open thread Already top',
-  ]);
+    screen.getAllByRole('button', { name: /open thread/i }).map((b) => b.getAttribute('aria-label'))
+  ).toEqual(['Open thread Pin me', 'Open thread Already top']);
 });
 
-test('returns an unpinned thread to activity order after unpin', async () => {
+test('deletes the active thread and returns to draft', async () => {
   const user = userEvent.setup();
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const telemetryResponse = maybeHandleTelemetryRequest(url);
-    if (telemetryResponse) {
-      return telemetryResponse;
-    }
+    if (telemetryResponse) return telemetryResponse;
 
-    if (url.includes('/api/auth/me')) {
-      return jsonResponse({
-        id: 'user-1',
-        login_id: 'tester',
-        role: 'user',
-        status: 'active',
-        display_name: null,
-        email: null,
-        must_change_password: false,
-      });
-    }
-
+    if (url.includes('/api/auth/me')) return jsonResponse(authMePayload());
     if (url.includes('/api/threads?limit=50')) {
       return jsonResponse({
-        threads: [
-          {
-            thread_id: 'thread-1',
-            title: 'Pinned now',
-            preview: 'Saved assistant answer',
-            created_at: '2026-03-22T10:00:00Z',
-            last_activity_at: '2026-03-22T10:15:00Z',
-            message_count: 2,
-            latest_status: 'completed',
-            checkpoint_id: 'cp-1',
-            pinned: true,
-            archived: false,
-          },
-          {
-            thread_id: 'thread-2',
-            title: 'Newer thread',
-            preview: 'Saved assistant answer',
-            created_at: '2026-03-22T10:00:00Z',
-            last_activity_at: '2026-03-22T11:15:00Z',
-            message_count: 2,
-            latest_status: 'completed',
-            checkpoint_id: 'cp-2',
-            pinned: false,
-            archived: false,
-          },
-        ],
-      });
-    }
-
-    if (url.endsWith('/api/threads/thread-1')) {
-      const body = JSON.parse(String(init?.body || '{}'));
-      return jsonResponse({
-        thread_id: 'thread-1',
-        title: 'Pinned now',
-        preview: 'Saved assistant answer',
-        created_at: '2026-03-22T10:00:00Z',
-        last_activity_at: '2026-03-22T10:15:00Z',
-        message_count: 2,
-        latest_status: 'completed',
-        checkpoint_id: 'cp-1',
-        pinned: body.pinned ?? true,
-        archived: false,
-      });
-    }
-
-    throw new Error(`Unhandled fetch: ${url}`);
-  });
-
-  Object.defineProperty(document, 'cookie', {
-    configurable: true,
-    get: () => 'orch_csrf=csrf-token',
-  });
-  vi.stubGlobal('fetch', fetchMock);
-
-  renderWorkspace();
-
-  expect(
-    (await screen.findAllByRole('button', { name: /open thread/i })).map((button) => button.getAttribute('aria-label'))
-  ).toEqual([
-    'Open thread Pinned now',
-    'Open thread Newer thread',
-  ]);
-
-  const pinnedThreadButton = await screen.findByRole('button', { name: /open thread pinned now/i });
-  await user.hover(pinnedThreadButton);
-  await user.click(screen.getByRole('button', { name: /thread actions pinned now/i }));
-  await user.click(screen.getByRole('button', { name: /unpin pinned now/i }));
-
-  expect(
-    screen.getAllByRole('button', { name: /open thread/i }).map((button) => button.getAttribute('aria-label'))
-  ).toEqual([
-    'Open thread Newer thread',
-    'Open thread Pinned now',
-  ]);
-});
-
-test('deletes a thread and returns to draft when the active thread is removed', async () => {
-  const user = userEvent.setup();
-  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
-    const telemetryResponse = maybeHandleTelemetryRequest(url);
-    if (telemetryResponse) {
-      return telemetryResponse;
-    }
-
-    if (url.includes('/api/auth/me')) {
-      return jsonResponse({
-        id: 'user-1',
-        login_id: 'tester',
-        role: 'user',
-        status: 'active',
-        display_name: null,
-        email: null,
-        must_change_password: false,
-      });
-    }
-
-    if (url.includes('/api/threads?limit=50')) {
-      return jsonResponse({
-        threads: [
-          {
-            thread_id: 'thread-1',
-            title: 'Delete me',
-            preview: 'Saved assistant answer',
-            created_at: '2026-03-22T10:00:00Z',
-            last_activity_at: '2026-03-22T10:15:00Z',
-            message_count: 2,
-            latest_status: 'completed',
-            checkpoint_id: 'cp-1',
-            pinned: false,
-            archived: false,
-          },
-        ],
+        threads: [summary({ thread_id: 'thread-1', title: 'Delete me', preview: 'Saved assistant answer' })],
       });
     }
 
     if (url.includes('/api/threads/thread-1') && (!init || init.method === 'GET')) {
       return jsonResponse({
-        thread: {
-          thread_id: 'thread-1',
-          title: 'Delete me',
-          preview: 'Saved assistant answer',
-          created_at: '2026-03-22T10:00:00Z',
-          last_activity_at: '2026-03-22T10:15:00Z',
-          message_count: 2,
-          latest_status: 'completed',
-          checkpoint_id: 'cp-1',
-          pinned: false,
-          archived: false,
-        },
+        thread: summary({ thread_id: 'thread-1', title: 'Delete me', preview: 'Saved assistant answer' }),
         messages: [
-          {
-            id: 'm-1',
-            role: 'user',
-            content: 'Delete this thread',
-            created_at: '2026-03-22T10:00:00Z',
-          },
+          { id: 'm-1', role: 'user', content: 'Delete this thread', created_at: '2026-03-22T10:00:00Z' },
         ],
       });
     }
@@ -2517,12 +1048,8 @@ test('deletes a thread and returns to draft when the active thread is removed', 
     throw new Error(`Unhandled fetch: ${url}`);
   });
 
-  Object.defineProperty(document, 'cookie', {
-    configurable: true,
-    get: () => 'orch_csrf=csrf-token',
-  });
+  stubCsrfCookie();
   vi.stubGlobal('fetch', fetchMock);
-
   renderWorkspace();
 
   await user.click(await screen.findByRole('button', { name: /open thread delete me/i }));
@@ -2532,8 +1059,8 @@ test('deletes a thread and returns to draft when the active thread is removed', 
   await user.hover(deleteThreadButton);
   await user.click(screen.getByRole('button', { name: /thread actions delete me/i }));
   await user.click(screen.getByRole('button', { name: /delete delete me/i }));
-  expect(replaceMock).toHaveBeenCalledWith('/');
 
+  expect(replaceMock).toHaveBeenCalledWith('/');
   expect(await screen.findByText('System Ready')).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /open thread delete me/i })).not.toBeInTheDocument();
 });

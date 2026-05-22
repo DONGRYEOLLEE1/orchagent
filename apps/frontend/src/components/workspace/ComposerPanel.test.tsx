@@ -30,9 +30,7 @@ const defaultProps = {
 
 test('Enter submits the form and Shift+Enter inserts a newline', async () => {
   const user = userEvent.setup();
-  const onSubmit = vi.fn((event: React.FormEvent) => {
-    event.preventDefault();
-  });
+  const onSubmit = vi.fn((event: React.FormEvent) => event.preventDefault());
   const onInputChange = vi.fn();
 
   render(
@@ -47,52 +45,30 @@ test('Enter submits the form and Shift+Enter inserts a newline', async () => {
   const textarea = screen.getByPlaceholderText(/message orchagent/i);
   textarea.focus();
 
-  // Enter (without Shift) requests submit.
   await user.keyboard('{Enter}');
   expect(onSubmit).toHaveBeenCalledTimes(1);
 
-  // Shift+Enter does NOT call submit; it should pass through to default textarea
-  // behavior. userEvent will dispatch the key without our preventDefault stopping it.
   onSubmit.mockClear();
   await user.keyboard('{Shift>}{Enter}{/Shift}');
   expect(onSubmit).not.toHaveBeenCalled();
-  // The Shift+Enter keystroke is forwarded to the textarea, producing a change event
-  // with a newline. userEvent will route the keystroke through onChange because we
-  // don't preventDefault for Shift+Enter.
   expect(onInputChange).toHaveBeenCalled();
 });
 
-test('Send button is disabled while interaction is locked', () => {
-  render(
-    <ComposerPanel
-      {...defaultProps}
-      input="ready to send"
-      isInteractionLocked={true}
-    />
+test('Send button enabled state reflects input + lock + attachment props', () => {
+  // Consolidates three prior state-permutation cases:
+  // empty + no attachments → disabled
+  // input present → enabled
+  // interaction locked → disabled (and textarea/add-files also locked)
+  const { rerender } = render(
+    <ComposerPanel {...defaultProps} input="" hasSendableAttachments={false} />
   );
+  expect(screen.getByRole('button', { name: /send message/i })).toBeDisabled();
 
-  const sendButton = screen.getByRole('button', { name: /send message/i });
-  expect(sendButton).toBeDisabled();
+  rerender(<ComposerPanel {...defaultProps} input="non-empty" />);
+  expect(screen.getByRole('button', { name: /send message/i })).not.toBeDisabled();
 
-  // Add files button and textarea should also be disabled while locked.
+  rerender(<ComposerPanel {...defaultProps} input="ready to send" isInteractionLocked={true} />);
+  expect(screen.getByRole('button', { name: /send message/i })).toBeDisabled();
   expect(screen.getByRole('button', { name: /add files/i })).toBeDisabled();
   expect(screen.getByPlaceholderText(/message orchagent/i)).toBeDisabled();
-});
-
-test('Send button is disabled when input is empty and no sendable attachments', () => {
-  render(
-    <ComposerPanel
-      {...defaultProps}
-      input=""
-      hasSendableAttachments={false}
-    />
-  );
-
-  expect(screen.getByRole('button', { name: /send message/i })).toBeDisabled();
-});
-
-test('Send button enables when input has content', () => {
-  render(<ComposerPanel {...defaultProps} input="non-empty" />);
-
-  expect(screen.getByRole('button', { name: /send message/i })).not.toBeDisabled();
 });

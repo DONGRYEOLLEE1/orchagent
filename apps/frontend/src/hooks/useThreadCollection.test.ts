@@ -1,9 +1,8 @@
 /**
- * useThreadCollection — unit tests (Phase 3.2).
+ * useThreadCollection — unit tests.
  *
- * Covers the optimistic insert / remove transitions on the sidebar slice.
- * The mount-effect fetch is stubbed to a deterministic empty list so the
- * assertions focus on the synchronous reducer-like helpers.
+ * One consolidated case covers both optimistic insert and local remove
+ * transitions to keep this slice's reducer-like helpers under test.
  */
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -39,48 +38,27 @@ function makeSummary(overrides: Partial<ThreadSummary> & { thread_id: string }):
 describe('useThreadCollection', () => {
   beforeEach(() => {
     mockedFetchThreads.mockReset();
-    mockedFetchThreads.mockResolvedValue([]);
-  });
-
-  it('addOptimisticThread upserts a thread summary at the top of the list', async () => {
-    const { result } = renderHook(() => useThreadCollection());
-
-    await waitFor(() => {
-      expect(result.current.threadCollection.loadState).toBe('success');
-    });
-
-    const summary = makeSummary({
-      thread_id: 't-1',
-      title: 'New thread',
-      last_activity_at: '2026-05-21T10:00:00Z',
-    });
-
-    act(() => {
-      result.current.addOptimisticThread(summary);
-    });
-
-    expect(result.current.threadCollection.threads).toHaveLength(1);
-    expect(result.current.threadCollection.threads[0].thread_id).toBe('t-1');
-    expect(result.current.threadCollection.error).toBe('');
-  });
-
-  it('removeThread drops the matching summary from local state without an API call', async () => {
     mockedFetchThreads.mockResolvedValueOnce([
       makeSummary({ thread_id: 't-a' }),
       makeSummary({ thread_id: 't-b' }),
     ]);
+  });
 
+  it('addOptimisticThread + removeThread mutate the local sidebar slice without re-fetching', async () => {
     const { result } = renderHook(() => useThreadCollection());
 
     await waitFor(() => {
       expect(result.current.threadCollection.threads).toHaveLength(2);
     });
 
-    act(() => {
-      result.current.removeThread('t-a');
-    });
+    act(() =>
+      result.current.addOptimisticThread(
+        makeSummary({ thread_id: 't-1', title: 'New thread', last_activity_at: '2026-05-21T10:00:00Z' }),
+      ),
+    );
+    expect(result.current.threadCollection.threads[0].thread_id).toBe('t-1');
 
-    expect(result.current.threadCollection.threads).toHaveLength(1);
-    expect(result.current.threadCollection.threads[0].thread_id).toBe('t-b');
+    act(() => result.current.removeThread('t-a'));
+    expect(result.current.threadCollection.threads.find((t) => t.thread_id === 't-a')).toBeUndefined();
   });
 });
