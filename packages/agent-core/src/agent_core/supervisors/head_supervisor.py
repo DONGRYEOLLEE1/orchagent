@@ -214,10 +214,18 @@ def make_head_supervisor_node(
             if next_node not in {"FINISH", final_node_name}
             else None
         )
+        # Turn boundary: both raw FINISH and finalizer routes end the current
+        # turn from the user's perspective. We label both as "completed" so
+        # ``route_history`` slicing in follow-up turns can isolate this-turn
+        # entries via the most recent ``status="completed"`` head checkpoint.
+        # ``streaming_status`` keeps the legacy "running" semantics so the SSE
+        # consumer still sees the finalizer phase as in-flight.
+        is_turn_end = next_node == "FINISH"
         status_label: Literal["running", "completed"] = (
-            "completed"
-            if next_node == "FINISH" and not should_use_finalizer
-            else "running"
+            "completed" if is_turn_end and not should_use_finalizer else "running"
+        )
+        route_status_label: Literal["running", "completed"] = (
+            "completed" if is_turn_end else "running"
         )
         route_next_node = final_node_name if should_use_finalizer else next_node
 
@@ -233,7 +241,7 @@ def make_head_supervisor_node(
                     node="head_supervisor",
                     next_node=route_next_node or next_node,
                     team=next_team,
-                    status=status_label,
+                    status=route_status_label,
                     reasoning=decision.reason,
                 )
             ],
@@ -257,9 +265,27 @@ def make_head_supervisor_node(
 
 
 def _max_same_team_streak(route_history: Iterable[dict[str, Any]]) -> int:
-    """Largest streak of consecutive head-layer redirects to the same team."""
+    """Largest streak of head-layer redirects to the same team in THIS turn.
+
+    Multi-turn threads accumulate ``route_history`` across turns. Counting
+    every prior turn's head→team entry would push the streak past the
+    safeguard limit on the very first head call of a new turn, even when
+    nothing has actually looped this turn. We slice to entries after the
+    most recent head ``status="completed"`` checkpoint (which marks the end
+    of the previous turn) so the streak reflects only the current turn.
+    """
+    history_list = list(route_history)
+    last_completed_idx = -1
+    for idx, entry in enumerate(history_list):
+        if entry.get("layer") == "head" and entry.get("status") == "completed":
+            last_completed_idx = idx
+    current_turn = (
+        history_list[last_completed_idx + 1 :]
+        if last_completed_idx >= 0
+        else history_list
+    )
     streaks: dict[str, int] = {}
-    for entry in route_history:
+    for entry in current_turn:
         if entry.get("layer") != "head":
             continue
         team = entry.get("team")

@@ -395,8 +395,17 @@ requests.sessions.Session.request = _disabled_network
 socket.create_connection = _disabled_network
 
 _artifact_dir = r"{context.artifact_dir}"
-_original_pyplot_savefig = _plt.savefig
-_original_figure_savefig = _Figure.savefig
+# Cross-turn safety: matplotlib.pyplot is a process-wide singleton, so each
+# turn's monkey-patch would otherwise nest on top of the previous turn's
+# wrapper and rewrite paths into a stale artifact_dir. We stash the REAL
+# savefig the very first time this module touches it and rebind to that
+# pristine reference on every subsequent turn.
+if not hasattr(_plt, "_orchagent_real_savefig"):
+    _plt._orchagent_real_savefig = _plt.savefig
+if not hasattr(_Figure, "_orchagent_real_savefig"):
+    _Figure._orchagent_real_savefig = _Figure.savefig
+_original_pyplot_savefig = _plt._orchagent_real_savefig
+_original_figure_savefig = _Figure._orchagent_real_savefig
 
 def _safe_pyplot_savefig(fname=None, *args, _original=_original_pyplot_savefig, _artifact_dir_value=_artifact_dir, **kwargs):
     rewritten = None if fname is None else os.path.join(_artifact_dir_value, os.path.basename(str(fname)))

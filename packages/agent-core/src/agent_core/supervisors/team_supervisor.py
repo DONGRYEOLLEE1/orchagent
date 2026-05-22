@@ -61,10 +61,15 @@ def make_team_supervisor_node(
         team_dispatch_count_key = (
             f"{normalized_team}_dispatch_count" if normalized_team else None
         )
-        team_dispatch_count = (
-            int(shared_context.get(team_dispatch_count_key, 0))
-            if team_dispatch_count_key
-            else 0
+
+        # Count THIS-TURN dispatches only. The legacy counter in
+        # ``shared_context`` accumulates across turns, so on a follow-up
+        # turn the team would hit the ceiling on its very first worker
+        # dispatch. We recompute from ``route_history`` sliced at the most
+        # recent head ``status="completed"`` checkpoint instead.
+        route_history = state.get("route_history") or []
+        team_dispatch_count = _current_turn_team_dispatches(
+            route_history, normalized_team=normalized_team
         )
 
         # Pre-check dispatch ceiling before paying for an LLM call — saves a
@@ -90,10 +95,9 @@ def make_team_supervisor_node(
             shared_context=shared_context,
         )
 
-        # Surface this-turn worker history to the LLM as a system note so it
-        # never has to recompute it from the raw conversation. The LLM still
-        # makes the routing decision — this is data, not a rule (plan §4.0 P1).
-        route_history = state.get("route_history") or []
+        # Surface worker history to the LLM as a system note so it never has
+        # to recompute it from the raw conversation. The LLM still makes the
+        # routing decision — this is data, not a rule (plan §4.0 P1).
         worker_history_note = _format_worker_history_note(
             route_history, normalized_team=normalized_team
         )
@@ -182,48 +186,123 @@ def _log_decision(decision: Any, goto: str, status: str) -> None:
         print(f"[TeamSupervisor] Safeguard status: {status}", flush=True)
 
 
-def _format_worker_history_note(
+def _current_turn_team_dispatches(
     route_history: list[dict[str, Any]],
     *,
     normalized_team: str | None,
-) -> str | None:
-    """Summarize this team's worker history so the LLM can see prior dispatches.
+) -> int:
+    """Count this team's worker dispatches IN THIS TURN ONLY.
 
-    Returns ``None`` when there is nothing meaningful to report. The output
-    is intentionally compact so the LLM can integrate it without being
-    distracted from its system prompt rules.
+    The legacy ``<team>_dispatch_count`` field in ``shared_context``
+    accumulates across turns, which would trip the dispatch ceiling on a
+    follow-up turn's very first worker call. We recompute from the
+    ``route_history`` slice that comes after the most recent head
+    ``status="completed"`` so the count is turn-local.
     """
     if not normalized_team or not route_history:
-        return None
-
-    workers_called: list[str] = []
-    for entry in route_history:
+        return 0
+    last_completed_idx = -1
+    for idx, entry in enumerate(route_history):
+        if entry.get("layer") == "head" and entry.get("status") == "completed":
+            last_completed_idx = idx
+    current_turn = (
+        route_history[last_completed_idx + 1 :]
+        if last_completed_idx >= 0
+        else route_history
+    )
+    count = 0
+    for entry in current_turn:
         if entry.get("layer") != "team":
             continue
         if entry.get("team") != normalized_team:
             continue
         worker = entry.get("worker")
         if isinstance(worker, str) and worker and worker != "FINISH":
-            workers_called.append(worker)
+            count += 1
+    return count
 
-    if not workers_called:
+
+def _format_worker_history_note(
+    route_history: list[dict[str, Any]],
+    *,
+    normalized_team: str | None,
+) -> str | None:
+    """Summarize this team's worker history split by turn boundary.
+
+    Multi-turn threads accumulate ``route_history`` across turns. The team
+    supervisor's worker-selection LLM needs both pieces of context:
+
+    1. Prior-turn workers — so it knows the team already ran (and which
+       brief/analysis is already on the conversation), useful for
+       follow-up requests like "same data, different chart".
+    2. This-turn workers — so it never repeats a worker that already ran
+       in the current turn.
+
+    Returns ``None`` when there is nothing meaningful to report.
+    """
+    if not normalized_team or not route_history:
         return None
 
-    counts: dict[str, int] = {}
-    for worker in workers_called:
-        counts[worker] = counts.get(worker, 0) + 1
-    summary = ", ".join(
-        f"{worker} ({count} call{'s' if count > 1 else ''})"
-        for worker, count in counts.items()
-    )
-    return (
-        "# THIS-TURN WORKER HISTORY\n"
-        f"- Already dispatched in this turn: {summary}.\n"
-        "- A worker that already ran cannot be dispatched again unless the\n"
-        "  Reviewer feedback names a concrete code-level gap only that\n"
-        "  worker can fix. If the brief or analysis is already in the\n"
-        "  conversation, route to the NEXT worker in the workflow."
-    )
+    # Slice the history at the most recent head ``status="completed"``;
+    # entries before that index belong to previous turns.
+    last_completed_idx = -1
+    for idx, entry in enumerate(route_history):
+        if entry.get("layer") == "head" and entry.get("status") == "completed":
+            last_completed_idx = idx
+
+    if last_completed_idx >= 0:
+        previous_turn = route_history[: last_completed_idx + 1]
+        current_turn = route_history[last_completed_idx + 1 :]
+    else:
+        previous_turn = []
+        current_turn = list(route_history)
+
+    def _team_worker_counts(entries: list[dict[str, Any]]) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for entry in entries:
+            if entry.get("layer") != "team":
+                continue
+            if entry.get("team") != normalized_team:
+                continue
+            worker = entry.get("worker")
+            if isinstance(worker, str) and worker and worker != "FINISH":
+                counts[worker] = counts.get(worker, 0) + 1
+        return counts
+
+    prev_counts = _team_worker_counts(previous_turn)
+    curr_counts = _team_worker_counts(current_turn)
+    if not prev_counts and not curr_counts:
+        return None
+
+    def _summary(counts: dict[str, int]) -> str:
+        return ", ".join(
+            f"{worker} ({count} call{'s' if count > 1 else ''})"
+            for worker, count in counts.items()
+        )
+
+    lines = ["# TEAM WORKER HISTORY"]
+    if prev_counts:
+        lines.append(
+            f"- Previous turns (already produced briefs/analyses you can "
+            f"build on): {_summary(prev_counts)}."
+        )
+    if curr_counts:
+        lines.append(
+            f"- This turn so far: {_summary(curr_counts)}."
+        )
+        lines.append(
+            "- A worker that already ran in THIS TURN cannot be dispatched"
+            " again unless the Reviewer feedback names a concrete code-level"
+            " gap only that worker can fix. Route to the NEXT worker in the"
+            " workflow."
+        )
+    else:
+        lines.append(
+            "- Nothing dispatched yet in this turn — start with the worker"
+            " that owns the new request (the engineer briefs/inspects, the"
+            " analyst computes and renders charts)."
+        )
+    return "\n".join(lines)
 
 
 __all__ = ["make_team_supervisor_node"]

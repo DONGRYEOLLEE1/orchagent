@@ -82,22 +82,40 @@ async def decide_route(
     request = [{"role": "system", "content": system_prompt}, *messages]
     structured_llm = llm.with_structured_output(RouterDecision)
 
-    raw_text = ""
-    try:
-        response: Any = await structured_llm.ainvoke(request)
-    except (ValidationError, ValueError, TypeError) as exc:
-        # Pydantic + LangChain parse failures surface as ValidationError /
-        # ValueError depending on the provider. Fall back to FINISH instead
-        # of crashing the whole turn (plan §4.0 P3).
-        raw_text = repr(exc)
-        return fallback_decision_on_parse_failure(raw_text=raw_text), "parse_failed"
+    # plan §4.0.5: "LLM structured output 파싱 실패 → 1회 재요청 → 그래도
+    # 실패면 FINISH". OpenAI Responses API + langchain structured output
+    # 조합에서 가끔 ``parsed`` 필드 없이 raw text content를 emit하는데,
+    # (1) 한 번 재시도하고, (2) 그래도 실패하면 raw error 메시지 안에 박힌
+    # JSON을 직접 추출해 RouterDecision으로 복원한다.
+    response: Any = None
+    last_error: Any = None
+    decision: RouterDecision | None = None
+    for attempt in range(2):
+        try:
+            response = await structured_llm.ainvoke(request)
+        except (ValidationError, ValueError, TypeError) as exc:
+            last_error = exc
+            response = None
+            continue
+        decision_attempt = _coerce_to_router_decision(response)
+        if decision_attempt is not None:
+            decision = decision_attempt
+            break
 
-    decision = _coerce_to_router_decision(response)
     if decision is None:
-        return (
-            fallback_decision_on_parse_failure(raw_text=str(response)),
-            "parse_failed",
-        )
+        # Tier-3 recovery: try to extract the JSON RouterDecision that OpenAI
+        # emitted as a raw text content block. The text is reflected back in
+        # the langchain ValueError message, so we can salvage it without
+        # making a third LLM round-trip. This keeps multi-turn follow-up
+        # requests usable when the provider intermittently bypasses its own
+        # ``parsed`` field.
+        salvaged = _salvage_router_decision_from_error(last_error)
+        if salvaged is not None:
+            decision = salvaged
+
+    if decision is None:
+        raw_text = repr(last_error) if last_error is not None else str(response)
+        return fallback_decision_on_parse_failure(raw_text=raw_text), "parse_failed"
 
     # Safeguard 1 — invalid `next` value gets forced to FINISH.
     outcome = reject_invalid_goto(decision, allowed_nodes)
@@ -125,6 +143,39 @@ async def decide_route(
             return outcome.decision, outcome.status
 
     return outcome.decision, "accepted"
+
+
+def _salvage_router_decision_from_error(error: Any) -> RouterDecision | None:
+    """Best-effort recovery when OpenAI Responses API skips the ``parsed`` field.
+
+    The provider sometimes emits a valid JSON ``RouterDecision`` blob inside
+    a raw text content block instead of populating the structured ``parsed``
+    field, and langchain raises ``ValueError`` that includes the original
+    message. We scan that message for the first balanced JSON object and try
+    to validate it against ``RouterDecision``. Returning ``None`` here means
+    the caller should fall back to the safeguard FINISH.
+    """
+    if error is None:
+        return None
+    import json
+    import re
+
+    message = repr(error)
+    # Greedy match the first JSON object that mentions a ``next`` key.
+    # Balanced-braces regex is hard in Python's ``re``; we instead find every
+    # ``{...}`` chunk and try them in order until one parses cleanly.
+    for candidate in re.findall(r"\{[^{}]*\}", message):
+        try:
+            payload = json.loads(candidate)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if not isinstance(payload, dict) or "next" not in payload:
+            continue
+        try:
+            return RouterDecision.model_validate(payload)
+        except ValidationError:
+            continue
+    return None
 
 
 def _coerce_to_router_decision(raw: Any) -> RouterDecision | None:
