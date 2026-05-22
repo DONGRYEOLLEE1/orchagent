@@ -54,6 +54,41 @@ OrchAgent(LangGraph 계층형 멀티 에이전트 + FastAPI + Next.js) 프로젝
 
 ---
 
+## 🧪 테스트 코드 추가 정책 (Core-Only, 볼륨 보수)
+
+테스트 코드는 회귀 차단 가치를 기준으로 엄격히 선별한다. **Core 카테고리에 해당하지 않으면 새 테스트 작성 금지**. 기존 테스트 안에 케이스를 추가할 때도 동일 기준으로 판단한다.
+
+### Core 카테고리 (이 중 하나에 명확히 해당할 때만 추가)
+
+1. **회귀 fix 검증** — 실제 발견된 버그를 재현하는 최소 케이스. 커밋 메시지/PR 본문이 그 버그를 명시할 수 있어야 한다.
+2. **계약 (contract) 보장** — SSE 10종 이벤트 shape, FINAL_RESPONSE_STREAM_OWNERSHIP, RouterDecision 스키마, ToolErrorPayload 같은 인터페이스 불변.
+3. **safeguard (plan §4.0 P3)** — `reject_invalid_goto` / `enforce_team_redirect_limit` / `enforce_dispatch_limit` / `fallback_decision_on_parse_failure`처럼 LLM 결정을 차단·재요청하는 안전망.
+4. **통합 smoke** — `/api/chat`, `/api/threads`, `/api/auth/*` 같은 경계면이 200을 반환하는 최소 1~2 케이스.
+5. **핵심 비즈니스 로직** — head/team supervisor 라우팅, finalizer 합성, validator 폴백, planner 결정 등 LangGraph 그래프 핵심 노드.
+
+### 추가 금지 (PR 작성 전 자기 점검)
+
+- ❌ pydantic 모델 default-value instantiation sanity (`Model().field == default`)
+- ❌ service의 단순 CRUD wrapper 테스트 (SQLAlchemy 호출 1~2줄을 mock으로 검증)
+- ❌ prompt 문자열 substring 일치 같은 string assertion 일변도 — prompt 변경 시 깨지기만 함
+- ❌ dead feature 잔재 (Phase 2.x에서 제거된 휴리스틱·plan-driven override 등)
+- ❌ 같은 함수의 input permutation 3개 이상 — `pytest.parametrize`로 한 케이스로 통합
+- ❌ trivial helper 함수의 단위 테스트 (예: `_extract_text_content` 같은 1~2줄 함수)
+- ❌ placeholder/skeleton 파일 (docstring만 있는 파일, `pass`만 있는 함수)
+
+### 작성 절차
+
+1. 새 테스트를 작성하기 전, 위 5개 Core 카테고리 중 어디에 해당하는지 1초 안에 답할 수 있어야 한다. 답이 안 나오면 작성하지 말 것.
+2. 같은 기능을 검증하는 기존 케이스가 있는지 grep으로 먼저 확인. 있으면 그 케이스에 assertion을 더하거나 `parametrize`로 묶는다.
+3. 신규 파일을 만들기 전, 같은 도메인의 기존 파일에 묶을 수 있는지 점검 (`tests/test_<domain>_*.py` 통합 우선).
+
+### 외부 인용
+
+- 회귀 정량 측정은 `apps/backend/tests/routing_eval/golden_dataset.json`이 담당. LLM 라우팅 정확도 회귀는 단위 테스트보다 evaluation harness로 잡는다 (plan §4.0 P5).
+- baseline 비교는 `infra/scripts/{capture,diff}_baseline.sh`. 신규 테스트 통과 수가 baseline보다 줄어들면 곧장 회귀.
+
+---
+
 ## 🧭 Supervisor → Sub-agent Handoff 정책 (LLM-Driven, 룰 베이스 금지)
 
 OrchAgent 런타임의 head/team supervisor가 사용자 질의를 파악해 sub-agent(`research_team` / `coding_team` / `data_science_team` / `vision_team` / `writing_team`) 및 worker(`data_engineer`/`data_analyst`/`codebase_explorer`/`implementation_engineer`/`runtime_verifier`/`search`/`web_scraper`/...)로 위임할 때 따르는 단일 정책. **모든 분기 결정은 LLM이 `RouterDecision` structured output으로 내린다. 정규식 매칭·`_should_force_*` 함수·키워드 사전 같은 룰 베이스는 절대 추가 금지** (plan §4.0 P1).
