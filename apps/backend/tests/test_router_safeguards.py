@@ -15,6 +15,7 @@ from agent_core.safeguards import (
     enforce_dispatch_limit,
     enforce_team_redirect_limit,
     fallback_decision_on_parse_failure,
+    reject_coding_team_without_repo_binding,
     reject_invalid_goto,
 )
 
@@ -110,3 +111,27 @@ def test_router_decision_default_values_are_safe() -> None:
     assert decision.reason == ""
     assert decision.request_review is False
     assert decision.team_finished is False
+
+
+def test_coding_team_with_repo_binding_passes_through() -> None:
+    decision = _make_decision("coding_team")
+    outcome = reject_coding_team_without_repo_binding(decision, repo_bound=True)
+    assert outcome.status == "accepted"
+    assert outcome.decision == decision
+
+
+def test_coding_team_without_repo_binding_forces_finish() -> None:
+    decision = _make_decision("coding_team")
+    outcome = reject_coding_team_without_repo_binding(decision, repo_bound=False)
+    assert outcome.status == "fallback_finish"
+    assert outcome.decision.next == "FINISH"
+    assert "safeguard" in outcome.decision.reason
+    assert "coding_team" in outcome.decision.reason
+
+
+def test_non_coding_team_decision_unaffected_by_repo_binding_safeguard() -> None:
+    """다른 팀 결정은 repo_binding 여부와 무관 — safeguard 사이드이펙트 없음."""
+    decision = _make_decision("research_team")
+    outcome = reject_coding_team_without_repo_binding(decision, repo_bound=False)
+    assert outcome.status == "accepted"
+    assert outcome.decision == decision
