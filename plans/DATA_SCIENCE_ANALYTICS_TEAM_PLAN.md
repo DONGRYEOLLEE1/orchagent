@@ -243,8 +243,18 @@ V1에서 처음 노출할 툴은 작게 유지한다.
 
 - **PR #10** `ae261ad` — DATA_ENGINEER/ANALYST/TEAM_SUPERVISOR/SYSTEM_SUPERVISOR/REVIEWER prompt 강화 + `python_repl_data_tool` `plt.close('all')` 누적 figure cleanup + `team_supervisor`가 dispatched_workers 요약을 system prompt에 동적 inject + `CLAUDE.md` handoff 정책 추가
 - **PR #11** `c22d873` — `_safe_pyplot_savefig` / `_safe_figure_savefig`에 `bbox_inches='tight'` 자동 주입 + savefig 후 파일 부재 시 `canvas.draw()` retry (S-E 한글 silent fail 해소)
+- **PR #14** `d3ddf77` — 멀티 turn follow-up 5종 fix: LLMRouter parse-failure retry+salvage, head/team supervisor의 current-turn-only redirect/dispatch 카운트, worker history note prev/current 분리, finalizer 경유 head도 turn 종료 status="completed" 마킹, matplotlib savefig monkey-patch nesting 차단
 
-회귀: pytest 316/316 PASS, vitest 88/88 PASS, build PASS, CI 통과.
+### data_engineer 첫 분기 보장 — 다층 검증 (2026-05-22)
+
+본 session에서 `data_engineer`가 데이터 첨부 turn의 **첫 worker**로 확실히 분기되는지 다음 4층으로 검증·강화:
+
+1. **SYSTEM_SUPERVISOR_PROMPT** `# TEAM SELECTION HINTS`: 데이터 첨부(csv/xlsx/json/pdf/docx)는 **MUST `data_science_team`** 명시
+2. **TEAM_SUPERVISOR_PROMPT** `# DATA SCIENCE TEAM HANDOFF`: `data_engineer`가 ONE-pass inspection만 수행, 그 후 ALWAYS `data_analyst` 강제 가이드 명시
+3. **routing_eval/golden_dataset.json**: data_science 카테고리 7 케이스(`data-001`~`data-007`) 모두 `expected_next: data_science_team` — scorer가 회귀 시 즉시 감지
+4. **routing_eval `data_engineer_first` 보강 케이스** (본 session 추가): team-layer router가 첫 dispatch에서 `data_engineer`를 선택하는지 확인하는 단위 평가
+
+회귀: pytest 184/184 PASS (2차 축소 후), vitest 54/54 PASS, build PASS, CI 통과.
 
 ## 참고 문서
 

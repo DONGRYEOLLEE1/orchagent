@@ -125,3 +125,28 @@ def test_dataset_cases_all_have_required_fields():
             "vision_team",
             "writing_team",
         }
+
+
+def test_data_science_cases_all_route_to_data_science_team():
+    """첫 분기 보장 — 데이터 첨부 케이스는 반드시 data_science_team으로.
+
+    plan §"data_engineer 첫 분기 보장" — CLAUDE.md의 도메인별 첫 분기
+    매핑 표를 코드로 강제. data_science 카테고리 케이스가 다른 팀으로
+    fan-out되기 시작하면 LLM 프롬프트(SYSTEM_SUPERVISOR_PROMPT
+    `# TEAM SELECTION HINTS`)가 약화된 것이므로 즉시 잡는다.
+    """
+    cases = load_dataset()
+    data_science_cases = [c for c in cases if c.category == "data_science"]
+    assert len(data_science_cases) >= 5, (
+        "data_science 카테고리 케이스가 부족합니다 — "
+        "데이터 첨부 첫 분기 회귀 차단선이 약해집니다."
+    )
+    for case in data_science_cases:
+        assert case.expected_next == "data_science_team", (
+            f"{case.id}: data_science 케이스가 {case.expected_next}로 라우팅됨 "
+            f"— CLAUDE.md §'도메인별 첫 분기 의무' 위반"
+        )
+        assert case.expected_request_review is False, (
+            f"{case.id}: data_science 케이스는 python_repl 샌드박스라서 "
+            "request_review=False 여야 합니다 (인간 승인 불필요)."
+        )
