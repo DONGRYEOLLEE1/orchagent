@@ -11,12 +11,6 @@ Per the head/team responsibilities split:
 
 - ``layer="head"`` → :func:`agent_core.supervisors.make_head_supervisor_node`
 - ``layer="team"`` → :func:`agent_core.supervisors.make_team_supervisor_node`
-
-The historical helpers (``_extract_message_text``,
-``_latest_user_request_text``, ``_orchagent_identity_response``) now live
-inside ``agent_core.supervisors.head_supervisor`` where they are actually
-used. They are re-exported here only for any external test that imported
-them directly.
 """
 
 from __future__ import annotations
@@ -25,12 +19,7 @@ from typing import Callable, Literal
 
 from langchain_core.language_models.chat_models import BaseChatModel
 
-from agent_core.supervisors.head_supervisor import (
-    _extract_message_text,
-    _latest_user_request_text,
-    _orchagent_identity_response,
-    make_head_supervisor_node,
-)
+from agent_core.supervisors.head_supervisor import make_head_supervisor_node
 from agent_core.supervisors.team_supervisor import make_team_supervisor_node
 
 
@@ -67,9 +56,4 @@ def make_supervisor_node(
     )
 
 
-__all__ = [
-    "_extract_message_text",
-    "_latest_user_request_text",
-    "_orchagent_identity_response",
-    "make_supervisor_node",
-]
+__all__ = ["make_supervisor_node"]

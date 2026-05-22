@@ -23,6 +23,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.graph import END
 from langgraph.types import Command
 
+from agent_core.safeguards import reject_coding_team_without_repo_binding
 from agent_core.state import (
     BaseAgentState,
     ResponseMode,
@@ -31,72 +32,6 @@ from agent_core.state import (
 )
 from agent_core.supervisors.llm_router import compose_system_prompt, decide_route
 from prompt_kit.prompts import SYSTEM_SUPERVISOR_PROMPT
-
-
-# ---------------------------------------------------------------------------
-# Helpers — lifted from the previous monolithic supervisor.py so the head
-# layer can answer identity questions deterministically before falling back
-# to the LLM-emitted content. These are pure utilities (no graph state).
-# ---------------------------------------------------------------------------
-
-
-def _extract_message_text(content: Any) -> str:
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts: list[str] = []
-        for item in content:
-            if isinstance(item, str):
-                parts.append(item)
-            elif isinstance(item, dict) and item.get("type") == "text":
-                parts.append(str(item.get("text", "")))
-        return " ".join(part for part in parts if part)
-    return str(content or "")
-
-
-def _latest_user_request_text(messages: list[Any]) -> str:
-    for message in reversed(messages):
-        if getattr(message, "type", "") in {"human", "user"}:
-            return _extract_message_text(getattr(message, "content", ""))
-        if (
-            isinstance(message, tuple)
-            and len(message) == 2
-            and str(message[0]).lower() == "user"
-        ):
-            return _extract_message_text(message[1])
-        if isinstance(message, dict) and message.get("role") == "user":
-            return _extract_message_text(message.get("content", ""))
-    return ""
-
-
-def _orchagent_identity_response(user_text: str) -> str | None:
-    """Deterministic identity answer so the model never invents a name."""
-    normalized = user_text.strip().lower()
-    if not normalized:
-        return None
-
-    name_patterns = (
-        "너 이름",
-        "네 이름",
-        "이름이 뭐",
-        "what is your name",
-        "your name",
-        "who are you",
-    )
-    identity_patterns = (
-        "너 정체",
-        "네 정체",
-        "정체가 뭐",
-        "what are you",
-        "who are you really",
-        "what is orchagent",
-    )
-
-    if any(pattern in normalized for pattern in name_patterns):
-        return "저는 OrchAgent입니다."
-    if any(pattern in normalized for pattern in identity_patterns):
-        return "저는 여러 전문 팀을 오케스트레이션하는 OrchAgent입니다."
-    return None
 
 
 def make_head_supervisor_node(
@@ -150,6 +85,18 @@ def make_head_supervisor_node(
             same_team_streak=same_team_streak,
         )
 
+        # ---- Coding team safeguard: needs repo binding. -------------------
+        # Block before HITL so the user is not asked to approve a dispatch
+        # that the system cannot execute anyway.
+        binding_outcome = reject_coding_team_without_repo_binding(
+            decision,
+            repo_bound=bool(shared_context.get("repo_binding")),
+        )
+        if binding_outcome.status != "accepted":
+            decision = binding_outcome.decision
+            status = binding_outcome.status
+            print(f"[HeadSupervisor] {decision.reason}", flush=True)
+
         # ---- HITL: interrupt only when LLM (or state flag) asked for it. --
         state_requires_approval = bool(
             shared_context.get("force_requires_approval", False)
@@ -160,15 +107,7 @@ def make_head_supervisor_node(
             if interrupt_result is not None:
                 return interrupt_result
 
-        # ---- Coding team safeguard: needs repo binding. -------------------
         next_node = decision.next
-        if next_node == "coding_team" and not shared_context.get("repo_binding"):
-            print(
-                "[HeadSupervisor] coding_team requested without a bound repository; "
-                "routing to FINISH for direct LLM answer.",
-                flush=True,
-            )
-            next_node = "FINISH"
 
         # ---- Direct-FINISH answer content. ------------------------------
         # Plan §4.0 P1/P3: the head supervisor LLM owns the final-answer
