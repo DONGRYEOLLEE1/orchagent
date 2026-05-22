@@ -48,6 +48,60 @@
       "rationale": "데이터 파일 분석 + 차트 요청."
     },
     {
+      "id": "data-002-trend-line",
+      "category": "data_science",
+      "user_message": "첨부 trend.csv의 월별 매출 추세를 라인 차트 이미지로 시각화해서 PNG로 저장 후 보여줘. 인사이트 3줄.",
+      "repo_bound": false,
+      "expected_next": "data_science_team",
+      "expected_request_review": false,
+      "rationale": "S-A: CSV 시계열 + 라인 차트 PNG 요청. data_engineer → data_analyst 한 사이클로 끝나야 함."
+    },
+    {
+      "id": "data-003-json-bar",
+      "category": "data_science",
+      "user_message": "첨부 products.json의 category별 평균 price를 막대 차트 PNG로 시각화. 한국어 인사이트 3줄.",
+      "repo_bound": false,
+      "expected_next": "data_science_team",
+      "expected_request_review": false,
+      "rationale": "S-B: JSON 첨부 + 집계 + 막대 차트. coding_team으로 잘못 위임하면 안 됨 (PR #10 회귀)."
+    },
+    {
+      "id": "data-004-xlsx-multi-sheet",
+      "category": "data_science",
+      "user_message": "첨부 xlsx의 sales 시트 revenue 합계와 costs 시트 cost 합계를 비교 막대 차트 PNG로 만들어 보여줘.",
+      "repo_bound": false,
+      "expected_next": "data_science_team",
+      "expected_request_review": false,
+      "rationale": "S-C: 다중 시트 xlsx → preview_tabular_file로 sheet 결정 + 비교 차트. request_review는 false (python sandbox 안전)."
+    },
+    {
+      "id": "data-005-multi-file-compare",
+      "category": "data_science",
+      "user_message": "첨부한 두 CSV(sales.csv, metrics.csv)를 하나의 PNG에 두 서브플롯으로 시각화해줘.",
+      "repo_bound": false,
+      "expected_next": "data_science_team",
+      "expected_request_review": false,
+      "rationale": "S-D: 다중 파일 비교 분석. data_engineer가 두 파일 모두 inspect 후 data_analyst가 단일 PNG로 종합."
+    },
+    {
+      "id": "data-006-korean-labels",
+      "category": "data_science",
+      "user_message": "첨부 korean_sales.csv의 지역별 매출 합계를 한국어 라벨 막대 차트 PNG로 시각화해서 보여줘.",
+      "repo_bound": false,
+      "expected_next": "data_science_team",
+      "expected_request_review": false,
+      "rationale": "S-E: CJK 라벨 차트. CJK 폰트 fallback + bbox_inches='tight' (PR #11)이 적용되어야 PNG가 silent fail하지 않음."
+    },
+    {
+      "id": "data-007-corrupt-pdf",
+      "category": "data_science",
+      "user_message": "첨부한 corrupt.pdf의 텍스트를 추출해서 핵심 키워드 3개만 알려줘.",
+      "repo_bound": false,
+      "expected_next": "data_science_team",
+      "expected_request_review": false,
+      "rationale": "S-F2: 깨진 PDF. data_science_team으로 분기 후 extract_document_text가 실패하면 사용자에게 명확히 고지(plan §검증 기준 4)."
+    },
+    {
       "id": "vision-001",
       "category": "vision",
       "user_message": "이 이미지의 메타데이터를 확인하고 크기를 절반으로 줄여줘.",
