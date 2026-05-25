@@ -82,11 +82,52 @@ def test_vision_tools_with_dummy_image():
     meta_result = get_image_metadata.invoke({"base64_image": dummy_base64})
     assert "JPEG" in meta_result
     assert "100, 100" in meta_result
+    # New metadata fields — locks the structured payload so prompt drift
+    # doesn't silently shrink what vision_analyst sees.
+    assert "FileSize:" in meta_result
+    assert "EXIF:" in meta_result
+    assert "Alpha:" in meta_result
 
     resize_result = resize_image.invoke(
         {"base64_image": dummy_base64, "max_width": 50, "max_height": 50}
     )
     assert "successfully resized to (50, 50)" in resize_result
+    # The summary must also report the original size and the file-size delta
+    # so the analyst can reason about whether the resize actually saved bytes.
+    assert "from (100, 100)" in resize_result
+    assert "->" in resize_result
+
+
+def test_resize_image_applies_exif_orientation_correction():
+    """EXIF Orientation=6 (rotate 90 CW) must swap width/height after resize.
+
+    Without ``ImageOps.exif_transpose`` a portrait phone photo (stored as
+    landscape pixels with an EXIF rotate-90 tag) is fed to the LLM rotated,
+    which silently degrades vision-analyst accuracy. This test pins the fix.
+    """
+    import base64
+    import io
+    from PIL import Image
+    from agent_tools.vision import resize_image
+
+    # 100x200 stored pixels; EXIF says "rotate 90 CW for display" → after
+    # transpose the dimensions become (200, 100).
+    img = Image.new("RGB", (100, 200), color="green")
+    exif = img.getexif()
+    exif[0x0112] = 6  # Orientation tag: rotate 90 CW
+    buffered = io.BytesIO()
+    img.save(buffered, format="JPEG", exif=exif)
+    b64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+
+    # Resize box larger than both axes so thumbnail() is a no-op and we
+    # observe purely the EXIF correction.
+    result = resize_image.invoke(
+        {"base64_image": b64, "max_width": 400, "max_height": 400}
+    )
+
+    assert "(200, 100)" in result, (
+        f"EXIF orientation correction missing — expected (200, 100), got: {result}"
+    )
 
 
 def _make_runtime(tmp_path, attachments):

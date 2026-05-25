@@ -1,19 +1,39 @@
 import base64
 import io
 from typing import Annotated, Optional
-from PIL import Image
+
+from PIL import Image, ImageOps
 from langchain_core.tools import tool
+
+
+def _exif_corrected(img: Image.Image) -> Image.Image:
+    """Rotate/flip per the EXIF Orientation tag so portrait photos read upright.
+
+    Without this, a phone photo whose EXIF says "rotate 90 CW for display"
+    stays in its stored orientation and downstream LLM vision misreads the
+    scene (people lying down, text rotated, etc.).
+    """
+    return ImageOps.exif_transpose(img) or img
 
 
 @tool
 def get_image_metadata(
     base64_image: Annotated[str, "The base64 encoded image string."],
 ) -> str:
-    """Extracts metadata such as format, size, and mode from a base64 encoded image."""
+    """Extract format, size, color mode, file size, EXIF, and alpha info from a base64 image."""
     try:
         image_data = base64.b64decode(base64_image)
         img = Image.open(io.BytesIO(image_data))
-        return f"Format: {img.format}, Size: {img.size}, Mode: {img.mode}"
+        has_exif = bool(
+            getattr(img, "_getexif", lambda: None)() or img.info.get("exif")
+        )
+        has_alpha = img.mode in ("RGBA", "LA") or (
+            img.mode == "P" and "transparency" in img.info
+        )
+        return (
+            f"Format: {img.format}, Size: {img.size}, Mode: {img.mode}, "
+            f"FileSize: {len(image_data)} bytes, EXIF: {has_exif}, Alpha: {has_alpha}"
+        )
     except Exception as e:
         return f"Error extracting metadata: {str(e)}"
 
@@ -28,20 +48,30 @@ def resize_image(
         Optional[int], "Maximum height for the resized image. Defaults to 1024."
     ] = 1024,
 ) -> str:
-    """Resizes an image while maintaining aspect ratio and returns the new base64 string."""
+    """Resize an image (aspect-preserving, EXIF-orientation aware).
+
+    Returns a short factual summary: original size → new size and file-size
+    delta. The new base64 is intentionally not returned to avoid blowing up
+    the LLM context window — vision_analyst already has the original image
+    in its input messages; this tool exists so the analyst can confirm that
+    a smaller copy is feasible and reason about it.
+    """
     try:
         image_data = base64.b64decode(base64_image)
         img = Image.open(io.BytesIO(image_data))
+        original_size = img.size
+        original_fmt = img.format if img.format else "JPEG"
+        img = _exif_corrected(img)
 
-        # Maintain aspect ratio
         img.thumbnail((max_width, max_height))
 
         buffered = io.BytesIO()
-        # Save back to same format if possible, otherwise default to JPEG
-        fmt = img.format if img.format else "JPEG"
-        img.save(buffered, format=fmt)
+        img.save(buffered, format=original_fmt)
+        new_bytes = buffered.getvalue()
 
-        new_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
-        return f"Image successfully resized to {img.size}. New Base64 length: {len(new_base64)}"
+        return (
+            f"Image successfully resized to {img.size} from {original_size}. "
+            f"FileSize: {len(image_data)} -> {len(new_bytes)} bytes."
+        )
     except Exception as e:
         return f"Error resizing image: {str(e)}"
