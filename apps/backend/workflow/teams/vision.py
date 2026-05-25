@@ -1,5 +1,6 @@
 from agent_core.builder import TeamBuilder
 from agent_tools.vision import get_image_metadata, resize_image
+from core.config import settings
 from prompt_kit.prompts import VISION_ANALYST_PROMPT
 
 
@@ -14,5 +15,6 @@ class VisionTeamBuilder(TeamBuilder):
 
 def get_vision_graph(llm):
     return VisionTeamBuilder(llm, "VisionTeam", ["vision_analyst"]).build(
-        with_validator=True
+        with_validator=True,
+        max_team_dispatches=settings.VISION_TEAM_MAX_DISPATCHES,
     )

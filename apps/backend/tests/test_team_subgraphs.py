@@ -7,6 +7,7 @@ from agent_core.state import BaseAgentState
 from workflow.teams.research import ResearchTeamBuilder, get_research_graph
 from workflow.teams.coding import CodingTeamBuilder, get_coding_graph
 from workflow.teams.writing import get_writing_graph
+from workflow.teams.vision import get_vision_graph
 from prompt_kit.prompts import (
     CODEBASE_EXPLORER_PROMPT,
     CODING_TEAM_SUPERVISOR_PROMPT,
@@ -130,6 +131,12 @@ def test_team_modules_use_add_worker_without_blocking_wrappers():
             "workflow.teams.coding.settings.CODING_TEAM_MAX_DISPATCHES",
             13,
             get_coding_graph,
+        ),
+        (
+            "workflow.teams.vision.VisionTeamBuilder.build",
+            "workflow.teams.vision.settings.VISION_TEAM_MAX_DISPATCHES",
+            4,
+            get_vision_graph,
         ),
     ],
 )
