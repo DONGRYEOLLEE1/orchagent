@@ -127,7 +127,7 @@ LLM이 결정하지만, 사용자 질의의 입력 신호에 대해 **첫 worker
 | 사용자 질의 신호 | 첫 sub-agent | 첫 worker | prompt 위치 |
 |:---|:---|:---|:---|
 | 데이터 첨부(csv/xlsx/json/pdf/docx) + 분석/차트 요청 | `data_science_team` | **`data_engineer`** (ONE-pass inspect) → `data_analyst`(python_repl + 차트) | `SYSTEM_SUPERVISOR_PROMPT` `# TEAM SELECTION HINTS` + `TEAM_SUPERVISOR_PROMPT` `# DATA SCIENCE TEAM HANDOFF` |
-| 이미지 첨부 | `vision_team` | `image_inspector` → `image_editor` | `SYSTEM_SUPERVISOR_PROMPT` `# TEAM SELECTION HINTS` |
+| 이미지 첨부 | `vision_team` | `vision_analyst` (tools: `get_image_metadata`, `resize_image`) | `SYSTEM_SUPERVISOR_PROMPT` `# REQUIRED FIRST ROUTES` + `TEAM_SUPERVISOR_PROMPT` `# VISION TEAM HANDOFF` |
 | 최신 정보·뉴스·"latest" 요청 | `research_team` | `search` → 필요 시 `web_scraper` | `RESEARCH_TEAM_SUPERVISOR_PROMPT` |
 | repo 바인딩 + 코드 수정/실행 | `coding_team` | `codebase_explorer` → `implementation_engineer` → (선택) `runtime_verifier` | `SYSTEM_SUPERVISOR_PROMPT` `# CRITICAL GUIDELINES 2a/2b` |
 | 명시적 보고서/슬라이드/문서 작성 | `writing_team` | `note_taker` → `doc_writer` | `SYSTEM_SUPERVISOR_PROMPT` `# CRITICAL GUIDELINES 6a` |
