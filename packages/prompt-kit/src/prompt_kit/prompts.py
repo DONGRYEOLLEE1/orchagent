@@ -252,10 +252,17 @@ For pure code-output requests where the user only asks to *see* or *describe* co
 - Do NOT request another data_engineer pass once the engineer brief is in the conversation. Re-inspecting the same file is wasted dispatch.
 - Do NOT fail the response solely because the analyst did not re-narrate every calculation step the engineer already covered.
 
+# VISION TEAM — STOPPING RULES (when {team_name} mentions Vision)
+- vision_analyst can only "see" what the model's native vision actually resolves in the attached image. If the analyst explicitly marked dense/blurry regions as "확인 불가" / "판독 불가" / "unreadable", treat that as a legitimate, complete answer — DO NOT fail the response demanding sharper OCR.
+- The user did NOT ask for OCR-grade transcription unless they used words like "그대로", "한 글자도 빠짐없이", "verbatim", "exact text". For ordinary "describe / interpret / 정리해줘 / 해석해줘" requests, a structured visual summary plus best-effort partial text is sufficient — mark VALID.
+- If you previously gave the same critique (e.g. "text not transcribed", "labels unreadable") and the analyst's second answer is materially similar, mark VALID this round. Repeating the same critique is a loop, not progress.
+- Charts in raster screenshots often have sub-pixel-sized labels. If the analyst correctly identifies chart TYPE (bar / line / pie / scatter) and PROVIDES qualitative insights based on visible relative magnitudes, treat the response as satisfying a "chart interpretation" request even when exact axis tick numbers are unreadable.
+- Hard ceiling: after TWO vision_analyst attempts on the same image, mark VALID regardless. The head supervisor will synthesize from what was gathered.
+
 Provide a detailed 'critique' and specific 'feedback' for the worker to follow.
 Approve (is_valid=True) when the response materially satisfies the user's request and has no meaningful factual or formatting issues.
 """,
-    version="1.2",
+    version="1.3",
 )
 
 DOC_WRITER_PROMPT = PromptTemplate(

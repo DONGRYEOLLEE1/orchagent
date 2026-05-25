@@ -14,6 +14,11 @@ class Settings(BaseSettings):
     WRITING_TEAM_MAX_DISPATCHES: int = 5
     DATA_SCIENCE_TEAM_MAX_DISPATCHES: int = 5
     CODING_TEAM_MAX_DISPATCHES: int = 6
+    # Vision team has a single worker (vision_analyst) — one good pass plus
+    # at most one reviewer-driven retry should be enough. The previous absence
+    # of this ceiling let reviewer↔analyst loop indefinitely on OCR-heavy
+    # critiques (see plans/vision-team-reviewer-loop-fix.md).
+    VISION_TEAM_MAX_DISPATCHES: int = 3
     MAIN_AGENT_MODEL: str = "gpt-5.4-nano"
     THREAD_TITLE_MODEL: str = "gpt-5.4-mini"
     THREAD_SUGGESTIONS_MODEL: str = "gpt-5.4-mini"
